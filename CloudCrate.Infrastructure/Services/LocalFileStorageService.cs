@@ -1,4 +1,6 @@
-﻿using CloudCrate.Application.Common.Interfaces;
+﻿using Microsoft.Extensions.Options;
+using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.Common.Settings;
 
 namespace CloudCrate.Infrastructure.Services;
 
@@ -6,12 +8,14 @@ public class LocalFileStorageService : IFileStorageService
 {
     private readonly string _storagePath;
 
-    public LocalFileStorageService()
+    public LocalFileStorageService(IOptions<StorageSettings> storageSettings)
     {
-        _storagePath = Path.Combine(Directory.GetCurrentDirectory(), "StoredFiles");
+        _storagePath = storageSettings.Value.RootPath;
 
         if (!Directory.Exists(_storagePath))
+        {
             Directory.CreateDirectory(_storagePath);
+        }
     }
 
     public async Task<string> UploadAsync(Stream fileStream, string fileName)
