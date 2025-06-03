@@ -1,0 +1,31 @@
+# Build results
+bin/
+obj/
+
+# Rider
+.idea/
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs
+*.log
+
+# ASP.NET runtime files
+wwwroot/
+StoredFiles/
+
+# Optional: secrets or environment-specific configs
+appsettings.Development.json
+appsettings.*.json
+.env
+
+# Others
+*.db
