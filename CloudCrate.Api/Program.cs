@@ -1,12 +1,25 @@
 using CloudCrate.Api.Models;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Infrastructure.Identity;
+using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 
 
 var builder = WebApplication.CreateBuilder(args);
+
+
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
 
 // Add services to the container.
 builder.Services.AddControllers();
