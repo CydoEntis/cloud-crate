@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Crate;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Domain.Entities;
@@ -18,102 +19,159 @@ public class CrateService : ICrateService
         _fileStorageService = fileStorageService;
     }
 
-    public async Task<CrateDto> CreateCrateAsync(string userId, string crateName)
+    public async Task<Result<CrateResponse>> CreateCrateAsync(string userId, string crateName)
     {
         var crate = Crate.Create(crateName, userId);
-
         _context.Crates.Add(crate);
         await _context.SaveChangesAsync();
 
-        return new CrateDto
+        var dto = new CrateResponse
         {
             Id = crate.Id,
             Name = crate.Name,
         };
+
+        return Result<CrateResponse>.Success(dto);
     }
 
-    public async Task<IEnumerable<CrateDto>> GetAllCratesAsync(string userId)
+    public async Task<Result<IEnumerable<CrateResponse>>> GetAllCratesAsync(string userId)
     {
-        return await _context.Crates
+        var crates = await _context.Crates
             .Where(c => c.OwnerId == userId)
-            .Select(c => new CrateDto
+            .Select(c => new CrateResponse
             {
                 Id = c.Id,
                 Name = c.Name,
             }).ToListAsync();
+
+        return Result<IEnumerable<CrateResponse>>.Success(crates);
     }
 
-    public async Task<CrateDto> RenameCrateAsync(Guid crateId, string userId, string newName)
+    public async Task<Result<CrateResponse>> RenameCrateAsync(string userId, RenameCrateRequest request)
     {
         var crate = await _context.Crates
-            .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
+            .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.OwnerId == userId);
 
         if (crate == null)
             throw new Exception("Crate not found");
 
-        crate.Rename(newName);
+        crate.Rename(request.NewName);
 
         await _context.SaveChangesAsync();
 
-        return new CrateDto
+        var response = new CrateResponse
         {
             Id = crate.Id,
             Name = crate.Name,
         };
+
+        return Result<CrateResponse>.Success(response);
     }
 
-    public async Task AddFileToCrateAsync(Guid crateId, string userId, FileObject file)
+    public async Task<Result<string>> AddFileToCrateAsync(string userId, AddFileToCrateRequest request)
     {
         var crate = await _context.Crates
             .Include(c => c.Files)
-            .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
+            .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.OwnerId == userId);
 
         if (crate == null)
-            throw new Exception("Crate not found");
+            return Result<string>.Failure("Crate not found");
 
-        crate.AddFile(file);
+        crate.AddFile(request.File);
 
         await _context.SaveChangesAsync();
+        return Result<string>.Success("File added file to crate.");
     }
 
-    public async Task UploadFileAsync(Guid crateId, string userId, UploadFileDto file)
+    public async Task<Result<string>> UploadFileAsync(string userId, FileDataRequest dataRequest)
     {
         var crate = await _context.Crates
             .Include(c => c.Files)
-            .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
+            .FirstOrDefaultAsync(c => c.Id == dataRequest.CrateId && c.OwnerId == userId);
 
         if (crate == null)
-            throw new Exception("Crate not found");
+            return Result<string>.Failure("Crate not found");
 
-        var storedName = $"{Guid.NewGuid()}_{file.FileName}";
-        await _fileStorageService.UploadAsync(file.FileStream, storedName);
+        var storedName = $"{Guid.NewGuid()}_{dataRequest.FileName}";
+        await _fileStorageService.UploadAsync(dataRequest.FileStream, storedName);
 
         var fileObj = new FileObject
         {
             Id = Guid.NewGuid(),
-            FileName = file.FileName,
+            FileName = dataRequest.FileName,
             StoredName = storedName,
-            ContentType = file.ContentType,
-            Size = file.Size,
-            CrateId = crateId
+            ContentType = dataRequest.ContentType,
+            Size = dataRequest.Size,
+            CrateId = dataRequest.CrateId
         };
 
         crate.AddFile(fileObj);
         await _context.SaveChangesAsync();
+        return Result<string>.Success("File upload was successful.");
     }
 
-    public async Task<(Stream FileStream, string FIleName)> DownloadFileAsync(Guid crateId, string userId, Guid fileId)
+    public async Task<Result<DownloadFileResponse>> DownloadFileAsync(string userId, DownloadFileRequest request)
+    {
+        var crate = await _context.Crates
+            .Include(c => c.Files)
+            .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.OwnerId == userId);
+
+        if (crate == null)
+            return Result<DownloadFileResponse>.Failure("Crate not found");
+
+        var file = crate.Files.FirstOrDefault(f => f.Id == request.FileId);
+        if (file == null)
+            return Result<DownloadFileResponse>.Failure("File not found");
+
+        var stream = await _fileStorageService.DownloadAsync(file.StoredName);
+
+        var response = new DownloadFileResponse
+        {
+            FileStream = stream,
+            FileName = file.FileName,
+            ContentType = file.ContentType
+        };
+
+        return Result<DownloadFileResponse>.Success(response);
+    }
+
+
+    public async Task<Result<IEnumerable<FileObjectResponse>>> GetFilesInCrateAsync(Guid crateId, string userId)
     {
         var crate = await _context.Crates
             .Include(c => c.Files)
             .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
 
-        if (crate == null) throw new Exception("Crate not found");
+        if (crate == null)
+            return Result<IEnumerable<FileObjectResponse>>.Success(Enumerable.Empty<FileObjectResponse>());
+
+        var fileDtos = crate.Files.Select(f => new FileObjectResponse
+        {
+            Id = f.Id,
+            FileName = f.FileName,
+            StoredName = f.StoredName,
+            ContentType = f.ContentType,
+            Size = f.Size
+        });
+
+        return Result<IEnumerable<FileObjectResponse>>.Success(fileDtos);
+    }
+
+    public async Task<Result> DeleteFileAsync(Guid crateId, string userId, Guid fileId)
+    {
+        var crate = await _context.Crates
+            .Include(c => c.Files)
+            .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
+
+        if (crate == null) return Result.Failure("Crate not found");
 
         var file = crate.Files.FirstOrDefault(f => f.Id == fileId);
-        if (file == null) throw new Exception("File not found");
+        if (file == null) return Result.Failure("File not found");
 
-        var stream = await _fileStorageService.DownloadAsync(file.StoredName);
-        return (stream, file.FileName);
+        _context.FileObjects.Remove(file);
+        await _fileStorageService.DeleteAsync(file.StoredName);
+        await _context.SaveChangesAsync();
+
+        return Result.Success();
     }
 }

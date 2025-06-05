@@ -1,4 +1,5 @@
-﻿using CloudCrate.Application.DTOs.Crate;
+﻿using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Crate;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Domain.Entities;
 
@@ -6,11 +7,13 @@ namespace CloudCrate.Application.Common.Interfaces;
 
 public interface ICrateService
 {
-    Task<CrateDto> CreateCrateAsync(string userId, string crateName);
-    Task<IEnumerable<CrateDto>> GetAllCratesAsync(string userId);
-    Task<CrateDto> RenameCrateAsync(Guid crateId, string userId, string newName);
-    Task AddFileToCrateAsync(Guid crateId, string userId, FileObject file);
+    Task<Result<CrateResponse>> CreateCrateAsync(string userId, string crateName);
+    Task<Result<IEnumerable<CrateResponse>>> GetAllCratesAsync(string userId);
+    Task<Result<CrateResponse>> RenameCrateAsync(string userId, RenameCrateRequest request);
+    Task<Result<string>> AddFileToCrateAsync(string userId, AddFileToCrateRequest request);
+    Task<Result<string>> UploadFileAsync(string userId, FileDataRequest dataRequest);
+    Task<Result<DownloadFileResponse>> DownloadFileAsync(string userId, DownloadFileRequest request);
 
-    Task UploadFileAsync(Guid crateId, string userId, UploadFileDto file);
-    Task<(Stream FileStream, string FIleName)> DownloadFileAsync(Guid crateId, string userId, Guid fileId);
+    Task<Result<IEnumerable<FileObjectResponse>>> GetFilesInCrateAsync(Guid crateId, string userId);
+    Task<Result> DeleteFileAsync(Guid crateId, string userId, Guid fileId);
 }
