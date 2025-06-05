@@ -43,4 +43,16 @@ public class LocalFileStorageService : IFileStorageService
 
         return memoryStream;
     }
+
+    public Task DeleteAsync(string storedFileName)
+    {
+        var filePath = Path.Combine(_storagePath, storedFileName);
+
+        if (File.Exists(filePath))
+        {
+            File.Delete(filePath);
+        }
+
+        return Task.CompletedTask;
+    }
 }
