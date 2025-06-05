@@ -2,6 +2,7 @@
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Crate;
 using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.Common.Models;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -32,8 +33,8 @@ public class CrateController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var crate = await _crateService.CreateCrateAsync(user.Id, request.Name);
-        return Ok(crate);
+        var result = await _crateService.CreateCrateAsync(user.Id, request.Name);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
     [HttpGet]
@@ -42,8 +43,8 @@ public class CrateController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var crates = await _crateService.GetAllCratesAsync(user.Id);
-        return Ok(crates);
+        var result = await _crateService.GetAllCratesAsync(user.Id);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
     [HttpPut("{crateId}/rename")]
@@ -52,15 +53,15 @@ public class CrateController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var updatedCrate = await _crateService.RenameCrateAsync(crateId, user.Id, request.NewName);
-        return Ok(updatedCrate);
+        request.CrateId = crateId;
+        var result = await _crateService.RenameCrateAsync(user.Id, request);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
-
 
     [HttpPost("{crateId}/files")]
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
-        var user = await _userManager.GetUserAsync(User);
+        var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
         var file = request.File;
@@ -68,17 +69,17 @@ public class CrateController : ControllerBase
 
         await using var stream = file.OpenReadStream();
 
-        var uploadDto = new UploadFileDto
+        var fileData = new FileDataRequest
         {
+            CrateId = crateId,
             FileStream = stream,
             FileName = file.FileName,
             ContentType = file.ContentType,
             Size = file.Length
         };
 
-        await _crateService.UploadFileAsync(crateId, user.Id, uploadDto);
-
-        return Ok();
+        var result = await _crateService.UploadFileAsync(user.Id, fileData);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
     [HttpGet("{crateId}/files/{fileId}")]
@@ -87,7 +88,32 @@ public class CrateController : ControllerBase
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var (stream, fileName) = await _crateService.DownloadFileAsync(crateId, user.Id, fileId);
-        return File(stream, "application/octet-stream", fileName);
+        var result =
+            await _crateService.DownloadFileAsync(user.Id,
+                new DownloadFileRequest { CrateId = crateId, FileId = fileId });
+        if (!result.Succeeded) return BadRequest(result.Errors);
+
+        var file = result.Data;
+        return File(file.FileStream, file.ContentType, file.FileName);
+    }
+
+    [HttpGet("{crateId}/files")]
+    public async Task<IActionResult> GetFiles(Guid crateId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result = await _crateService.GetFilesInCrateAsync(crateId, user.Id);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
+    }
+
+    [HttpDelete("{crateId}/files/{fileId}")]
+    public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result = await _crateService.DeleteFileAsync(crateId, user.Id, fileId);
+        return result.Succeeded ? Ok() : BadRequest(result.Errors);
     }
 }
