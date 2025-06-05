@@ -15,44 +15,33 @@ namespace CloudCrate.Api.Controllers;
 [Route("api/[controller]")]
 public class AuthController : ControllerBase
 {
-    private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuthService _authService;
 
-    public AuthController(UserManager<ApplicationUser> userManager, IJwtTokenService jwtTokenService)
+    public AuthController(IAuthService authService)
     {
-        _userManager = userManager;
-        _jwtTokenService = jwtTokenService;
+        _authService = authService;
     }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
-        var user = new ApplicationUser { UserName = request.Email, Email = request.Email };
-        var result = await _userManager.CreateAsync(user, request.Password);
+        var result = await _authService.RegisterAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-        {
-            return BadRequest(result.Errors.Select(e => e.Description));
-        }
+            return BadRequest(result.Errors);
 
         return Ok();
     }
 
+
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, request.Password))
-        {
-            return Unauthorized("Invalid credentials");
-        }
+        var result = await _authService.LoginAsync(request.Email, request.Password);
 
-        var token = _jwtTokenService.GenerateToken(new UserTokenInfo
-        {
-            UserId = user.Id,
-            Email = user.Email!
-        });
+        if (!result.Succeeded)
+            return Unauthorized(result.Errors);
 
-        return Ok(new { token });
+        return Ok(new { token = result.Data });
     }
 }
