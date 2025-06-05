@@ -1,3 +1,4 @@
+using System.Text;
 using CloudCrate.Api.Models;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
@@ -7,8 +8,10 @@ using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
 using FluentValidation;
 using FluentValidation.AspNetCore;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,6 +28,22 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 // Set storage configuration values
 builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("StorageSettings"));
 
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new()
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+        };
+    });
+
 
 // Add services to the container.
 builder.Services.AddControllers();
@@ -38,6 +57,8 @@ builder.Services.AddOpenApi();
 
 // Add Services
 builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddScoped<ICrateService, CrateService>();
+builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
 
 var app = builder.Build();
@@ -50,6 +71,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
