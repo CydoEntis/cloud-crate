@@ -1,6 +1,6 @@
 ﻿using CloudCrate.Domain.Entities;
 
-namespace CloudCrate.Application.DTOs.Crate;
+namespace CloudCrate.Api.Requests.Crate;
 
 public class AddFileToCrateRequest
 {

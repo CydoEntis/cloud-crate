@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.DTOs.Crate;
+﻿namespace CloudCrate.Api.Requests.Crate;
 
 public class CreateCrateRequest
 {

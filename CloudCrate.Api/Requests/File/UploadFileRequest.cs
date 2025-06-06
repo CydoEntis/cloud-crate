@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Api.Models;
+﻿namespace CloudCrate.Api.Requests.File;
 
 public class UploadFileRequest
 {
