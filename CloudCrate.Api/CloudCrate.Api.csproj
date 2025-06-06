@@ -26,4 +26,9 @@
     <ProjectReference Include="..\CloudCrate.Domain\CloudCrate.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="DTOs\" />
+    <Folder Include="Models\" />
+  </ItemGroup>
+
 </Project>

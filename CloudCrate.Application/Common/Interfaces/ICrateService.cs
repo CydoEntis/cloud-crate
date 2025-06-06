@@ -7,13 +7,11 @@ namespace CloudCrate.Application.Common.Interfaces;
 
 public interface ICrateService
 {
-    Task<Result<CrateResponse>> CreateCrateAsync(string userId, string crateName);
-    Task<Result<IEnumerable<CrateResponse>>> GetAllCratesAsync(string userId);
-    Task<Result<CrateResponse>> RenameCrateAsync(string userId, RenameCrateRequest request);
-    Task<Result<string>> AddFileToCrateAsync(string userId, AddFileToCrateRequest request);
-    Task<Result<string>> UploadFileAsync(string userId, FileDataRequest dataRequest);
-    Task<Result<DownloadFileResponse>> DownloadFileAsync(string userId, DownloadFileRequest request);
-
-    Task<Result<IEnumerable<FileObjectResponse>>> GetFilesInCrateAsync(Guid crateId, string userId);
+    Task<Result<CrateDto>> CreateCrateAsync(string userId, string crateName);
+    Task<Result<IEnumerable<CrateDto>>> GetAllCratesAsync(string userId);
+    Task<Result<CrateDto>> RenameCrateAsync(string userId, Guid crateId, string crateName);
+    Task<Result<string>> UploadFileAsync(string userId, Guid crateId, FileDataDto file);
+    Task<Result<DownloadedFileDto>> DownloadFileAsync(string userId, Guid crateId, Guid fileId);
+    Task<Result<IEnumerable<StoredFileDto>>> GetFilesInCrateAsync(Guid crateId, string userId);
     Task<Result> DeleteFileAsync(Guid crateId, string userId, Guid fileId);
 }

@@ -54,7 +54,7 @@ public class CrateController : ControllerBase
         if (user == null) return Unauthorized();
 
         request.CrateId = crateId;
-        var result = await _crateService.RenameCrateAsync(user.Id, request);
+        var result = await _crateService.RenameCrateAsync(user.Id, request.CrateId, request.NewName);
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
@@ -69,7 +69,7 @@ public class CrateController : ControllerBase
 
         await using var stream = file.OpenReadStream();
 
-        var fileData = new FileDataRequest
+        var fileData = new FileDataDto()
         {
             CrateId = crateId,
             FileStream = stream,
@@ -78,7 +78,7 @@ public class CrateController : ControllerBase
             Size = file.Length
         };
 
-        var result = await _crateService.UploadFileAsync(user.Id, fileData);
+        var result = await _crateService.UploadFileAsync(user.Id, crateId, fileData);
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
@@ -89,8 +89,7 @@ public class CrateController : ControllerBase
         if (user == null) return Unauthorized();
 
         var result =
-            await _crateService.DownloadFileAsync(user.Id,
-                new DownloadFileRequest { CrateId = crateId, FileId = fileId });
+            await _crateService.DownloadFileAsync(user.Id, crateId, fileId);
         if (!result.Succeeded) return BadRequest(result.Errors);
 
         var file = result.Data;
