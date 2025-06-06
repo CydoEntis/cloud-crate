@@ -1,8 +1,10 @@
-﻿namespace CloudCrate.Application.Common.Interfaces;
+﻿using CloudCrate.Application.Common.Models;
+
+namespace CloudCrate.Application.Common.Interfaces;
 
 public interface IFileStorageService
 {
-    Task<string> UploadAsync(Stream fileStream, string fileName);
-    Task<Stream> DownloadAsync(string fileName);
-    Task DeleteAsync(string storedFileName);
+    Task<Result<string>> UploadAsync(Stream fileStream, string storedName);
+    Task<Result<Stream>> DownloadAsync(string storedName);
+    Task<Result> DeleteAsync(string storedName);
 }

@@ -1,62 +1,86 @@
-﻿using CloudCrate.Api.Models;
+﻿using CloudCrate.Api.Requests.File;
 using CloudCrate.Application.Common.Interfaces;
-using FluentValidation;
+using CloudCrate.Application.DTOs.File;
+using CloudCrate.Infrastructure.Identity;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CloudCrate.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Authorize]
+[Route("api/crates/{crateId}/files")]
 public class FilesController : ControllerBase
 {
-    private readonly IFileStorageService _fileStorageService;
-    private static readonly string[] PermittedExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff" };
-    private readonly IValidator<UploadFileRequest> _validator;
+    private readonly IFileService _fileService;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-
-    public FilesController(IFileStorageService fileStorageService, IValidator<UploadFileRequest> validator)
+    public FilesController(IFileService fileService, UserManager<ApplicationUser> userManager)
     {
-        _fileStorageService = fileStorageService;
-        _validator = validator;
-    }
-
-    [HttpPost("upload")]
-    public async Task<IActionResult> Upload([FromForm] UploadFileRequest request)
-    {
-        var validationResult = await _validator.ValidateAsync(request);
-
-        if (!validationResult.IsValid)
-        {
-            return BadRequest(validationResult.Errors.Select(e => new
-            {
-                Property = e.PropertyName,
-                Error = e.ErrorMessage
-            }));
-        }
-
-        await using var stream = request.File.OpenReadStream();
-
-        var savedFileName = await _fileStorageService.UploadAsync(stream, request.File.FileName);
-
-        return Ok(new { FileName = savedFileName });
+        _fileService = fileService;
+        _userManager = userManager;
     }
 
 
-    [HttpGet("download/{fileName}")]
-    public async Task<IActionResult> DownloadAsync(string fileName)
+    private async Task<ApplicationUser?> GetCurrentUserAsync() =>
+        await _userManager.GetUserAsync(User);
+
+    [HttpPost("{crateId}/files")]
+    public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
-        try
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var file = request.File;
+        if (file.Length == 0) return BadRequest("No file uploaded");
+
+        await using var stream = file.OpenReadStream();
+
+        var fileData = new FileDataDto()
         {
-            var fileStream = await _fileStorageService.DownloadAsync(fileName);
-            return File(fileStream, "application/octet-stream", fileName);
-        }
-        catch (FileNotFoundException)
-        {
-            return NotFound($"File '{fileName}' not found");
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error downloading file: {ex.Message}");
-        }
+            CrateId = crateId,
+            FileStream = stream,
+            FileName = file.FileName,
+            ContentType = file.ContentType,
+            Size = file.Length
+        };
+
+        var result = await _fileService.UploadFileAsync(user.Id, crateId, fileData);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
+    }
+
+    [HttpGet("{crateId}/files/{fileId}")]
+    public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result =
+            await _fileService.DownloadFileAsync(user.Id, crateId, fileId);
+        if (!result.Succeeded) return BadRequest(result.Errors);
+
+        var file = result.Data;
+        return File(file.FileStream, file.ContentType, file.FileName);
+    }
+
+    [HttpGet("{crateId}/files")]
+    public async Task<IActionResult> GetFiles(Guid crateId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result = await _fileService.GetFilesInCrateAsync(user.Id, crateId);
+        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
+    }
+
+    [HttpDelete("{crateId}/files/{fileId}")]
+    public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null) return Unauthorized();
+
+        var result = await _fileService.DeleteFileAsync(user.Id, crateId, fileId);
+        return result.Succeeded ? Ok() : BadRequest(result.Errors);
     }
 }

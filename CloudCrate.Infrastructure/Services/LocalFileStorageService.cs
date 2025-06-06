@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Options;
 using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Settings;
 
 namespace CloudCrate.Infrastructure.Services;
@@ -13,46 +14,57 @@ public class LocalFileStorageService : IFileStorageService
         _storagePath = storageSettings.Value.RootPath;
 
         if (!Directory.Exists(_storagePath))
-        {
             Directory.CreateDirectory(_storagePath);
-        }
     }
 
-    public async Task<string> UploadAsync(Stream fileStream, string fileName)
+    public async Task<Result<string>> UploadAsync(Stream fileStream, string storedName)
     {
-        var filePath = Path.Combine(_storagePath, fileName);
-
-        await using var outputStream = File.Create(filePath);
-        await fileStream.CopyToAsync(outputStream);
-
-        return fileName;
-    }
-
-    public async Task<Stream> DownloadAsync(string fileName)
-    {
-        var filePath = Path.Combine(_storagePath, fileName);
-
-        if (!File.Exists(filePath))
-            throw new FileNotFoundException("File not found", fileName);
-
-        var memoryStream = new MemoryStream();
-        await using var fileStream = File.OpenRead(filePath);
-        await fileStream.CopyToAsync(memoryStream);
-
-        memoryStream.Position = 0;
-
-        return memoryStream;
-    }
-
-    public Task DeleteAsync(string storedFileName)
-    {
-        var filePath = Path.Combine(_storagePath, storedFileName);
-
-        if (File.Exists(filePath))
+        try
         {
-            File.Delete(filePath);
+            var filePath = Path.Combine(_storagePath, storedName);
+            await using var file = File.Create(filePath);
+            await fileStream.CopyToAsync(file);
+            return Result<string>.Success(storedName);
         }
+        catch (Exception ex)
+        {
+            return Result<string>.Failure($"File upload failed: {ex.Message}");
+        }
+    }
 
-        return Task.CompletedTask;
+    public Task<Result<Stream>> DownloadAsync(string storedName)
+    {
+        try
+        {
+            var filePath = Path.Combine(_storagePath, storedName);
+            if (!File.Exists(filePath))
+                return Task.FromResult(Result<Stream>.Failure("File not found"));
+
+            var stream = File.OpenRead(filePath);
+            return Task.FromResult(Result<Stream>.Success(stream));
+        }
+        catch (Exception ex)
+        {
+            // Log exception here as needed
+            return Task.FromResult(Result<Stream>.Failure($"File download failed: {ex.Message}"));
+        }
+    }
+
+    public Task<Result> DeleteAsync(string storedName)
+    {
+        try
+        {
+            var filePath = Path.Combine(_storagePath, storedName);
+            if (!File.Exists(filePath))
+                return Task.FromResult(Result.Failure("File not found"));
+
+            File.Delete(filePath);
+            return Task.FromResult(Result.Success());
+        }
+        catch (Exception ex)
+        {
+            // Log exception here as needed
+            return Task.FromResult(Result.Failure($"File delete failed: {ex.Message}"));
+        }
     }
 }
