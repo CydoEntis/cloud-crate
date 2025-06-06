@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.DTOs.File;
+﻿namespace CloudCrate.Api.Requests.File;
 
 public class FileDataRequest
 {
