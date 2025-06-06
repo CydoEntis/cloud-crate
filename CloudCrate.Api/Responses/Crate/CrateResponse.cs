@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.DTOs.Crate;
+﻿namespace CloudCrate.Api.Responses.Crate;
 
 public class CrateResponse
 {
