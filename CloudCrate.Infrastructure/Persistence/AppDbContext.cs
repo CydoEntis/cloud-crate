@@ -1,11 +1,12 @@
-﻿using CloudCrate.Domain.Entities;
+﻿using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Persistence;
 
-public class AppDbContext : IdentityDbContext<ApplicationUser>
+public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -13,6 +14,11 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Crate> Crates { get; set; }
     public DbSet<FileObject> FileObjects { get; set; }
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    {
+        return await base.SaveChangesAsync(cancellationToken);
+    }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
