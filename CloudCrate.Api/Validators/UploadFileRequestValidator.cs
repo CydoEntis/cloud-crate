@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Api.Models;
+using CloudCrate.Api.Requests.File;
 using FluentValidation;
 
 namespace CloudCrate.Api.Validators;
