@@ -2,8 +2,10 @@
 
 public class FileDto
 {
-    public Guid Id { get; set; }
-    public string FileName { get; set; } = default!;
-    public string ContentType { get; set; } = default!;
+    public Guid FileId { get; set; }
+    public Guid CrateId { get; set; }
+    public Stream FileStream { get; set; } = null!;
+    public string FileName { get; set; } = null!;
+    public string ContentType { get; set; } = "application/octet-stream";
     public long Size { get; set; }
 }
