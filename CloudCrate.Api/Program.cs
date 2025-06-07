@@ -1,4 +1,5 @@
 using System.Text;
+using CloudCrate.Api.Middleware;
 using CloudCrate.Api.Requests.File;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
@@ -71,6 +72,8 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseHttpsRedirection();
 
