@@ -37,7 +37,7 @@ public class FilesController : ControllerBase
 
         await using var stream = file.OpenReadStream();
 
-        var fileData = new FileDataDto()
+        var fileData = new FileDto()
         {
             CrateId = crateId,
             FileStream = stream,

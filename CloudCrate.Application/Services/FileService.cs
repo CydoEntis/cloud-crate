@@ -15,7 +15,7 @@ public class FileService : IFileService
         _context = context;
     }
 
-    public async Task<Result<FileDto>> UploadFileAsync(string userId, Guid crateId, FileDataDto fileData)
+    public async Task<Result<FileDto>> UploadFileAsync(string userId, Guid crateId, FileDto fileData)
     {
         var crate = await _context.Crates
             .Include(c => c.Files)
@@ -44,7 +44,8 @@ public class FileService : IFileService
 
         var fileDto = new FileDto
         {
-            Id = fileEntity.Id,
+            FileId = fileEntity.Id,
+            CrateId = crateId,
             FileName = fileEntity.FileName,
             ContentType = fileEntity.ContentType,
             Size = fileEntity.Size
@@ -53,31 +54,33 @@ public class FileService : IFileService
         return Result<FileDto>.Success(fileDto);
     }
 
-    public async Task<Result<DownloadedFileDto>> DownloadFileAsync(string userId, Guid crateId, Guid fileId)
+    public async Task<Result<FileDto>> DownloadFileAsync(string userId, Guid crateId, Guid fileId)
     {
         var crate = await _context.Crates
             .Include(c => c.Files)
             .FirstOrDefaultAsync(c => c.Id == crateId && c.OwnerId == userId);
 
         if (crate == null)
-            return Result<DownloadedFileDto>.Failure("Crate not found or access denied.");
+            return Result<FileDto>.Failure("Crate not found or access denied.");
 
         var fileEntity = crate.Files.FirstOrDefault(f => f.Id == fileId);
         if (fileEntity == null)
-            return Result<DownloadedFileDto>.Failure("File not found.");
+            return Result<FileDto>.Failure("File not found.");
 
         var streamResult = await _fileStorageService.DownloadAsync(fileEntity.StoredName);
         if (!streamResult.Succeeded || streamResult.Data == null)
-            return Result<DownloadedFileDto>.Failure(streamResult.Errors.ToArray());
+            return Result<FileDto>.Failure(streamResult.Errors.ToArray());
 
-        var downloadedFile = new DownloadedFileDto
+        var downloadedFile = new FileDto
         {
+            FileId = fileEntity.Id,
+            CrateId = crateId,
             FileStream = streamResult.Data,
             FileName = fileEntity.FileName,
             ContentType = fileEntity.ContentType
         };
 
-        return Result<DownloadedFileDto>.Success(downloadedFile);
+        return Result<FileDto>.Success(downloadedFile);
     }
 
     public async Task<Result<IEnumerable<FileDto>>> GetFilesInCrateAsync(string userId, Guid crateId)
@@ -91,7 +94,8 @@ public class FileService : IFileService
 
         var filesDto = crate.Files.Select(f => new FileDto
         {
-            Id = f.Id,
+            FileId = f.Id,
+            CrateId = f.CrateId,
             FileName = f.FileName,
             ContentType = f.ContentType,
             Size = f.Size
