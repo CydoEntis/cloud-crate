@@ -22,11 +22,10 @@ public class FilesController : ControllerBase
         _userManager = userManager;
     }
 
-
     private async Task<ApplicationUser?> GetCurrentUserAsync() =>
         await _userManager.GetUserAsync(User);
 
-    [HttpPost("{crateId}/files")]
+    [HttpPost]
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
         var user = await GetCurrentUserAsync();
@@ -50,21 +49,20 @@ public class FilesController : ControllerBase
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
-    [HttpGet("{crateId}/files/{fileId}")]
+    [HttpGet("{fileId}")]
     public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null) return Unauthorized();
 
-        var result =
-            await _fileService.DownloadFileAsync(user.Id, crateId, fileId);
+        var result = await _fileService.DownloadFileAsync(user.Id, crateId, fileId);
         if (!result.Succeeded) return BadRequest(result.Errors);
 
         var file = result.Data;
         return File(file.FileStream, file.ContentType, file.FileName);
     }
 
-    [HttpGet("{crateId}/files")]
+    [HttpGet]
     public async Task<IActionResult> GetFiles(Guid crateId)
     {
         var user = await GetCurrentUserAsync();
@@ -74,7 +72,7 @@ public class FilesController : ControllerBase
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
-    [HttpDelete("{crateId}/files/{fileId}")]
+    [HttpDelete("{fileId}")]
     public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
     {
         var user = await GetCurrentUserAsync();
