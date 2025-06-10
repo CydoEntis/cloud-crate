@@ -6,6 +6,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using CloudCrate.Api.Models;
+using CloudCrate.Api.Requests.Auth;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Auth;
 
@@ -40,7 +41,7 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-            return Unauthorized(result.Errors);
+            return BadRequest(result.Errors);
 
         return Ok(new { token = result.Data });
     }

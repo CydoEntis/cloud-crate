@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.DTOs.Auth;
+﻿namespace CloudCrate.Api.Requests.Auth;
 
 public class LoginRequest
 {
