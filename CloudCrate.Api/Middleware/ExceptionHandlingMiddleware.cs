@@ -31,9 +31,13 @@ public class ExceptionHandlingMiddleware
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
 
-            var response = _env.IsDevelopment()
-                ? ApiResponse<string>.FailResponse(ex.Message)
-                : ApiResponse<string>.FailResponse("An unexpected error occurred.");
+            var errorMessage = _env.IsDevelopment() ? ex.Message : "An unexpected error occurred.";
+            var errors = new Dictionary<string, string>
+            {
+                { "general", errorMessage }
+            };
+
+            var response = ApiResponse<string>.FailResponse(errors);
 
             await context.Response.WriteAsJsonAsync(response);
         }
