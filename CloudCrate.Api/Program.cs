@@ -4,7 +4,7 @@ using CloudCrate.Api.Requests.File;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Settings;
-using CloudCrate.Application.Services;
+// using CloudCrate.Application.Services;
 using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
@@ -61,9 +61,9 @@ builder.Services.AddOpenApi();
 // Add Services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
-builder.Services.AddScoped<ICrateService, CrateService>();
+// builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-builder.Services.AddScoped<IFileService, FileService>();
+// builder.Services.AddScoped<IFileService, FileService>();
 
 
 builder.Services.AddCors(options =>
