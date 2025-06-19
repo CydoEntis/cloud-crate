@@ -25,6 +25,7 @@ builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredServic
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
+    .AddErrorDescriber<CustomIdentityErrorDescriber>() 
     .AddDefaultTokenProviders();
 
 
