@@ -23,7 +23,16 @@ public class AuthService : IAuthService
         var result = await _userManager.CreateAsync(user, password);
 
         if (!result.Succeeded)
-            return Result.Failure(result.Errors.Select(e => e.Description).ToArray());
+        {
+            var errors = result.Errors
+                .GroupBy(e => MapIdentityErrorCodeToField(e.Code))
+                .ToDictionary(
+                    g => g.Key,
+                    g => string.Join(", ", g.Select(e => e.Description))
+                );
+
+            return Result.Failure(errors);
+        }
 
         return Result.Success();
     }
@@ -33,7 +42,12 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(email);
         if (user == null || !await _userManager.CheckPasswordAsync(user, password))
         {
-            return Result<string>.Failure("Invalid credentials");
+            var errors = new Dictionary<string, string>
+            {
+                { "email", "Invalid credentials" }
+            };
+
+            return Result<string>.Failure(errors);
         }
 
         var token = _jwtTokenService.GenerateToken(new UserTokenInfo
@@ -43,5 +57,21 @@ public class AuthService : IAuthService
         });
 
         return Result<string>.Success(token);
+    }
+
+    private string MapIdentityErrorCodeToField(string code)
+    {
+        return code switch
+        {
+            "DuplicateUserName" => "email",
+            "InvalidEmail" => "email",
+            "DuplicateEmail" => "email",
+            "PasswordTooShort" => "password",
+            "PasswordRequiresNonAlphanumeric" => "password",
+            "PasswordRequiresDigit" => "password",
+            "PasswordRequiresUpper" => "password",
+            "PasswordRequiresLower" => "password",
+            _ => "general"
+        };
     }
 }

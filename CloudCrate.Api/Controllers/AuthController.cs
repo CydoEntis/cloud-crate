@@ -13,7 +13,7 @@ using CloudCrate.Application.DTOs.Auth;
 namespace CloudCrate.Api.Controllers;
 
 [ApiController]
-[Route("api/[controller]")]
+[Route("api/auth")]
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
