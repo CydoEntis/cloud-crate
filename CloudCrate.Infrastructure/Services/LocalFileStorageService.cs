@@ -1,9 +1,7 @@
-﻿using Microsoft.Extensions.Options;
-using CloudCrate.Application.Common.Interfaces;
+﻿using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Settings;
-
-namespace CloudCrate.Infrastructure.Services;
+using Microsoft.Extensions.Options;
 
 public class LocalFileStorageService : IFileStorageService
 {
@@ -28,9 +26,10 @@ public class LocalFileStorageService : IFileStorageService
         }
         catch (Exception ex)
         {
-            return Result<string>.Failure($"File upload failed: {ex.Message}");
+            return Result<string>.Failure("file", $"File upload failed: {ex.Message}");
         }
     }
+
 
     public Task<Result<Stream>> DownloadAsync(string storedName)
     {
@@ -38,15 +37,14 @@ public class LocalFileStorageService : IFileStorageService
         {
             var filePath = Path.Combine(_storagePath, storedName);
             if (!File.Exists(filePath))
-                return Task.FromResult(Result<Stream>.Failure("File not found"));
+                return Task.FromResult(Result<Stream>.Failure("file", "File not found"));
 
             var stream = File.OpenRead(filePath);
             return Task.FromResult(Result<Stream>.Success(stream));
         }
         catch (Exception ex)
         {
-            // Log exception here as needed
-            return Task.FromResult(Result<Stream>.Failure($"File download failed: {ex.Message}"));
+            return Task.FromResult(Result<Stream>.Failure("file", $"File download failed: {ex.Message}"));
         }
     }
 
@@ -56,15 +54,14 @@ public class LocalFileStorageService : IFileStorageService
         {
             var filePath = Path.Combine(_storagePath, storedName);
             if (!File.Exists(filePath))
-                return Task.FromResult(Result.Failure("File not found"));
+                return Task.FromResult(Result.Failure("file", "File not found"));
 
             File.Delete(filePath);
             return Task.FromResult(Result.Success());
         }
         catch (Exception ex)
         {
-            // Log exception here as needed
-            return Task.FromResult(Result.Failure($"File delete failed: {ex.Message}"));
+            return Task.FromResult(Result.Failure("file", $"File delete failed: {ex.Message}"));
         }
     }
 }
