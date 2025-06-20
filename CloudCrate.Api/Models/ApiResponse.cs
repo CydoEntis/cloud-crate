@@ -1,4 +1,4 @@
-﻿using CloudCrate.Application.Common.Errors; // contains Error class
+﻿using CloudCrate.Application.Common.Errors;
 
 namespace CloudCrate.Api.Models;
 
@@ -6,8 +6,7 @@ public class ApiResponse<T>
 {
     public bool Success { get; set; }
     public T? Data { get; set; }
-
-    public List<Error>? Errors { get; set; }
+    public List<Error>? Errors { get; set; } // Change to List<Error>
 
     public static ApiResponse<T> SuccessResponse(T data) => new()
     {
