@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Errors; // for Error class
 
 namespace CloudCrate.Api.Middleware;
 
@@ -32,9 +33,10 @@ public class ExceptionHandlingMiddleware
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
 
             var errorMessage = _env.IsDevelopment() ? ex.Message : "An unexpected error occurred.";
-            var errors = new Dictionary<string, string>
+
+            var errors = new List<Error>
             {
-                { "general", errorMessage }
+                new Error("ERR_UNHANDLED_EXCEPTION", errorMessage)
             };
 
             var response = ApiResponse<string>.FailResponse(errors);
