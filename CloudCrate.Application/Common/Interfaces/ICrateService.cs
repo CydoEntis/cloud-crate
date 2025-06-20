@@ -7,7 +7,10 @@ namespace CloudCrate.Application.Common.Interfaces;
 
 public interface ICrateService
 {
-    Task<Result<CrateDto>> CreateCrateAsync(string userId, string crateName);
-    Task<Result<IEnumerable<CrateDto>>> GetAllCratesAsync(string userId);
-    Task<Result<CrateDto>> RenameCrateAsync(string userId, Guid crateId, string crateName);
+    Task<bool> CanCreateCrateAsync(string userId);
+    Task<int> GetCrateCountAsync(string userId);
+    Task<long> GetTotalUsedStorageAsync(string userId);
+    Task<Crate> CreateCrateAsync(string userId, string name);
+    Task DeleteCrateAsync(Guid createId, string userId);
+    Task<List<Crate>> GetCratesAsync(string userId);
 }
