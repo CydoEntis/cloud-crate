@@ -29,11 +29,10 @@ public class AuthController : ControllerBase
         var result = await _authService.RegisterAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-            return BadRequest(result.Errors);
+            return BadRequest(ApiResponse<string>.FailResponse(result.Errors));
 
-        return Ok();
+        return Ok(ApiResponse<string>.SuccessResponse("Registration successful"));
     }
-
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -41,8 +40,8 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-            return BadRequest(result.Errors);
+            return BadRequest(ApiResponse<string>.FailResponse(result.Errors));
 
-        return Ok(new { token = result.Data });
+        return Ok(ApiResponse<string>.SuccessResponse(result.Data));
     }
 }
