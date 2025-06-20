@@ -44,7 +44,7 @@ public class AuthController : ControllerBase
             return BadRequest(errorResponse);
         }
 
-        var successResponse = ApiResponse<object>.WithData(new { token = result.Data }, "Login successful", 200);
+        var successResponse = ApiResponse<object>.WithData(new { accessToken = result.Data }, "Login successful", 200);
         return Ok(successResponse);
     }
 

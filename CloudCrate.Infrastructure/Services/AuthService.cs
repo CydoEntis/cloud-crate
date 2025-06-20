@@ -55,13 +55,13 @@ public class AuthService : IAuthService
             return Result<string>.Failure(errors);
         }
 
-        var token = _jwtTokenService.GenerateToken(new UserTokenInfo
+        var accessToken = _jwtTokenService.GenerateToken(new UserTokenInfo
         {
             UserId = user.Id,
             Email = user.Email!
         });
 
-        return Result<string>.Success(token);
+        return Result<string>.Success(accessToken);
     }
 
     public async Task<Result<UserResponse>> GetUserByIdAsync(string userId)
