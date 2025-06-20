@@ -1,11 +1,4 @@
-﻿using CloudCrate.Infrastructure.Identity;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.IdentityModel.Tokens;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
-using CloudCrate.Api.Models;
+﻿using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Api.Requests.Auth;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Auth;
@@ -24,14 +17,19 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("register")]
+    [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await _authService.RegisterAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.FailResponse(result.Errors));
+        {
+            var errorResponse = ApiResponse<object>.FromFailureResult(result, 400);
+            return BadRequest(errorResponse);
+        }
 
-        return Ok(ApiResponse<string>.SuccessResponse("Registration successful"));
+        var successResponse = ApiResponse<object>.WithMessage("Registration successful", 200);
+        return Ok(successResponse); 
     }
 
     [HttpPost("login")]
@@ -40,8 +38,12 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.FailResponse(result.Errors));
+        {
+            var errorResponse = ApiResponse<object>.FromFailureResult(result, 400);
+            return BadRequest(errorResponse); 
+        }
 
-        return Ok(ApiResponse<string>.SuccessResponse(result.Data));
+        var successResponse = ApiResponse<object>.WithData(new { token = result.Data }, "Login successful", 200);
+        return Ok(successResponse); 
     }
 }

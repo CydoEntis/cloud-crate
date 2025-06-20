@@ -1,27 +1,37 @@
 ﻿using CloudCrate.Application.Common.Errors;
-
-namespace CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Models;
 
 public class ApiResponse<T>
 {
     public bool Success { get; set; }
     public T? Data { get; set; }
-    public List<Error>? Errors { get; set; } // Change to List<Error>
+    public string? Message { get; set; }
+    public int StatusCode { get; set; }
+    public List<Error>? Errors { get; set; }
 
-    public static ApiResponse<T> SuccessResponse(T data) => new()
+    private ApiResponse(bool success, T? data, string? message, int statusCode, List<Error>? errors = null)
     {
-        Success = true,
-        Data = data,
-        Errors = null
-    };
+        Success = success;
+        Data = data;
+        Message = message;
+        StatusCode = statusCode;
+        Errors = errors;
+    }
 
-    public static ApiResponse<T> FailResponse(List<Error> errors) => new()
-    {
-        Success = false,
-        Data = default,
-        Errors = errors
-    };
+    // Success factory methods
+    public static ApiResponse<T> WithData(T data, string message = "Success", int statusCode = 200) =>
+        new ApiResponse<T>(true, data, message, statusCode);
 
-    public static ApiResponse<T> FailResponse(Error error) =>
-        FailResponse(new List<Error> { error });
+    public static ApiResponse<string> WithMessage(string message, int statusCode = 200) =>
+        new ApiResponse<string>(true, null, message, statusCode);
+
+    // Failure factory methods
+    public static ApiResponse<T> WithErrors(string message, int statusCode = 400, List<Error>? errors = null) =>
+        new ApiResponse<T>(false, default, message, statusCode, errors);
+
+    public static ApiResponse<string> WithMessageErrors(string message, int statusCode = 400) =>
+        new ApiResponse<string>(false, null, message, statusCode);
+
+    public static ApiResponse<T> FromFailureResult(Result result, int statusCode = 400) =>
+        new ApiResponse<T>(false, default, "Validation failed", statusCode, result.Errors);
 }

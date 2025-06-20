@@ -1,5 +1,5 @@
 ﻿using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors; // for Error class
+using CloudCrate.Application.Common.Errors;
 
 namespace CloudCrate.Api.Middleware;
 
@@ -32,14 +32,13 @@ public class ExceptionHandlingMiddleware
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
 
-            var errorMessage = _env.IsDevelopment() ? ex.Message : "An unexpected error occurred.";
+            var errorMessage = _env.IsDevelopment()
+                ? $"{ex.Message} — {ex.GetType().Name}"
+                : "An unexpected error occurred.";
 
-            var errors = new List<Error>
-            {
-                new Error("ERR_UNHANDLED_EXCEPTION", errorMessage)
-            };
+            var error = new Error("ERR_UNHANDLED_EXCEPTION", errorMessage);
 
-            var response = ApiResponse<string>.FailResponse(errors);
+            var response = ApiResponse<object>.WithErrors("Unhandled exception", 500, new List<Error> { error });
 
             await context.Response.WriteAsJsonAsync(response);
         }
