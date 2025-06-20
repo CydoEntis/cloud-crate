@@ -61,8 +61,8 @@ builder.Services.AddOpenApi();
 
 // Add Services
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
-// builder.Services.AddScoped<ICrateService, CrateService>();
+// builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
+builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 // builder.Services.AddScoped<IFileService, FileService>();
 
