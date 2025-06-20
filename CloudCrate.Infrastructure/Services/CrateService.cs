@@ -1,4 +1,5 @@
-﻿using CloudCrate.Application.Common.Interfaces;
+﻿using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
@@ -51,7 +52,7 @@ public class CrateService : ICrateService
         var canCreate = await CanCreateCrateAsync(userId);
         if (!canCreate)
         {
-            return Result<Crate>.Failure("Limit", "Crate limit reached for your subscription plan.");
+            return Result<Crate>.Failure(Errors.CrateLimitReached);
         }
 
         var crate = new Crate
@@ -74,7 +75,7 @@ public class CrateService : ICrateService
             .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
 
         if (crate == null)
-            return Result.Failure("NotFound", "Crate not found or access denied.");
+            return Result.Failure(Errors.CrateNotFound);
 
         _context.Crates.Remove(crate);
         await _context.SaveChangesAsync();

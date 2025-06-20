@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Infrastructure.Identity;
@@ -25,11 +26,10 @@ public class AuthService : IAuthService
         if (!result.Succeeded)
         {
             var errors = result.Errors
-                .GroupBy(e => MapIdentityErrorCodeToField(e.Code))
-                .ToDictionary(
-                    g => g.Key,
-                    g => string.Join(", ", g.Select(e => e.Description))
-                );
+                .Select(e => new Error(
+                    Code: MapIdentityErrorCodeToErrorCode(e.Code),
+                    Message: e.Description))
+                .ToList();
 
             return Result.Failure(errors);
         }
@@ -42,9 +42,9 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(email);
         if (user == null || !await _userManager.CheckPasswordAsync(user, password))
         {
-            var errors = new Dictionary<string, string>
+            var errors = new List<Error>
             {
-                { "email", "Invalid credentials" }
+                new Error("ERR_INVALID_CREDENTIALS", "Invalid credentials")
             };
 
             return Result<string>.Failure(errors);
@@ -59,19 +59,19 @@ public class AuthService : IAuthService
         return Result<string>.Success(token);
     }
 
-    private string MapIdentityErrorCodeToField(string code)
+    private string MapIdentityErrorCodeToErrorCode(string code)
     {
         return code switch
         {
-            "DuplicateUserName" => "email",
-            "InvalidEmail" => "email",
-            "DuplicateEmail" => "email",
-            "PasswordTooShort" => "password",
-            "PasswordRequiresNonAlphanumeric" => "password",
-            "PasswordRequiresDigit" => "password",
-            "PasswordRequiresUpper" => "password",
-            "PasswordRequiresLower" => "password",
-            _ => "general"
+            "DuplicateUserName" => "ERR_DUPLICATE_USERNAME",
+            "InvalidEmail" => "ERR_INVALID_EMAIL",
+            "DuplicateEmail" => "ERR_DUPLICATE_EMAIL",
+            "PasswordTooShort" => "ERR_PASSWORD_TOO_SHORT",
+            "PasswordRequiresNonAlphanumeric" => "ERR_PASSWORD_REQUIRES_NON_ALPHANUMERIC",
+            "PasswordRequiresDigit" => "ERR_PASSWORD_REQUIRES_DIGIT",
+            "PasswordRequiresUpper" => "ERR_PASSWORD_REQUIRES_UPPER",
+            "PasswordRequiresLower" => "ERR_PASSWORD_REQUIRES_LOWER",
+            _ => "ERR_GENERAL"
         };
     }
 }
