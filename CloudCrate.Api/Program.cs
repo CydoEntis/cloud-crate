@@ -8,6 +8,7 @@ using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
 using FluentValidation;
+using FluentValidation.AspNetCore; // ✅ Add this for auto-validation
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -51,13 +52,9 @@ builder.Services.AddAuthentication(options =>
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-
-            // Important: Map "sub" claim to NameIdentifier so User.FindFirst(ClaimTypes.NameIdentifier) works
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
             NameClaimType = ClaimTypes.NameIdentifier,
             RoleClaimType = ClaimTypes.Role,
         };
@@ -82,8 +79,9 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
-// Validators
-builder.Services.AddScoped<IValidator<UploadFileRequest>, UploadFileRequestValidator>();
+// ✅ FluentValidation Setup
+builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
+builder.Services.AddFluentValidationAutoValidation(); // 👈 THIS enables automatic validation via [FromBody]
 
 // OpenAPI (Swagger)
 builder.Services.AddOpenApi();
@@ -115,16 +113,11 @@ if (app.Environment.IsDevelopment())
     app.MapScalarApiReference();
 }
 
-// Custom middleware
+// Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-
 app.UseCors("AllowAll");
-
 app.UseHttpsRedirection();
-
 app.UseRouting();
-
-// **MUST BE THIS ORDER**
 app.UseAuthentication();
 app.UseAuthorization();
 
