@@ -1,11 +1,9 @@
 using System.Text;
-using System.Text.Json.Serialization;
 using CloudCrate.Api.Middleware;
 using CloudCrate.Api.Requests.File;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Settings;
-// using CloudCrate.Application.Services;
 using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
@@ -14,61 +12,88 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Claims;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
 
+Console.WriteLine("🚀 App starting...");
+
+// DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredService<AppDbContext>());
 
+// Identity setup
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddErrorDescriber<CustomIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
-
-// Set storage configuration values
+// Configure StorageSettings
 builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("StorageSettings"));
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// === Authentication & JWT Setup ===
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
-        options.TokenValidationParameters = new()
+        options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
             ValidAudience = builder.Configuration["Jwt:Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!))
+                Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+
+            // Important: Map "sub" claim to NameIdentifier so User.FindFirst(ClaimTypes.NameIdentifier) works
+            NameClaimType = ClaimTypes.NameIdentifier,
+            RoleClaimType = ClaimTypes.Role,
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = context =>
+            {
+                Console.WriteLine("Token validated successfully.");
+                return Task.CompletedTask;
+            }
         };
     });
 
-
-// Add services to the container.
+// Controllers & JSON
 builder.Services.AddControllers()
-    .AddJsonOptions(options => { options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()); });
+    .AddJsonOptions(options =>
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 
-// Add Validators
+// Validators
 builder.Services.AddScoped<IValidator<UploadFileRequest>, UploadFileRequestValidator>();
 
-// Register your validators explicitly or via scanning:
-// Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+// OpenAPI (Swagger)
 builder.Services.AddOpenApi();
 
-// Add Services
+// Your app services
 builder.Services.AddScoped<IAuthService, AuthService>();
-// builder.Services.AddScoped<IFileStorageService, LocalFileStorageService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-// builder.Services.AddScoped<IFileService, FileService>();
 
-
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
@@ -81,22 +106,25 @@ builder.Services.AddCors(options =>
     });
 });
 
-
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Dev tools
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
+// Custom middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseCors("AllowAll");
 
 app.UseHttpsRedirection();
 
+app.UseRouting();
+
+// **MUST BE THIS ORDER**
 app.UseAuthentication();
 app.UseAuthorization();
 

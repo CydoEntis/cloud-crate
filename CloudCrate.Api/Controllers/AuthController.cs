@@ -1,4 +1,5 @@
-﻿using System.Security.Claims;
+﻿using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Api.Requests.Auth;
 using CloudCrate.Application.Common.Interfaces;
@@ -48,12 +49,12 @@ public class AuthController : ControllerBase
         return Ok(successResponse);
     }
 
-    [HttpGet("user")]
     [Authorize]
+    [HttpGet("user")]
     public async Task<IActionResult> GetCurrentUser()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
+        Console.WriteLine(userId);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.WithMessage("User ID not found in token", 401));
 
