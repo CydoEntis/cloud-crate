@@ -88,6 +88,7 @@ public class AuthService : IAuthService
             CrateLimit = crateLimit,
             UsedStorage = usedStorage,
             CrateCount = crateCount,
+            Plan = user.Plan,
         };
 
         return Result<UserResponse>.Success(response);

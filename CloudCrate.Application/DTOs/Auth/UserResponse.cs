@@ -1,4 +1,6 @@
-﻿namespace CloudCrate.Application.DTOs.Auth;
+﻿using CloudCrate.Domain.Enums;
+
+namespace CloudCrate.Application.DTOs.Auth;
 
 public class UserResponse
 {
@@ -7,4 +9,6 @@ public class UserResponse
     public int CrateLimit { get; set; }
     public long UsedStorage { get; set; }
     public int CrateCount { get; set; }
+
+    public SubscriptionPlan Plan { get; set; }
 }

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using CloudCrate.Api.Middleware;
 using CloudCrate.Api.Requests.File;
 using CloudCrate.Api.Validators;
@@ -25,7 +26,7 @@ builder.Services.AddScoped<IAppDbContext>(provider => provider.GetRequiredServic
 
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
-    .AddErrorDescriber<CustomIdentityErrorDescriber>() 
+    .AddErrorDescriber<CustomIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
 
@@ -50,7 +51,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => { options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()); });
 
 // Add Validators
 builder.Services.AddScoped<IValidator<UploadFileRequest>, UploadFileRequestValidator>();
