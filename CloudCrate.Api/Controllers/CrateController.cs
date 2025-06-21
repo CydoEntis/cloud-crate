@@ -22,7 +22,7 @@ public class CrateController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateCrate([FromBody] CreateCrateRequest request)
     {
-        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
 
@@ -37,7 +37,7 @@ public class CrateController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetCrates()
     {
-        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
 
@@ -48,7 +48,7 @@ public class CrateController : ControllerBase
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
     {
-        var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
 
