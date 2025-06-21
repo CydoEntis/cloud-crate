@@ -9,6 +9,7 @@ public class CreateCrateRequestValidator : AbstractValidator<CreateCrateRequest>
     {
         RuleFor(x => x.Name)
             .NotEmpty()
-            .MaximumLength(100);
+            .MaximumLength(100)
+            .Matches("^[a-zA-Z0-9 _-]*$").WithMessage("Crate name contains invalid characters.");
     }
 }
