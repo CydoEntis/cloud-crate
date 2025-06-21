@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using CloudCrate.Api.Models;
 using CloudCrate.Api.Requests.Crate;
 using CloudCrate.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;

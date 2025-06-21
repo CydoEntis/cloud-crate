@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
+
+namespace CloudCrate.Api.Models;
 
 public class ApiResponse<T>
 {
