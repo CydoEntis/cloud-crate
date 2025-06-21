@@ -1,5 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Api.Requests.Auth;
 using CloudCrate.Application.Common.Interfaces;
@@ -25,13 +24,9 @@ public class AuthController : ControllerBase
         var result = await _authService.RegisterAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-        {
-            var errorResponse = ApiResponse<object>.FromFailureResult(result, 400);
-            return BadRequest(errorResponse);
-        }
+            return BadRequest(ApiResponse<object>.ValidationFailed(result.Errors));
 
-        var successResponse = ApiResponse<object>.WithMessage("Registration successful", 200);
-        return Ok(successResponse);
+        return Ok(ApiResponse<object>.SuccessMessage("Registration successful"));
     }
 
     [HttpPost("login")]
@@ -40,13 +35,9 @@ public class AuthController : ControllerBase
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (!result.Succeeded)
-        {
-            var errorResponse = ApiResponse<object>.FromFailureResult(result, 400);
-            return BadRequest(errorResponse);
-        }
+            return Unauthorized(ApiResponse<object>.Unauthorized("Invalid credentials"));
 
-        var successResponse = ApiResponse<object>.WithData(new { accessToken = result.Data }, "Login successful", 200);
-        return Ok(successResponse);
+        return Ok(ApiResponse<object>.Success(new { accessToken = result.Data }, "Login successful"));
     }
 
     [Authorize]
@@ -54,15 +45,15 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> GetCurrentUser()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        Console.WriteLine(userId);
+
         if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.WithMessage("User ID not found in token", 401));
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _authService.GetUserByIdAsync(userId);
 
         if (!result.Succeeded)
-            return NotFound(ApiResponse<string>.WithErrors(result.Errors[0].Message, 404, result.Errors));
+            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
 
-        return Ok(ApiResponse<object>.WithData(result.Data!, "User retrieved successfully"));
+        return Ok(ApiResponse<object>.Success(result.Data!, "User retrieved successfully"));
     }
 }

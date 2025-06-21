@@ -1,5 +1,4 @@
-﻿using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using CloudCrate.Api.Requests.Crate;
 using CloudCrate.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -24,14 +23,14 @@ public class CrateController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _crateService.CreateCrateAsync(userId, request.Name);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.WithErrors(result.Errors[0].Message, 400, result.Errors));
+            return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
 
-        return Ok(ApiResponse<object>.WithData(result.Data!, "Crate created successfully"));
+        return Ok(ApiResponse<object>.Success(result.Data!, "Crate created successfully"));
     }
 
     [HttpGet]
@@ -39,10 +38,10 @@ public class CrateController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var crates = await _crateService.GetCratesAsync(userId);
-        return Ok(ApiResponse<object>.WithData(crates, "Crates retrieved successfully"));
+        return Ok(ApiResponse<object>.Success(crates, "Crates retrieved successfully"));
     }
 
     [HttpDelete("{crateId:guid}")]
@@ -50,13 +49,13 @@ public class CrateController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.WithMessage("Invalid user"));
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _crateService.DeleteCrateAsync(crateId, userId);
 
         if (!result.Succeeded)
-            return NotFound(ApiResponse<string>.WithErrors(result.Errors[0].Message, 404, result.Errors));
+            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
 
-        return Ok(ApiResponse<object>.WithMessage("Crate deleted successfully"));
+        return Ok(ApiResponse<object>.SuccessMessage("Crate deleted successfully"));
     }
 }
