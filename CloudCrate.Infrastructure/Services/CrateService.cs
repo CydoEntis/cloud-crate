@@ -1,4 +1,5 @@
-﻿using CloudCrate.Application.Common.Errors;
+﻿using CloudCrate.Application.Common.Constants;
+using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Domain.Entities;
@@ -27,12 +28,9 @@ public class CrateService : ICrateService
 
         var crateCount = await _context.Crates.CountAsync(c => c.UserId == userId);
 
-        return user.Plan switch
-        {
-            SubscriptionPlan.Free => crateCount < 1,
-            SubscriptionPlan.Pro => crateCount < 5,
-            _ => false
-        };
+        var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
+
+        return crateCount < crateLimit;
     }
 
     public async Task<int> GetCrateCountAsync(string userId)
