@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
@@ -74,12 +75,7 @@ public class AuthService : IAuthService
         var crateCount = await _crateService.GetCrateCountAsync(userId);
         var usedStorage = await _crateService.GetTotalUsedStorageAsync(userId);
 
-        var crateLimit = user.Plan switch
-        {
-            SubscriptionPlan.Free => 3,
-            SubscriptionPlan.Pro => 10,
-            _ => 3
-        };
+        var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
 
         var response = new UserResponse
         {
