@@ -26,7 +26,7 @@ public class CrateController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result = await _crateService.CreateCrateAsync(userId, request.Name);
+        var result = await _crateService.CreateCrateAsync(userId, request.Name, request.Color);
 
         if (!result.Succeeded)
             return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));

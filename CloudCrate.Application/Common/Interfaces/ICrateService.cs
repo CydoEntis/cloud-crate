@@ -10,7 +10,7 @@ public interface ICrateService
     Task<bool> CanCreateCrateAsync(string userId);
     Task<int> GetCrateCountAsync(string userId);
     Task<long> GetTotalUsedStorageAsync(string userId);
-    Task<Result<Crate>> CreateCrateAsync(string userId, string name);
+    Task<Result<Crate>> CreateCrateAsync(string userId, string name, string color);
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<List<Crate>> GetCratesAsync(string userId);
 }

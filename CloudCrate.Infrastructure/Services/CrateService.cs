@@ -45,7 +45,7 @@ public class CrateService : ICrateService
             .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
     }
 
-    public async Task<Result<Crate>> CreateCrateAsync(string userId, string name)
+    public async Task<Result<Crate>> CreateCrateAsync(string userId, string name, string color)
     {
         var canCreate = await CanCreateCrateAsync(userId);
         if (!canCreate)
@@ -57,7 +57,8 @@ public class CrateService : ICrateService
         {
             Id = Guid.NewGuid(),
             Name = name,
-            UserId = userId
+            UserId = userId,
+            Color = color
         };
 
         _context.Crates.Add(crate);
