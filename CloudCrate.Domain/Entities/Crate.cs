@@ -8,6 +8,7 @@ public class Crate
     public string Name { get; set; }
     public string UserId { get; set; }
 
+    public string Color { get; set; }
     public ICollection<Folder> Folders { get; set; }
     public ICollection<FileObject> Files { get; set; }
 }
