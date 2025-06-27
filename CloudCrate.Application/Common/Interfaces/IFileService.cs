@@ -1,12 +1,22 @@
 ﻿using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
+using CloudCrate.Infrastructure.Identity;
 
 namespace CloudCrate.Application.Common.Interfaces;
 
 public interface IFileService
 {
-    Task<Result<FileDto>> UploadFileAsync(string userId, Guid crateId, FileDto fileData);
-    Task<Result<FileDto>> DownloadFileAsync(string userId, Guid crateId, Guid fileId);
-    Task<Result<IEnumerable<FileDto>>> GetFilesInCrateAsync(string userId, Guid crateId);
-    Task<Result> DeleteFileAsync(string userId, Guid crateId, Guid fileId);
+    Task<Result<List<Folder>>> GetFoldersAsync(Guid crateId, string userId);
+
+    Task<Result<List<FileObject>>> GetFilesInCrateRootAsync(Guid crateId, string userId);
+
+    Task<Result<List<FileObject>>> GetFilesInFolderAsync(Guid folderId, string userId);
+
+    Task<Result<FileObject>> UploadFileAsync(FileUploadRequest request, string userId);
+
+    Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);
+
+    Task<Result> DeleteFileAsync(Guid fileId, string userId);
+
+    Task<Result<FileObject>> GetFileByIdAsync(Guid fileId, string userId);
 }
