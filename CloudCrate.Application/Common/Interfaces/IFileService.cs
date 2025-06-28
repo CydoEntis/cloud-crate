@@ -1,6 +1,6 @@
 ﻿using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
-using CloudCrate.Infrastructure.Identity;
+using CloudCrate.Domain.Entities;
 
 namespace CloudCrate.Application.Common.Interfaces;
 
