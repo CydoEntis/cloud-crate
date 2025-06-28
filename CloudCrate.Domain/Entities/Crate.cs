@@ -1,6 +1,4 @@
-﻿using CloudCrate.Infrastructure.Identity;
-
-namespace CloudCrate.Domain.Entities;
+﻿namespace CloudCrate.Domain.Entities;
 
 public class Crate
 {

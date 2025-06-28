@@ -2,6 +2,7 @@
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
+using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;

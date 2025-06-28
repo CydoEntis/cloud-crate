@@ -1,5 +1,4 @@
-﻿using CloudCrate.Domain.Entities;
-using CloudCrate.Infrastructure.Identity;
+﻿namespace CloudCrate.Domain.Entities;
 
 public class FileObject
 {

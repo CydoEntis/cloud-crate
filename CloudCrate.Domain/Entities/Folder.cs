@@ -1,6 +1,4 @@
-﻿using CloudCrate.Domain.Entities;
-
-namespace CloudCrate.Infrastructure.Identity;
+﻿namespace CloudCrate.Domain.Entities;
 
 public class Folder
 {
