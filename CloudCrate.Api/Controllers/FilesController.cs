@@ -29,23 +29,25 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized();
+        if (user == null)
+            return Unauthorized();
 
-        var file = request.File;
-        if (file.Length == 0) return BadRequest("No file uploaded");
+        if (request.File == null || request.File.Length == 0)
+            return BadRequest("No file uploaded");
 
-        await using var stream = file.OpenReadStream();
+        await using var stream = request.File.OpenReadStream();
 
-        var fileData = new FileDto()
+        var uploadRequest = new FileUploadRequest
         {
             CrateId = crateId,
-            FileStream = stream,
-            FileName = file.FileName,
-            ContentType = file.ContentType,
-            Size = file.Length
+            FolderId = request.FolderId,
+            FileName = request.File.FileName,
+            MimeType = request.File.ContentType,
+            SizeInBytes = request.File.Length,
+            Content = stream
         };
 
-        var result = await _fileService.UploadFileAsync(user.Id, crateId, fileData);
+        var result = await _fileService.UploadFileAsync(uploadRequest, user.Id);
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
@@ -53,22 +55,31 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized();
+        if (user == null)
+            return Unauthorized();
 
-        var result = await _fileService.DownloadFileAsync(user.Id, crateId, fileId);
-        if (!result.Succeeded) return BadRequest(result.Errors);
+        var fileResult = await _fileService.GetFileByIdAsync(fileId, user.Id);
+        if (!fileResult.Succeeded)
+            return BadRequest(fileResult.Errors);
 
-        var file = result.Data;
-        return File(file.FileStream, file.ContentType, file.FileName);
+        var file = fileResult.Data;
+
+        // Normally this is where you’d fetch the binary blob from storage.
+        var contentResult = await _fileService.DownloadFileAsync(fileId, user.Id);
+        if (!contentResult.Succeeded)
+            return BadRequest(contentResult.Errors);
+
+        return File(contentResult.Data, file.MimeType, file.Name);
     }
 
     [HttpGet]
     public async Task<IActionResult> GetFiles(Guid crateId)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized();
+        if (user == null)
+            return Unauthorized();
 
-        var result = await _fileService.GetFilesInCrateAsync(user.Id, crateId);
+        var result = await _fileService.GetFilesInCrateRootAsync(crateId, user.Id);
         return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
     }
 
@@ -76,9 +87,10 @@ public class FilesController : ControllerBase
     public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
     {
         var user = await GetCurrentUserAsync();
-        if (user == null) return Unauthorized();
+        if (user == null)
+            return Unauthorized();
 
-        var result = await _fileService.DeleteFileAsync(user.Id, crateId, fileId);
+        var result = await _fileService.DeleteFileAsync(fileId, user.Id);
         return result.Succeeded ? Ok() : BadRequest(result.Errors);
     }
 }
