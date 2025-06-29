@@ -18,40 +18,67 @@ public class FileService : IFileService
         _userManager = userManager;
     }
 
-    public async Task<Result<List<Folder>>> GetFoldersAsync(Guid crateId, string userId)
+    public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
     {
         var folders = await _context.Folders
             .Where(f => f.CrateId == crateId && f.Crate.UserId == userId)
+            .Select(f => new FolderResponse
+            {
+                Id = f.Id,
+                Name = f.Name,
+                CrateId = f.CrateId,
+                ParentFolderId = f.ParentFolderId
+            })
             .ToListAsync();
 
-        return Result<List<Folder>>.Success(folders);
+        return Result<List<FolderResponse>>.Success(folders);
     }
 
-    public async Task<Result<List<FileObject>>> GetFilesInCrateRootAsync(Guid crateId, string userId)
+    public async Task<Result<List<FileObjectResponse>>> GetFilesInCrateRootAsync(Guid crateId, string userId)
     {
         var files = await _context.FileObjects
             .Where(f => f.CrateId == crateId && f.FolderId == null && f.Crate.UserId == userId)
+            .Select(f => new FileObjectResponse
+            {
+                Id = f.Id,
+                Name = f.Name,
+                MimeType = f.MimeType,
+                SizeInBytes = f.SizeInBytes,
+                CrateId = f.CrateId,
+                FolderId = f.FolderId,
+                CategoryId = f.CategoryId
+            })
             .ToListAsync();
 
-        return Result<List<FileObject>>.Success(files);
+        return Result<List<FileObjectResponse>>.Success(files);
     }
 
-    public async Task<Result<List<FileObject>>> GetFilesInFolderAsync(Guid folderId, string userId)
+    public async Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid folderId, string userId)
     {
         var files = await _context.FileObjects
             .Where(f => f.FolderId == folderId && f.Folder!.Crate.UserId == userId)
+            .Select(f => new FileObjectResponse
+            {
+                Id = f.Id,
+                Name = f.Name,
+                MimeType = f.MimeType,
+                SizeInBytes = f.SizeInBytes,
+                CrateId = f.CrateId,
+                FolderId = f.FolderId,
+                CategoryId = f.CategoryId
+            })
             .ToListAsync();
 
-        return Result<List<FileObject>>.Success(files);
+        return Result<List<FileObjectResponse>>.Success(files);
     }
 
-    public async Task<Result<FileObject>> UploadFileAsync(FileUploadRequest request, string userId)
+    public async Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId)
     {
         var crate = await _context.Crates
             .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.UserId == userId);
 
         if (crate == null)
-            return Result<FileObject>.Failure(Errors.CrateNotFound);
+            return Result<FileObjectResponse>.Failure(Errors.CrateNotFound);
 
         if (request.FolderId.HasValue)
         {
@@ -59,12 +86,12 @@ public class FileService : IFileService
                 .FirstOrDefaultAsync(f => f.Id == request.FolderId && f.Crate.UserId == userId);
 
             if (folder == null)
-                return Result<FileObject>.Failure(Errors.FolderNotFound);
+                return Result<FileObjectResponse>.Failure(Errors.FolderNotFound);
         }
 
         using var ms = new MemoryStream();
         await request.Content.CopyToAsync(ms);
-        var fileData = ms.ToArray();
+        var fileData = ms.ToArray(); // Placeholder, not stored yet
 
         var file = new FileObject
         {
@@ -79,7 +106,18 @@ public class FileService : IFileService
         _context.FileObjects.Add(file);
         await _context.SaveChangesAsync();
 
-        return Result<FileObject>.Success(file);
+        var response = new FileObjectResponse
+        {
+            Id = file.Id,
+            Name = file.Name,
+            MimeType = file.MimeType,
+            SizeInBytes = file.SizeInBytes,
+            CrateId = file.CrateId,
+            FolderId = file.FolderId,
+            CategoryId = file.CategoryId
+        };
+
+        return Result<FileObjectResponse>.Success(response);
     }
 
     public async Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId)
@@ -90,8 +128,7 @@ public class FileService : IFileService
         if (file == null)
             return Result<byte[]>.Failure(Errors.FileNotFound);
 
-        // This is where you'd normally fetch the binary content from blob storage, etc.
-        byte[] content = new byte[file.SizeInBytes]; // placeholder only
+        byte[] content = new byte[file.SizeInBytes]; // Placeholder only
         return Result<byte[]>.Success(content);
     }
 
@@ -109,13 +146,25 @@ public class FileService : IFileService
         return Result.Success();
     }
 
-    public async Task<Result<FileObject>> GetFileByIdAsync(Guid fileId, string userId)
+    public async Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId)
     {
         var file = await _context.FileObjects
             .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
 
-        return file != null
-            ? Result<FileObject>.Success(file)
-            : Result<FileObject>.Failure(Errors.FileNotFound);
+        if (file == null)
+            return Result<FileObjectResponse>.Failure(Errors.FileNotFound);
+
+        var response = new FileObjectResponse
+        {
+            Id = file.Id,
+            Name = file.Name,
+            MimeType = file.MimeType,
+            SizeInBytes = file.SizeInBytes,
+            CrateId = file.CrateId,
+            FolderId = file.FolderId,
+            CategoryId = file.CategoryId
+        };
+
+        return Result<FileObjectResponse>.Success(response);
     }
 }

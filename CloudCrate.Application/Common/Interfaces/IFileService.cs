@@ -6,17 +6,17 @@ namespace CloudCrate.Application.Common.Interfaces;
 
 public interface IFileService
 {
-    Task<Result<List<Folder>>> GetFoldersAsync(Guid crateId, string userId);
+    Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId);
 
-    Task<Result<List<FileObject>>> GetFilesInCrateRootAsync(Guid crateId, string userId);
+    Task<Result<List<FileObjectResponse>>> GetFilesInCrateRootAsync(Guid crateId, string userId);
 
-    Task<Result<List<FileObject>>> GetFilesInFolderAsync(Guid folderId, string userId);
+    Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid folderId, string userId);
 
-    Task<Result<FileObject>> UploadFileAsync(FileUploadRequest request, string userId);
+    Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId);
 
     Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);
 
     Task<Result> DeleteFileAsync(Guid fileId, string userId);
 
-    Task<Result<FileObject>> GetFileByIdAsync(Guid fileId, string userId);
+    Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId);
 }
