@@ -89,6 +89,7 @@ builder.Services.AddOpenApi();
 // Your app services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
+builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
 // CORS
