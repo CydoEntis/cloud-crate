@@ -36,7 +36,8 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddDefaultTokenProviders();
 
 // Configure StorageSettings
-builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("StorageSettings"));
+builder.Services.Configure<StorageSettings>(
+    builder.Configuration.GetSection("Storage"));
 
 // === Authentication & JWT Setup ===
 builder.Services.AddAuthentication(options =>
