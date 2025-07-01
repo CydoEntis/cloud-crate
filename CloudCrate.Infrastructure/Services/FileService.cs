@@ -2,20 +2,25 @@
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.Common.Settings;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 public class FileService : IFileService
 {
     private readonly IAppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly StorageSettings _storageSettings;
 
-    public FileService(IAppDbContext context, UserManager<ApplicationUser> userManager)
+    public FileService(IAppDbContext context, UserManager<ApplicationUser> userManager,
+        IOptions<StorageSettings> storageSettings)
     {
         _context = context;
         _userManager = userManager;
+        _storageSettings = storageSettings.Value;
     }
 
     public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
@@ -89,13 +94,24 @@ public class FileService : IFileService
                 return Result<FileObjectResponse>.Failure(Errors.FolderNotFound);
         }
 
-        using var ms = new MemoryStream();
-        await request.Content.CopyToAsync(ms);
-        var fileData = ms.ToArray(); // Placeholder, not stored yet
+        var fileId = Guid.NewGuid();
+
+        // Build full directory path
+        var dirPath = Path.Combine(_storageSettings.RootPath, userId, request.CrateId.ToString());
+        if (request.FolderId.HasValue)
+            dirPath = Path.Combine(dirPath, request.FolderId.Value.ToString());
+
+        Directory.CreateDirectory(dirPath);
+
+        var filePath = Path.Combine(dirPath, request.FileName);
+        using (var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write))
+        {
+            await request.Content.CopyToAsync(stream);
+        }
 
         var file = new FileObject
         {
-            Id = Guid.NewGuid(),
+            Id = fileId,
             Name = request.FileName,
             SizeInBytes = request.SizeInBytes,
             MimeType = request.MimeType,
@@ -128,7 +144,16 @@ public class FileService : IFileService
         if (file == null)
             return Result<byte[]>.Failure(Errors.FileNotFound);
 
-        byte[] content = new byte[file.SizeInBytes]; // Placeholder only
+        var dirPath = Path.Combine(_storageSettings.RootPath, userId, file.CrateId.ToString());
+        if (file.FolderId.HasValue)
+            dirPath = Path.Combine(dirPath, file.FolderId.Value.ToString());
+
+        var filePath = Path.Combine(dirPath, file.Name);
+
+        if (!System.IO.File.Exists(filePath))
+            return Result<byte[]>.Failure(Errors.FileNotFound);
+
+        byte[] content = await System.IO.File.ReadAllBytesAsync(filePath);
         return Result<byte[]>.Success(content);
     }
 
@@ -139,6 +164,15 @@ public class FileService : IFileService
 
         if (file == null)
             return Result.Failure(Errors.FileNotFound);
+
+        var dirPath = Path.Combine(_storageSettings.RootPath, userId, file.CrateId.ToString());
+        if (file.FolderId.HasValue)
+            dirPath = Path.Combine(dirPath, file.FolderId.Value.ToString());
+
+        var filePath = Path.Combine(dirPath, file.Name);
+
+        if (System.IO.File.Exists(filePath))
+            System.IO.File.Delete(filePath);
 
         _context.FileObjects.Remove(file);
         await _context.SaveChangesAsync();
