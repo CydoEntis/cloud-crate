@@ -2,25 +2,27 @@
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
-using CloudCrate.Application.Common.Settings;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
+using System.Linq;
+using System.Threading.Tasks;
 
 public class FileService : IFileService
 {
     private readonly IAppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly StorageSettings _storageSettings;
+    private readonly IStorageService _storageService;
 
-    public FileService(IAppDbContext context, UserManager<ApplicationUser> userManager,
-        IOptions<StorageSettings> storageSettings)
+    public FileService(
+        IAppDbContext context,
+        UserManager<ApplicationUser> userManager,
+        IStorageService storageService)
     {
         _context = context;
         _userManager = userManager;
-        _storageSettings = storageSettings.Value;
+        _storageService = storageService;
     }
 
     public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
@@ -96,18 +98,16 @@ public class FileService : IFileService
 
         var fileId = Guid.NewGuid();
 
-        // Build full directory path
-        var dirPath = Path.Combine(_storageSettings.RootPath, userId, request.CrateId.ToString());
-        if (request.FolderId.HasValue)
-            dirPath = Path.Combine(dirPath, request.FolderId.Value.ToString());
+        var saveResult = await _storageService.SaveFileAsync(
+            userId,
+            request.CrateId,
+            request.FolderId,
+            request.FileName,
+            request.Content
+        );
 
-        Directory.CreateDirectory(dirPath);
-
-        var filePath = Path.Combine(dirPath, request.FileName);
-        using (var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write))
-        {
-            await request.Content.CopyToAsync(stream);
-        }
+        if (!saveResult.Succeeded)
+            return Result<FileObjectResponse>.Failure(saveResult.Errors.First());
 
         var file = new FileObject
         {
@@ -144,17 +144,17 @@ public class FileService : IFileService
         if (file == null)
             return Result<byte[]>.Failure(Errors.FileNotFound);
 
-        var dirPath = Path.Combine(_storageSettings.RootPath, userId, file.CrateId.ToString());
-        if (file.FolderId.HasValue)
-            dirPath = Path.Combine(dirPath, file.FolderId.Value.ToString());
+        var fileResult = await _storageService.ReadFileAsync(
+            userId,
+            file.CrateId,
+            file.FolderId,
+            file.Name
+        );
 
-        var filePath = Path.Combine(dirPath, file.Name);
+        if (!fileResult.Succeeded)
+            return Result<byte[]>.Failure(fileResult.Errors.First());
 
-        if (!System.IO.File.Exists(filePath))
-            return Result<byte[]>.Failure(Errors.FileNotFound);
-
-        byte[] content = await System.IO.File.ReadAllBytesAsync(filePath);
-        return Result<byte[]>.Success(content);
+        return Result<byte[]>.Success(fileResult.Data);
     }
 
     public async Task<Result> DeleteFileAsync(Guid fileId, string userId)
@@ -165,14 +165,15 @@ public class FileService : IFileService
         if (file == null)
             return Result.Failure(Errors.FileNotFound);
 
-        var dirPath = Path.Combine(_storageSettings.RootPath, userId, file.CrateId.ToString());
-        if (file.FolderId.HasValue)
-            dirPath = Path.Combine(dirPath, file.FolderId.Value.ToString());
+        var deleteResult = await _storageService.DeleteFileAsync(
+            userId,
+            file.CrateId,
+            file.FolderId,
+            file.Name
+        );
 
-        var filePath = Path.Combine(dirPath, file.Name);
-
-        if (System.IO.File.Exists(filePath))
-            System.IO.File.Delete(filePath);
+        if (!deleteResult.Succeeded)
+            return Result.Failure(deleteResult.Errors.First());
 
         _context.FileObjects.Remove(file);
         await _context.SaveChangesAsync();
