@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using CloudCrate.Application.Services;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -82,7 +83,7 @@ builder.Services.AddControllers()
 
 // ✅ FluentValidation Setup
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
-builder.Services.AddFluentValidationAutoValidation(); // 👈 THIS enables automatic validation via [FromBody]
+builder.Services.AddFluentValidationAutoValidation();
 
 // OpenAPI (Swagger)
 builder.Services.AddOpenApi();
@@ -91,6 +92,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
+builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IStorageService, LocalStorageService>();
 
