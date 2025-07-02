@@ -8,6 +8,7 @@ public interface IFolderService
     Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId);
     Task<Result> RenameFolderAsync(Guid folderId, string newName, string userId);
     Task<Result> DeleteFolderAsync(Guid folderId, string userId);
+    Task<Result<List<FolderResponse>>> GetRootFoldersAsync(Guid crateId, string userId);
     Task<Result<List<FolderResponse>>> GetSubfoldersAsync(Guid parentId, string userId);
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
 }
