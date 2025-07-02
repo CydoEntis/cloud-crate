@@ -27,7 +27,7 @@ public static class Errors
 
     public static readonly Error UserNotFound =
         new("ERR_USER_NOT_FOUND", "User not found.");
-    
+
     public static readonly Error StorageFailure =
         new("ERR_STORAGE_FAILED", "A storage error occurred.");
 
@@ -45,6 +45,12 @@ public static class Errors
 
     public static readonly Error FileAlreadyExists =
         new("ERR_FILE_EXISTS", "A file with the same name already exists.");
+
+    public static readonly Error FolderNotEmpty =
+        new("ERR_FOLDER_NOT_EMPTY", "Cannot delete a folder that contains subfolders or files.");
+
+    public static readonly Error InvalidMove =
+        new("ERR_INVALID_MOVE", "Cannot move a folder into itself or one of its own descendants.");
 
     // ✅ Optional dynamic variants
     public static Error Unexpected(string message) =>

@@ -1,0 +1,9 @@
+﻿namespace CloudCrate.Application.DTOs.Folder;
+
+public class FolderResponse
+{
+    public Guid Id { get; set; }
+    public string Name { get; set; } = default!;
+    public Guid CrateId { get; set; }
+    public Guid? ParentFolderId { get; set; }
+}
