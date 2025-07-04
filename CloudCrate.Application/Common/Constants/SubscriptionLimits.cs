@@ -14,4 +14,14 @@ public static class SubscriptionLimits
             SubscriptionPlan.Pro => ProCrateLimit,
             _ => FreeCrateLimit
         };
+
+    public static int GetStorageLimit(SubscriptionPlan plan)
+    {
+        return plan switch
+        {
+            SubscriptionPlan.Free => 512, // MB
+            SubscriptionPlan.Pro => 5120,
+            _ => 512
+        };
+    }
 }
