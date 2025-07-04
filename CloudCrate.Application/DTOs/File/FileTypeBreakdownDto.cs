@@ -3,5 +3,5 @@
 public class FileTypeBreakdownDto
 {
     public string Type { get; set; } = default!;
-    public int SizeMb { get; set; }
+    public double SizeMb { get; set; }
 }

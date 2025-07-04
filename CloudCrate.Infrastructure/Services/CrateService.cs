@@ -108,21 +108,17 @@ public class CrateService : ICrateService
             .Where(f => f.CrateId == crateId)
             .ToListAsync();
 
-        var totalUsedMb = (int)Math.Ceiling(
-            files.Sum(f => f.SizeInBytes) / 1024.0 / 1024.0
-        );
+        // Calculate precise total size in MB
+        var totalBytes = files.Sum(f => f.SizeInBytes);
+        var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2); // ← precision
 
-        var breakdownMap = new Dictionary<string, int>();
+        var breakdownMap = new Dictionary<string, double>();
 
-        foreach (var file in files)
+        foreach (var group in files.GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
         {
-            var sizeMb = (int)Math.Ceiling(file.SizeInBytes / 1024.0 / 1024.0);
-            var category = MimeCategoryHelper.GetMimeCategory(file.MimeType ?? string.Empty);
-
-            if (!breakdownMap.ContainsKey(category))
-                breakdownMap[category] = 0;
-
-            breakdownMap[category] += sizeMb;
+            var groupBytes = group.Sum(f => f.SizeInBytes);
+            var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2); // ← precision
+            breakdownMap[group.Key] = groupSizeMb;
         }
 
         var usageDto = new CrateUsageDto
