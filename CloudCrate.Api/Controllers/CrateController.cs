@@ -59,4 +59,19 @@ public class CrateController : ControllerBase
 
         return Ok(ApiResponse<object>.SuccessMessage("Crate deleted successfully"));
     }
+
+    [HttpGet("{crateId:guid}/usage")]
+    public async Task<IActionResult> GetCrateUsage(Guid crateId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+
+        var result = await _crateService.GetUsageAsync(crateId, userId);
+
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
+
+        return Ok(ApiResponse<object>.Success(result.Data!, "Crate usage retrieved successfully"));
+    }
 }
