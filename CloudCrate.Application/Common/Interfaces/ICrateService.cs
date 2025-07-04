@@ -13,4 +13,5 @@ public interface ICrateService
     Task<Result<Crate>> CreateCrateAsync(string userId, string name, string color);
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<List<Crate>> GetCratesAsync(string userId);
+    Task<Result<CrateUsageDto>> GetUsageAsync(Guid crateId, string userId);
 }

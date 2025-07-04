@@ -2,6 +2,8 @@
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.Common.Utils;
+using CloudCrate.Application.DTOs.Crate;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
@@ -86,5 +88,44 @@ public class CrateService : ICrateService
         return await _context.Crates
             .Where(c => c.UserId == userId)
             .ToListAsync();
+    }
+
+    public async Task<Result<CrateUsageDto>> GetUsageAsync(Guid crateId, string userId)
+    {
+        var crate = await _context.Crates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
+
+        if (crate == null)
+            return Result<CrateUsageDto>.Failure(Errors.CrateNotFound);
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result<CrateUsageDto>.Failure(Errors.UserNotFound);
+
+        var files = await _context.FileObjects
+            .Where(f => f.CrateId == crateId)
+            .ToListAsync();
+
+        var usageDto = new CrateUsageDto
+        {
+            TotalUsed = (int)Math.Ceiling(files.Sum(f => f.SizeInBytes) / 1024.0 /
+                                          1024.0), // Convert bytes to MB safely
+            StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
+            BreakdownByType = new Dictionary<string, int>()
+        };
+
+        foreach (var file in files)
+        {
+            var sizeMb = (int)Math.Ceiling((file.SizeInBytes) / 1024.0 / 1024.0);
+            var category = MimeCategoryHelper.GetMimeCategory(file.MimeType ?? string.Empty);
+
+            if (!usageDto.BreakdownByType.ContainsKey(category))
+                usageDto.BreakdownByType[category] = 0;
+
+            usageDto.BreakdownByType[category] += sizeMb;
+        }
+
+        return Result<CrateUsageDto>.Success(usageDto);
     }
 }
