@@ -1,6 +1,6 @@
-﻿using CloudCrate.Api.Requests.File;
+﻿using CloudCrate.Api.Models;
+using CloudCrate.Api.Requests.File;
 using CloudCrate.Application.Common.Interfaces;
-using CloudCrate.Application.DTOs.File;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -30,14 +30,14 @@ public class FilesController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
-            return Unauthorized();
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to upload files."));
 
         if (request.File == null || request.File.Length == 0)
-            return BadRequest("No file uploaded");
+            return BadRequest(ApiResponse<string>.Error("No file uploaded"));
 
         await using var stream = request.File.OpenReadStream();
 
-        var uploadRequest = new FileUploadRequest
+        var uploadRequest = new Application.DTOs.File.FileUploadRequest
         {
             CrateId = crateId,
             FolderId = request.FolderId,
@@ -48,7 +48,10 @@ public class FilesController : ControllerBase
         };
 
         var result = await _fileService.UploadFileAsync(uploadRequest, user.Id);
-        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
+
+        return result.Succeeded
+            ? Ok(ApiResponse<object>.Success(result.Data, "File uploaded successfully"))
+            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
     }
 
     [HttpGet("{fileId}")]
@@ -56,31 +59,34 @@ public class FilesController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
-            return Unauthorized();
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to download files."));
 
         var fileResult = await _fileService.GetFileByIdAsync(fileId, user.Id);
         if (!fileResult.Succeeded)
-            return BadRequest(fileResult.Errors);
+            return NotFound(ApiResponse<string>.Error(fileResult.Errors[0].Message, 404));
 
-        var file = fileResult.Data;
-
-        // Normally this is where you’d fetch the binary blob from storage.
         var contentResult = await _fileService.DownloadFileAsync(fileId, user.Id);
         if (!contentResult.Succeeded)
-            return BadRequest(contentResult.Errors);
+            return BadRequest(ApiResponse<string>.Error(contentResult.Errors[0].Message));
 
-        return File(contentResult.Data, file.MimeType, file.Name);
+        var file = fileResult.Data!;
+        return File(contentResult.Data!, file.MimeType, file.Name);
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetFiles(Guid crateId)
+    public async Task<IActionResult> GetFiles(Guid crateId, [FromQuery] Guid? folderId)
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
-            return Unauthorized();
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result = await _fileService.GetFilesInCrateRootAsync(crateId, user.Id);
-        return result.Succeeded ? Ok(result.Data) : BadRequest(result.Errors);
+        var result = folderId is null
+            ? await _fileService.GetFilesInCrateRootAsync(crateId, user.Id)
+            : await _fileService.GetFilesInFolderAsync(crateId, folderId.Value, user.Id);
+
+        return result.Succeeded
+            ? Ok(ApiResponse<object>.Success(result.Data, "Files retrieved successfully"))
+            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
     }
 
     [HttpDelete("{fileId}")]
@@ -88,9 +94,12 @@ public class FilesController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
-            return Unauthorized();
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to delete this file."));
 
         var result = await _fileService.DeleteFileAsync(fileId, user.Id);
-        return result.Succeeded ? Ok() : BadRequest(result.Errors);
+
+        return result.Succeeded
+            ? Ok(ApiResponse<object>.SuccessMessage("File deleted successfully"))
+            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
     }
 }

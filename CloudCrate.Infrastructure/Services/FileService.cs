@@ -60,10 +60,19 @@ public class FileService : IFileService
         return Result<List<FileObjectResponse>>.Success(files);
     }
 
-    public async Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid folderId, string userId)
+    public async Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid crateId, Guid folderId,
+        string userId)
     {
+        var folder = await _context.Folders
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.CrateId == crateId && f.Crate.UserId == userId);
+
+        if (folder == null)
+        {
+            return Result<List<FileObjectResponse>>.Failure(Errors.FolderNotFound);
+        }
+
         var files = await _context.FileObjects
-            .Where(f => f.FolderId == folderId && f.Folder!.Crate.UserId == userId)
+            .Where(f => f.FolderId == folderId)
             .Select(f => new FileObjectResponse
             {
                 Id = f.Id,
