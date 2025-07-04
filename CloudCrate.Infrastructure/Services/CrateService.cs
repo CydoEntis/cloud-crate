@@ -4,6 +4,7 @@ using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Utils;
 using CloudCrate.Application.DTOs.Crate;
+using CloudCrate.Application.DTOs.File;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
@@ -107,24 +108,35 @@ public class CrateService : ICrateService
             .Where(f => f.CrateId == crateId)
             .ToListAsync();
 
-        var usageDto = new CrateUsageDto
-        {
-            TotalUsed = (int)Math.Ceiling(files.Sum(f => f.SizeInBytes) / 1024.0 /
-                                          1024.0), // Convert bytes to MB safely
-            StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
-            BreakdownByType = new Dictionary<string, int>()
-        };
+        var totalUsedMb = (int)Math.Ceiling(
+            files.Sum(f => f.SizeInBytes) / 1024.0 / 1024.0
+        );
+
+        var breakdownMap = new Dictionary<string, int>();
 
         foreach (var file in files)
         {
-            var sizeMb = (int)Math.Ceiling((file.SizeInBytes) / 1024.0 / 1024.0);
+            var sizeMb = (int)Math.Ceiling(file.SizeInBytes / 1024.0 / 1024.0);
             var category = MimeCategoryHelper.GetMimeCategory(file.MimeType ?? string.Empty);
 
-            if (!usageDto.BreakdownByType.ContainsKey(category))
-                usageDto.BreakdownByType[category] = 0;
+            if (!breakdownMap.ContainsKey(category))
+                breakdownMap[category] = 0;
 
-            usageDto.BreakdownByType[category] += sizeMb;
+            breakdownMap[category] += sizeMb;
         }
+
+        var usageDto = new CrateUsageDto
+        {
+            TotalUsedStorage = totalUsedMb,
+            StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
+            BreakdownByType = breakdownMap
+                .Select(pair => new FileTypeBreakdownDto
+                {
+                    Type = pair.Key,
+                    SizeMb = pair.Value
+                })
+                .ToList()
+        };
 
         return Result<CrateUsageDto>.Success(usageDto);
     }

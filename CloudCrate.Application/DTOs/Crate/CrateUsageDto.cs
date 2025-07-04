@@ -1,9 +1,12 @@
-﻿namespace CloudCrate.Application.DTOs.Crate;
+﻿using CloudCrate.Application.DTOs.File;
+
+namespace CloudCrate.Application.DTOs.Crate;
 
 public class CrateUsageDto
 {
-    public int TotalUsed { get; set; }
+    public int TotalUsedStorage { get; set; }
     public int StorageLimit { get; set; }
-    public int Remaining => StorageLimit - TotalUsed;
-    public Dictionary<string, int> BreakdownByType { get; set; } = new();
+    public int RemainingStorage => StorageLimit - TotalUsedStorage;
+
+    public List<FileTypeBreakdownDto> BreakdownByType { get; set; } = new();
 }
