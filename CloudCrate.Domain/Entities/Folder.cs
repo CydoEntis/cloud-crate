@@ -5,6 +5,8 @@ public class Folder
     public Guid Id { get; set; }
     public string Name { get; set; }
 
+    public string Color { get; set; } = "#EAAC00";
+    
     public Guid? ParentFolderId { get; set; }
     public Folder? ParentFolder { get; set; }
 
