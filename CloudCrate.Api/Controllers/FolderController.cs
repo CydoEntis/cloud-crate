@@ -110,9 +110,6 @@ public class FolderController : ControllerBase
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        if (folderId != request.FolderId)
-            return BadRequest(ApiResponse<string>.Error("Folder ID in route and request body do not match"));
-
         var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
 
         if (!result.Succeeded)

@@ -38,7 +38,8 @@ public class FolderService : IFolderService
             Id = Guid.NewGuid(),
             Name = request.Name,
             CrateId = request.CrateId,
-            ParentFolderId = request.ParentFolderId
+            ParentFolderId = request.ParentFolderId,
+            Color = request.Color,
         };
 
         _context.Folders.Add(folder);
@@ -98,7 +99,8 @@ public class FolderService : IFolderService
                 Id = f.Id,
                 Name = f.Name,
                 CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId
+                ParentFolderId = f.ParentFolderId,
+                Color = f.Color
             })
             .ToListAsync();
 
@@ -114,7 +116,8 @@ public class FolderService : IFolderService
                 Id = f.Id,
                 Name = f.Name,
                 CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId
+                ParentFolderId = f.ParentFolderId,
+                Color = f.Color
             })
             .ToListAsync();
 
