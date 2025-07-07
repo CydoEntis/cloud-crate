@@ -3,9 +3,10 @@ using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Domain.Entities;
+using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
-namespace CloudCrate.Application.Services;
+namespace CloudCrate.Infrastructure.Services;
 
 public class FolderService : IFolderService
 {
@@ -162,5 +163,106 @@ public class FolderService : IFolderService
         await _context.SaveChangesAsync();
 
         return Result.Success();
+    }
+
+    public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(
+        Guid crateId,
+        Guid? parentFolderId,
+        string userId,
+        string? search,
+        int page = 1,
+        int pageSize = 20
+    )
+    {
+        var crateExists = await _context.Crates
+            .AnyAsync(c => c.Id == crateId && c.UserId == userId);
+
+        if (!crateExists)
+            return Result<FolderContentsResponse>.Failure(Errors.CrateNotFound);
+
+        // Folders
+        var foldersQuery = _context.Folders
+            .Where(f => f.CrateId == crateId &&
+                        f.ParentFolderId == parentFolderId &&
+                        f.Crate.UserId == userId);
+
+        // Files
+        var filesQuery = _context.FileObjects
+            .Where(f => f.CrateId == crateId &&
+                        f.FolderId == parentFolderId &&
+                        f.Crate.UserId == userId);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            foldersQuery = foldersQuery.Where(f => EF.Functions.ILike(f.Name, $"%{search}%"));
+            filesQuery = filesQuery.Where(f => EF.Functions.ILike(f.Name, $"%{search}%"));
+        }
+
+        var folders = await foldersQuery
+            .Select(f => new FolderOrFileItem
+            {
+                Id = f.Id,
+                Name = f.Name,
+                Type = FolderItemType.Folder,
+                CrateId = f.CrateId,
+                ParentFolderId = f.ParentFolderId,
+                Color = f.Color
+            })
+            .ToListAsync();
+
+        var files = await filesQuery
+            .Select(f => new FolderOrFileItem
+            {
+                Id = f.Id,
+                Name = f.Name,
+                Type = FolderItemType.File,
+                MimeType = f.MimeType,
+                SizeInBytes = f.SizeInBytes,
+                CrateId = f.CrateId,
+                ParentFolderId = f.FolderId,
+                Color = null
+            })
+            .ToListAsync();
+
+        // Merge and sort
+        var combined = folders
+            .Concat(files)
+            .OrderBy(i => i.Type)
+            .ThenBy(i => i.Name)
+            .ToList();
+
+        // Pagination
+        var totalCount = combined.Count;
+        var pagedItems = combined
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        // Virtual back folder
+        if (parentFolderId.HasValue)
+        {
+            var parentParentId = await _context.Folders
+                .Where(f => f.Id == parentFolderId && f.Crate.UserId == userId)
+                .Select(f => f.ParentFolderId)
+                .FirstOrDefaultAsync();
+
+            pagedItems.Insert(0, new FolderOrFileItem
+            {
+                Id = Guid.Empty,
+                Name = "..",
+                Type = FolderItemType.Folder,
+                CrateId = crateId,
+                ParentFolderId = parentParentId
+            });
+        }
+
+        return Result<FolderContentsResponse>.Success(new FolderContentsResponse
+        {
+            Items = pagedItems,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            ParentFolderId = parentFolderId
+        });
     }
 }

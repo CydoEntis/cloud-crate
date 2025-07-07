@@ -11,4 +11,13 @@ public interface IFolderService
     Task<Result<List<FolderResponse>>> GetRootFoldersAsync(Guid crateId, string userId);
     Task<Result<List<FolderResponse>>> GetSubfoldersAsync(Guid parentId, string userId);
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
+    
+    Task<Result<FolderContentsResponse>> GetFolderContentsAsync(
+        Guid crateId,
+        Guid? parentFolderId,
+        string userId,
+        string? search = null,
+        int page = 1,
+        int pageSize = 20
+    );
 }
