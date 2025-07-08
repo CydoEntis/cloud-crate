@@ -238,24 +238,6 @@ public class FolderService : IFolderService
             .Take(pageSize)
             .ToList();
 
-        // Virtual back folder
-        if (parentFolderId.HasValue)
-        {
-            var parentParentId = await _context.Folders
-                .Where(f => f.Id == parentFolderId && f.Crate.UserId == userId)
-                .Select(f => f.ParentFolderId)
-                .FirstOrDefaultAsync();
-
-            pagedItems.Insert(0, new FolderOrFileItem
-            {
-                Id = Guid.Empty,
-                Name = "..",
-                Type = FolderItemType.Folder,
-                CrateId = crateId,
-                ParentFolderId = parentParentId
-            });
-        }
-
         return Result<FolderContentsResponse>.Success(new FolderContentsResponse
         {
             Items = pagedItems,
