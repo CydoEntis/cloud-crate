@@ -238,13 +238,25 @@ public class FolderService : IFolderService
             .Take(pageSize)
             .ToList();
 
+        // Find parent-of-parent for "back" 
+        Guid? parentOfCurrentFolderId = null;
+
+        if (parentFolderId.HasValue)
+        {
+            parentOfCurrentFolderId = await _context.Folders
+                .Where(f => f.Id == parentFolderId && f.Crate.UserId == userId)
+                .Select(f => f.ParentFolderId)
+                .FirstOrDefaultAsync();
+        }
+
         return Result<FolderContentsResponse>.Success(new FolderContentsResponse
         {
             Items = pagedItems,
             TotalCount = totalCount,
             Page = page,
             PageSize = pageSize,
-            ParentFolderId = parentFolderId
+            ParentFolderId = parentFolderId,
+            ParentOfCurrentFolderId = parentOfCurrentFolderId
         });
     }
 }
