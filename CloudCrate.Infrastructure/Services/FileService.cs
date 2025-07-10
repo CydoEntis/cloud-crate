@@ -211,4 +211,29 @@ public class FileService : IFileService
 
         return Result<FileObjectResponse>.Success(response);
     }
+
+    public async Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId)
+    {
+        var file = await _context.FileObjects
+            .Include(f => f.Crate)
+            .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
+
+        if (file == null)
+            return Result.Failure(Errors.FileNotFound);
+
+        if (newParentId.HasValue)
+        {
+            var newParentFolder = await _context.Folders
+                .Include(f => f.Crate)
+                .FirstOrDefaultAsync(f => f.Id == newParentId.Value && f.Crate.UserId == userId);
+
+            if (newParentFolder == null)
+                return Result.Failure(Errors.FolderNotFound);
+        }
+
+        file.FolderId = newParentId;
+        await _context.SaveChangesAsync();
+
+        return Result.Success();
+    }
 }

@@ -20,4 +20,6 @@ public interface IFileService
     Task<Result> DeleteFileAsync(Guid fileId, string userId);
 
     Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId);
+
+    Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);
 }

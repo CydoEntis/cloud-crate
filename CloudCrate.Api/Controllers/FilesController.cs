@@ -1,6 +1,8 @@
-﻿using CloudCrate.Api.Models;
+﻿using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Api.Models;
 using CloudCrate.Api.Requests.File;
 using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.DTOs.File;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -101,5 +103,20 @@ public class FilesController : ControllerBase
         return result.Succeeded
             ? Ok(ApiResponse<object>.SuccessMessage("File deleted successfully"))
             : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
+    }
+
+    [HttpPut("{fileId:guid}/move")]
+    public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
+    {
+        var userId = User.GetUserId();
+        if (userId == null)
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+
+        var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, userId);
+
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+
+        return Ok(ApiResponse<object>.SuccessMessage("File moved successfully"));
     }
 }

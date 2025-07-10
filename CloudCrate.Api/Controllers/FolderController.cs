@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Folder;
@@ -19,13 +20,11 @@ public class FolderController : ControllerBase
         _folderService = folderService;
     }
 
-    private string? GetUserId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier);
 
     [HttpGet("root")]
     public async Task<IActionResult> GetRootFolders(Guid crateId)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -40,7 +39,7 @@ public class FolderController : ControllerBase
     [HttpGet("{parentId:guid}/subfolders")]
     public async Task<IActionResult> GetSubfolders(Guid crateId, Guid parentId)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -55,7 +54,7 @@ public class FolderController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -73,7 +72,7 @@ public class FolderController : ControllerBase
     [HttpPut("{folderId:guid}/rename")]
     public async Task<IActionResult> RenameFolder(Guid crateId, Guid folderId, [FromBody] RenameFolderRequest request)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -91,7 +90,7 @@ public class FolderController : ControllerBase
     [HttpDelete("{folderId:guid}")]
     public async Task<IActionResult> DeleteFolder(Guid crateId, Guid folderId)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -106,7 +105,7 @@ public class FolderController : ControllerBase
     [HttpPut("{folderId:guid}/move")]
     public async Task<IActionResult> MoveFolder(Guid crateId, Guid folderId, [FromBody] MoveFolderRequest request)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -122,7 +121,7 @@ public class FolderController : ControllerBase
     public async Task<IActionResult> GetFolderContents(Guid crateId, Guid? parentFolderId, [FromQuery] string? search,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var userId = GetUserId();
+        var userId = User.GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
