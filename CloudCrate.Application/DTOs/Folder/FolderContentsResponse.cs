@@ -6,6 +6,6 @@ public class FolderContentsResponse
     public int TotalCount { get; set; }
     public int Page { get; set; }
     public int PageSize { get; set; }
-    public Guid? ParentFolderId { get; set; } // ID of the current folder
-    public Guid? ParentOfCurrentFolderId { get; set; } // ID of the folder above the current one
+    public Guid? ParentFolderId { get; set; } 
+    public Guid? ParentOfCurrentFolderId { get; set; } 
 }
