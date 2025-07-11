@@ -91,40 +91,6 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    public async Task<Result<List<FolderResponse>>> GetRootFoldersAsync(Guid crateId, string userId)
-    {
-        var folders = await _context.Folders
-            .Where(f => f.CrateId == crateId && f.ParentFolderId == null && f.Crate.UserId == userId)
-            .Select(f => new FolderResponse
-            {
-                Id = f.Id,
-                Name = f.Name,
-                CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId,
-                Color = f.Color
-            })
-            .ToListAsync();
-
-        return Result<List<FolderResponse>>.Success(folders);
-    }
-
-    public async Task<Result<List<FolderResponse>>> GetSubfoldersAsync(Guid parentId, string userId)
-    {
-        var subfolders = await _context.Folders
-            .Where(f => f.ParentFolderId == parentId && f.Crate.UserId == userId)
-            .Select(f => new FolderResponse
-            {
-                Id = f.Id,
-                Name = f.Name,
-                CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId,
-                Color = f.Color
-            })
-            .ToListAsync();
-
-        return Result<List<FolderResponse>>.Success(subfolders);
-    }
-
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
         var folder = await _context.Folders

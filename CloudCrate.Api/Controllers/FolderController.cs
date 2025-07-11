@@ -21,36 +21,6 @@ public class FolderController : ControllerBase
     }
 
 
-    [HttpGet("root")]
-    public async Task<IActionResult> GetRootFolders(Guid crateId)
-    {
-        var userId = User.GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-
-        var result = await _folderService.GetRootFoldersAsync(crateId, userId);
-
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
-
-        return Ok(ApiResponse<object>.Success(result.Data, "Root folders retrieved successfully"));
-    }
-
-    [HttpGet("{parentId:guid}/subfolders")]
-    public async Task<IActionResult> GetSubfolders(Guid crateId, Guid parentId)
-    {
-        var userId = User.GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-
-        var result = await _folderService.GetSubfoldersAsync(parentId, userId);
-
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
-
-        return Ok(ApiResponse<object>.Success(result.Data, "Subfolders retrieved successfully"));
-    }
-
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
