@@ -91,38 +91,38 @@ public class CrateService : ICrateService
             .ToListAsync();
     }
 
-    public async Task<Result<CrateUsageDto>> GetUsageAsync(Guid crateId, string userId)
+    public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
         var crate = await _context.Crates
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
 
         if (crate == null)
-            return Result<CrateUsageDto>.Failure(Errors.CrateNotFound);
+            return Result<CrateDetailsResponse>.Failure(Errors.CrateNotFound);
 
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
-            return Result<CrateUsageDto>.Failure(Errors.UserNotFound);
+            return Result<CrateDetailsResponse>.Failure(Errors.UserNotFound);
 
         var files = await _context.FileObjects
             .Where(f => f.CrateId == crateId)
             .ToListAsync();
 
-        // Calculate precise total size in MB
         var totalBytes = files.Sum(f => f.SizeInBytes);
-        var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2); // ← precision
+        var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
 
         var breakdownMap = new Dictionary<string, double>();
-
         foreach (var group in files.GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
         {
             var groupBytes = group.Sum(f => f.SizeInBytes);
-            var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2); // ← precision
+            var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2);
             breakdownMap[group.Key] = groupSizeMb;
         }
 
-        var usageDto = new CrateUsageDto
+        var usageDto = new CrateDetailsResponse
         {
+            Id = crate.Id,
+            Name = crate.Name,
             TotalUsedStorage = totalUsedMb,
             StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
             BreakdownByType = breakdownMap
@@ -134,6 +134,6 @@ public class CrateService : ICrateService
                 .ToList()
         };
 
-        return Result<CrateUsageDto>.Success(usageDto);
+        return Result<CrateDetailsResponse>.Success(usageDto);
     }
 }

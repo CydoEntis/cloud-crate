@@ -2,11 +2,12 @@
 
 namespace CloudCrate.Application.DTOs.Crate;
 
-public class CrateUsageDto
+public class CrateDetailsResponse
 {
+    public Guid Id { get; set; }
+    public string Name { get; set; } = String.Empty;
     public double TotalUsedStorage { get; set; }
     public double StorageLimit { get; set; }
+    public List<FileTypeBreakdownDto> BreakdownByType { get; set; } = [];
     public double RemainingStorage => StorageLimit - TotalUsedStorage;
-
-    public List<FileTypeBreakdownDto> BreakdownByType { get; set; } = new();
 }

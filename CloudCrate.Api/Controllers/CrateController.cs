@@ -1,9 +1,10 @@
 ﻿using System.Security.Claims;
 using CloudCrate.Api.Models;
-using CloudCrate.Api.Requests.Crate;
 using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.DTOs.Crate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using CreateCrateRequest = CloudCrate.Api.Requests.Crate.CreateCrateRequest;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -60,18 +61,18 @@ public class CrateController : ControllerBase
         return Ok(ApiResponse<object>.SuccessMessage("Crate deleted successfully"));
     }
 
-    [HttpGet("{crateId:guid}/usage")]
-    public async Task<IActionResult> GetCrateUsage(Guid crateId)
+    [HttpGet("{crateId:guid}")]
+    public async Task<IActionResult> GetCrate(Guid crateId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result = await _crateService.GetUsageAsync(crateId, userId);
+        var result = await _crateService.GetCrateAsync(crateId, userId);
 
         if (!result.Succeeded)
             return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
 
-        return Ok(ApiResponse<object>.Success(result.Data!, "Crate usage retrieved successfully"));
+        return Ok(ApiResponse<CrateDetailsResponse>.Success(result.Data!, "Crate retrieved successfully"));
     }
 }
