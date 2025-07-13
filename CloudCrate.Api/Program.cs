@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using Amazon.S3;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -93,7 +94,23 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
-builder.Services.AddScoped<IStorageService, LocalStorageService>();
+
+// Registering Minio Storage
+builder.Services.AddSingleton<IAmazonS3>(sp =>
+{
+    var config = builder.Configuration.GetSection("Storage").Get<StorageSettings>();
+
+    var s3Config = new AmazonS3Config
+    {
+        ServiceURL = config.Endpoint,
+        ForcePathStyle = true, // required for MinIO
+        UseHttp = config.Endpoint.StartsWith("http://")
+    };
+
+    return new AmazonS3Client(config.AccessKey, config.SecretKey, s3Config);
+});
+builder.Services.AddScoped<IStorageService, MinioStorageService>();
+
 
 // CORS
 builder.Services.AddCors(options =>
