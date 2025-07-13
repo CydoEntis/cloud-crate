@@ -204,15 +204,22 @@ public class FolderService : IFolderService
             .Take(pageSize)
             .ToList();
 
-        // Find parent-of-parent for "back" 
+        // Parent-of-parent for virtual "Back"
         Guid? parentOfCurrentFolderId = null;
+        string currentFolderName = "Root";
 
         if (parentFolderId.HasValue)
         {
-            parentOfCurrentFolderId = await _context.Folders
+            var folderInfo = await _context.Folders
                 .Where(f => f.Id == parentFolderId && f.Crate.UserId == userId)
-                .Select(f => f.ParentFolderId)
+                .Select(f => new { f.Name, f.ParentFolderId })
                 .FirstOrDefaultAsync();
+
+            if (folderInfo != null)
+            {
+                currentFolderName = folderInfo.Name;
+                parentOfCurrentFolderId = folderInfo.ParentFolderId;
+            }
         }
 
         return Result<FolderContentsResponse>.Success(new FolderContentsResponse
@@ -222,7 +229,8 @@ public class FolderService : IFolderService
             Page = page,
             PageSize = pageSize,
             ParentFolderId = parentFolderId,
-            ParentOfCurrentFolderId = parentOfCurrentFolderId
+            ParentOfCurrentFolderId = parentOfCurrentFolderId,
+            FolderName = currentFolderName
         });
     }
 }
