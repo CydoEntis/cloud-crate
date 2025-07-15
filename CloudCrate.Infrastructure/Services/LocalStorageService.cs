@@ -114,4 +114,28 @@ public class LocalStorageService : IStorageService
         var filePath = GetFilePath(userId, crateId, folderId, fileName);
         return File.Exists(filePath);
     }
+
+    public async Task<Result> DeleteFilesAsync(string bucketName, IEnumerable<string> keys)
+    {
+        try
+        {
+            foreach (var key in keys)
+            {
+                var filePath = Path.Combine(_storageSettings.RootPath,
+                    key.Replace("/", Path.DirectorySeparatorChar.ToString()));
+
+                if (File.Exists(filePath))
+                    File.Delete(filePath);
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Errors.FileDeleteFailed with
+            {
+                Message = $"{Errors.FileDeleteFailed.Message} ({ex.Message})"
+            });
+        }
+    }
 }

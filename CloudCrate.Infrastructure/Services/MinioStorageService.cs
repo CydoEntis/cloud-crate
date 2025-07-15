@@ -33,7 +33,6 @@ public class MinioStorageService : IStorageService
 
         try
         {
-            // Ensure bucket exists
             if (!await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName))
             {
                 await _s3Client.PutBucketAsync(bucketName);
@@ -103,5 +102,31 @@ public class MinioStorageService : IStorageService
     public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
     {
         return Result.Success();
+    }
+
+    public async Task<Result> DeleteFilesAsync(string bucketName, IEnumerable<string> objectKeys)
+    {
+        try
+        {
+            var deleteRequest = new DeleteObjectsRequest
+            {
+                BucketName = bucketName,
+                Objects = objectKeys.Select(key => new KeyVersion { Key = key }).ToList()
+            };
+
+            var response = await _s3Client.DeleteObjectsAsync(deleteRequest);
+
+            if (response.DeleteErrors.Any())
+            {
+                var errorMessages = string.Join("; ", response.DeleteErrors.Select(e => $"{e.Key}: {e.Message}"));
+                return Result.Failure(Errors.FileDeleteFailed with { Message = errorMessages });
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Errors.FileDeleteFailed with { Message = ex.Message });
+        }
     }
 }
