@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Utils;
@@ -17,11 +18,13 @@ public class CrateService : ICrateService
 {
     private readonly IAppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IStorageService _storageService;
 
-    public CrateService(IAppDbContext context, UserManager<ApplicationUser> userManager)
+    public CrateService(IAppDbContext context, UserManager<ApplicationUser> userManager, IStorageService storageService)
     {
         _context = context;
         _userManager = userManager;
+        _storageService = storageService;
     }
 
     public async Task<bool> CanCreateCrateAsync(string userId)
@@ -71,16 +74,48 @@ public class CrateService : ICrateService
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
         var crate = await _context.Crates
-            .Include(c => c.Folders)
             .Include(c => c.Files)
+            .Include(c => c.Folders)
+            .ThenInclude(f => f.Files)
+            .Include(c => c.Folders)
+            .ThenInclude(f => f.Subfolders)
             .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
 
         if (crate == null)
             return Result.Failure(Errors.CrateNotFound);
 
+        var bucketName = $"crate-{crate.Id}".ToLowerInvariant();
+        var keysToDelete = new List<string>();
+
+        foreach (var file in crate.Files)
+        {
+            var key = userId.GetObjectKey(crateId, null, file.Name);
+            keysToDelete.Add(key);
+            _context.FileObjects.Remove(file);
+        }
+
+        foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
+        {
+            await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
+        }
+
+        _context.Folders.RemoveRange(crate.Folders);
+
         _context.Crates.Remove(crate);
+
+        var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
+        if (!deleteResult.Succeeded)
+        {
+            await transaction.RollbackAsync();
+            return deleteResult;
+        }
+
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+
         return Result.Success();
     }
 
@@ -135,5 +170,42 @@ public class CrateService : ICrateService
         };
 
         return Result<CrateDetailsResponse>.Success(usageDto);
+    }
+
+    private async Task DeleteFolderRecursivelyAsync(Folder folder, Guid crateId, string userId)
+    {
+        foreach (var file in folder.Files.ToList())
+        {
+            await _storageService.DeleteFileAsync(userId, crateId, folder.Id, file.Name);
+            _context.FileObjects.Remove(file);
+        }
+
+        var subfolders = folder.Subfolders?.ToList() ?? new();
+
+        foreach (var subfolder in subfolders)
+        {
+            await DeleteFolderRecursivelyAsync(subfolder, crateId, userId);
+        }
+
+        _context.Folders.Remove(folder);
+    }
+
+    private async Task CollectFolderDeletionsAsync(Folder folder, Guid crateId, string userId,
+        List<string> keysToDelete)
+    {
+        foreach (var file in folder.Files)
+        {
+            var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
+            keysToDelete.Add(key);
+            _context.FileObjects.Remove(file);
+        }
+
+        var subfolders = folder.Subfolders?.ToList() ?? new();
+        foreach (var subfolder in subfolders)
+        {
+            await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
+        }
+
+        _context.Folders.Remove(folder);
     }
 }
