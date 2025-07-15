@@ -3,6 +3,7 @@ using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace CloudCrate.Infrastructure.Persistence;
 
@@ -11,6 +12,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
     }
+
+    public DatabaseFacade Database => base.Database;
 
     public DbSet<Crate> Crates { get; set; }
     public DbSet<FileObject> FileObjects { get; set; }
