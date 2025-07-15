@@ -72,6 +72,23 @@ public class CrateService : ICrateService
         return Result<Crate>.Success(crate);
     }
 
+    public async Task<Result> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
+    {
+        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
+        if (crate == null)
+            return Result.Failure(Errors.CrateNotFound);
+
+        if (!string.IsNullOrWhiteSpace(newName))
+            crate.Name = newName;
+
+        if (!string.IsNullOrWhiteSpace(newColor))
+            crate.Color = newColor;
+
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
+
+
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
         using var transaction = await _context.Database.BeginTransactionAsync();
