@@ -9,7 +9,7 @@ public class UpdateCrateRequestValidator : AbstractValidator<UpdateCrateRequest>
     public UpdateCrateRequestValidator()
     {
         RuleFor(x => x.Name)
-            .MaximumLength(50)
+            .MaximumLength(25)
             .When(x => !string.IsNullOrWhiteSpace(x.Name));
 
         RuleFor(x => x.Color)

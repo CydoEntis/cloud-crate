@@ -72,11 +72,11 @@ public class CrateService : ICrateService
         return Result<Crate>.Success(crate);
     }
 
-    public async Task<Result> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
+    public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
     {
         var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
         if (crate == null)
-            return Result.Failure(Errors.CrateNotFound);
+            return Result<CrateResponse>.Failure(Errors.CrateNotFound);
 
         if (!string.IsNullOrWhiteSpace(newName))
             crate.Name = newName;
@@ -85,7 +85,15 @@ public class CrateService : ICrateService
             crate.Color = newColor;
 
         await _context.SaveChangesAsync();
-        return Result.Success();
+
+
+        var dto = new CrateResponse
+        {
+            Id = crateId,
+            Name = crate.Name,
+            Color = crate.Color,
+        };
+        return Result<CrateResponse>.Success(dto);
     }
 
 

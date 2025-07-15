@@ -67,7 +67,7 @@ public class CrateController : ControllerBase
         if (!result.Succeeded)
             return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
 
-        return Ok(ApiResponse<object>.SuccessMessage("Crate updated successfully"));
+        return Ok(ApiResponse<object>.Success(result.Data!, "Crate updated successfully"));
     }
 
 
