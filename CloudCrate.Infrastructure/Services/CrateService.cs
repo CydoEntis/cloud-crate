@@ -175,6 +175,7 @@ public class CrateService : ICrateService
         {
             Id = crate.Id,
             Name = crate.Name,
+            Color = crate.Color,
             TotalUsedStorage = totalUsedMb,
             StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
             BreakdownByType = breakdownMap

@@ -1,5 +1,6 @@
 ﻿using System.Security.Claims;
 using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Crate;
 using Microsoft.AspNetCore.Authorization;
@@ -45,6 +46,30 @@ public class CrateController : ControllerBase
         var crates = await _crateService.GetCratesAsync(userId);
         return Ok(ApiResponse<object>.Success(crates, "Crates retrieved successfully"));
     }
+
+    [HttpPut("{crateId:guid}")]
+    public async Task<IActionResult> UpdateCrate(Guid crateId, [FromBody] UpdateCrateRequest request)
+    {
+        if (!ModelState.IsValid)
+        {
+            var errors = ModelState.Values.SelectMany(v => v.Errors)
+                .Select(e => e.ErrorMessage).ToList();
+            return BadRequest(ApiResponse<string>.ValidationFailed(
+                errors.Select(msg => new Error("ERR_VALIDATION", msg)).ToList()));
+        }
+
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+
+        var result = await _crateService.UpdateCrateAsync(crateId, userId, request.Name, request.Color);
+
+        if (!result.Succeeded)
+            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
+
+        return Ok(ApiResponse<object>.SuccessMessage("Crate updated successfully"));
+    }
+
 
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
