@@ -12,4 +12,6 @@ public interface IStorageService
     Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName);
     Task<Result> DeleteFileAsync(string userId, Guid crateId, Guid? folderId, string fileName);
     bool FileExists(string userId, Guid crateId, Guid? folderId, string fileName);
+    Task<Result> DeleteFilesAsync(string bucketName, IEnumerable<string> objectKeys);
+
 }
