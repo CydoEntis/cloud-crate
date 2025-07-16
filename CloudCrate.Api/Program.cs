@@ -1,6 +1,5 @@
 using System.Text;
 using CloudCrate.Api.Middleware;
-using CloudCrate.Api.Requests.File;
 using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Settings;
@@ -8,13 +7,16 @@ using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Services;
 using FluentValidation;
-using FluentValidation.AspNetCore; // ✅ Add this for auto-validation
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using Amazon.S3;
+using Microsoft.Extensions.Options;
+using RazorLight;
+using Resend;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -39,6 +41,23 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
 // Configure StorageSettings
 builder.Services.Configure<StorageSettings>(
     builder.Configuration.GetSection("Storage"));
+
+// Configure Resend Settings
+builder.Services.AddOptions();
+builder.Services.AddHttpClient<ResendClient>();
+builder.Services.Configure<ResendClientOptions>(o =>
+{
+    o.ApiToken = builder.Configuration["Resend:ApiKey"] ?? throw new Exception("Resend API key missing");
+});
+builder.Services.AddTransient<IResend, ResendClient>();
+
+// Setup RazorLightEngine
+builder.Services.AddSingleton(sp =>
+    new RazorLightEngineBuilder()
+        .UseFileSystemProject(Path.Combine(Directory.GetCurrentDirectory(), "EmailTemplates"))
+        .UseMemoryCachingProvider()
+        .Build());
+
 
 // === Authentication & JWT Setup ===
 builder.Services.AddAuthentication(options =>
