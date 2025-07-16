@@ -92,8 +92,10 @@ builder.Services.AddOpenApi();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
+builder.Services.AddScoped<ICrateUserRoleService, CrateUserRolesService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
+
 
 // Registering Minio Storage
 builder.Services.AddSingleton<IAmazonS3>(sp =>
