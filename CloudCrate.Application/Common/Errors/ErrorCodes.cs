@@ -52,7 +52,18 @@ public static class Errors
     public static readonly Error InvalidMove =
         new("ERR_INVALID_MOVE", "Cannot move a folder into itself or one of its own descendants.");
 
-    // ✅ Optional dynamic variants
+    public static readonly Error InviteNotFound =
+        new("ERR_INVITE_NOT_FOUND", "Invite token not found or invalid.");
+
+    public static readonly Error InviteInvalid =
+        new("ERR_INVITE_INVALID", "Invite has already been used or declined.");
+
+    public static readonly Error EmailSendFailed =
+        new("ERR_EMAIL_SEND_FAILED", "Failed to send the email.");
+
+    public static Error EmailSendException(string details) =>
+        new("ERR_EMAIL_SEND_EXCEPTION", $"Error sending email: {details}");
+
     public static Error Unexpected(string message) =>
         new("ERR_UNEXPECTED", message);
 
