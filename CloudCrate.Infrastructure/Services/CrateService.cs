@@ -19,12 +19,15 @@ public class CrateService : ICrateService
     private readonly IAppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStorageService _storageService;
+    private readonly ICrateUserRoleService _crateUserRoleService;
 
-    public CrateService(IAppDbContext context, UserManager<ApplicationUser> userManager, IStorageService storageService)
+    public CrateService(IAppDbContext context, UserManager<ApplicationUser> userManager, IStorageService storageService,
+        ICrateUserRoleService crateUserRoleService)
     {
         _context = context;
         _userManager = userManager;
         _storageService = storageService;
+        _crateUserRoleService = crateUserRoleService;
     }
 
     public async Task<bool> CanCreateCrateAsync(string userId)
@@ -69,11 +72,19 @@ public class CrateService : ICrateService
 
         _context.Crates.Add(crate);
         await _context.SaveChangesAsync();
+
+        await _crateUserRoleService.AssignRoleAsync(crate.Id, userId, CrateRole.Owner);
+
         return Result<Crate>.Success(crate);
     }
 
-    public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
+    public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
+        string? newColor)
     {
+        if (!await _crateUserRoleService.IsOwnerAsync(crateId, userId))
+            return Result<CrateResponse>.Failure(Errors.Unauthorized);
+
+
         var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
         if (crate == null)
             return Result<CrateResponse>.Failure(Errors.CrateNotFound);
@@ -99,6 +110,10 @@ public class CrateService : ICrateService
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
+        if (!await _crateUserRoleService.IsOwnerAsync(crateId, userId))
+            return Result<CrateResponse>.Failure(Errors.Unauthorized);
+
+
         using var transaction = await _context.Database.BeginTransactionAsync();
 
         var crate = await _context.Crates
@@ -196,24 +211,6 @@ public class CrateService : ICrateService
         };
 
         return Result<CrateDetailsResponse>.Success(usageDto);
-    }
-
-    private async Task DeleteFolderRecursivelyAsync(Folder folder, Guid crateId, string userId)
-    {
-        foreach (var file in folder.Files.ToList())
-        {
-            await _storageService.DeleteFileAsync(userId, crateId, folder.Id, file.Name);
-            _context.FileObjects.Remove(file);
-        }
-
-        var subfolders = folder.Subfolders?.ToList() ?? new();
-
-        foreach (var subfolder in subfolders)
-        {
-            await DeleteFolderRecursivelyAsync(subfolder, crateId, userId);
-        }
-
-        _context.Folders.Remove(folder);
     }
 
     private async Task CollectFolderDeletionsAsync(Folder folder, Guid crateId, string userId,
