@@ -1,9 +1,11 @@
 ﻿using CloudCrate.Application.Common.Errors;
-using Resend;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using Microsoft.Extensions.Configuration;
 using RazorLight;
+using Resend;
+
+namespace CloudCrate.Infrastructure.Services;
 
 public class ResendEmailService : IEmailService
 {
@@ -38,7 +40,7 @@ public class ResendEmailService : IEmailService
         }
         catch (Exception ex)
         {
-            return Result.Failure(new Error("EMAIL_SEND_ERROR", ex.Message));
+            return Result.Failure(Errors.EmailSendException(ex.Message));
         }
     }
 }
