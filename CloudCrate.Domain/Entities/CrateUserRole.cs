@@ -2,20 +2,15 @@
 
 namespace CloudCrate.Domain.Entities;
 
-public class CratePermission
+public class CrateUserRole
 {
     public Guid Id { get; set; }
-
     public Guid CrateId { get; set; }
-    public Crate Crate { get; set; }
+    public Crate Crate { get; set; } = null!;
 
-    public string UserId { get; set; }
+    public string UserId { get; set; } = string.Empty!;
 
     public CrateRole Role { get; set; }
-
-    public bool? CanUpload { get; set; }
-    public bool? CanDownload { get; set; }
-    public bool? CanDelete { get; set; }
 
     public DateTime CreatedAt { get; set; }
 }
