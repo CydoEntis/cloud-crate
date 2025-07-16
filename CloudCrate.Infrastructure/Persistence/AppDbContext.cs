@@ -18,10 +18,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public DbSet<Crate> Crates { get; set; }
     public DbSet<CrateUserRole?> CrateUserRoles { get; set; }
     public DbSet<FileObject> FileObjects { get; set; }
-    public DbSet<FileTag> FileTags { get; set; }
-    public DbSet<Tag> Tags { get; set; }
     public DbSet<Folder> Folders { get; set; }
-    public DbSet<Category> Categories { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -31,7 +28,5 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
-        builder.Entity<FileTag>()
-            .HasKey(ft => new { ft.FileObjectId, ft.TagId });
     }
 }

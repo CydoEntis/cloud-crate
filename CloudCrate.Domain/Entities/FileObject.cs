@@ -10,11 +10,9 @@ public class FileObject
     public Guid CrateId { get; set; }
     public Crate Crate { get; set; }
 
-    public Guid? FolderId { get; set; } // Optional: file in root of crate
+    public Guid? FolderId { get; set; }
     public Folder? Folder { get; set; }
 
-    public ICollection<FileTag> Tags { get; set; }
 
     public Guid? CategoryId { get; set; }
-    public Category? Category { get; set; }
 }
