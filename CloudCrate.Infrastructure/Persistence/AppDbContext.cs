@@ -16,7 +16,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public DatabaseFacade Database => base.Database;
 
     public DbSet<Crate> Crates { get; set; }
-    public DbSet<CrateUserRole?> CrateUserRoles { get; set; }
+    public DbSet<CrateUserRole> CrateUserRoles { get; set; }
+    public DbSet<CrateInvite> CrateInvites { get; set; }
     public DbSet<FileObject> FileObjects { get; set; }
     public DbSet<Folder> Folders { get; set; }
 
