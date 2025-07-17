@@ -1,6 +1,7 @@
 ﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.Email;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -21,48 +22,35 @@ public class CrateInviteService : ICrateInviteService
         _config = config;
     }
 
-    public async Task<Result<CrateInvite>> CreateInviteAsync(Guid crateId, string invitedEmail, string invitedByUserId,
-        CrateRole role, DateTime? expiresAt = null)
+    public async Task<Result> CreateInviteAsync(
+        Guid crateId,
+        string invitedEmail,
+        string invitedByUserId,
+        CrateRole role,
+        DateTime? expiresAt = null)
     {
-        var invite = new CrateInvite
-        {
-            Id = Guid.NewGuid(),
-            CrateId = crateId,
-            InvitedUserEmail = invitedEmail,
-            InvitedByUserId = invitedByUserId,
-            Role = role,
-            Token = Guid.NewGuid().ToString(),
-            CreatedAt = DateTime.UtcNow,
-            ExpiresAt = expiresAt,
-            Status = InviteStatus.Pending
-        };
+        var crateName = await GetCrateName(crateId);
+
+        var invite = CrateInvite.Create(crateId, invitedEmail, invitedByUserId, role, expiresAt);
 
         _context.CrateInvites.Add(invite);
         await _context.SaveChangesAsync();
 
-        var baseUrl = _config["FrontendBaseUrl"] ?? "https://cloudcrate.codystine.com";
-        var inviteLink = $"{baseUrl}/invite/{invite.Token}";
+        var inviteLink = BuildInviteLink(invite.Token);
 
-        var model = new
-        {
-            CrateName = await GetCrateName(crateId),
-            InviteLink = inviteLink
-        };
+        var emailModel = new InviteEmailModel(crateName, inviteLink);
+        var subject = $"You have been invited to join {crateName} on CloudCrate!";
 
         var emailResult = await _emailService.SendEmailAsync(
             invitedEmail,
-            $"You have been invited to join the crate {model.CrateName} on CloudCrate!",
-            "InviteEmail", 
-            model
+            subject,
+            templateName: "InviteEmail",
+            model: emailModel
         );
 
-        if (!emailResult.Succeeded)
-        {
-            return Result<CrateInvite>.Failure(emailResult.Errors);
-        }
-
-        return Result<CrateInvite>.Success(invite);
+        return !emailResult.Succeeded ? Result.Failure(emailResult.Errors) : Result.Success();
     }
+
 
     public async Task<Result<CrateInvite?>> GetInviteByTokenAsync(string token)
     {
@@ -117,5 +105,11 @@ public class CrateInviteService : ICrateInviteService
     {
         var crate = await _context.Crates.FindAsync(crateId);
         return crate?.Name ?? "Unknown Crate";
+    }
+
+    private string BuildInviteLink(string token)
+    {
+        var baseUrl = _config["FrontendBaseUrl"] ?? "https://cloudcrate.codystine.com";
+        return $"{baseUrl}/invite/{token}";
     }
 }

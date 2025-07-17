@@ -6,7 +6,7 @@ namespace CloudCrate.Application.Common.Interfaces;
 
 public interface ICrateInviteService
 {
-    Task<Result<CrateInvite>> CreateInviteAsync(Guid crateId, string invitedEmail, string invitedByUserId,
+    Task<Result> CreateInviteAsync(Guid crateId, string invitedEmail, string invitedByUserId,
         CrateRole role, DateTime? expiresAt = null);
 
     Task<Result<CrateInvite?>> GetInviteByTokenAsync(string token);

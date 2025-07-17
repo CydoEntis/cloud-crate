@@ -33,7 +33,7 @@ namespace CloudCrate.Api.Controllers
             var result = await _inviteService.CreateInviteAsync(crateId, request.Email, userId, request.Role);
 
             if (result.Succeeded)
-                return Ok(ApiResponse<CrateInvite>.Success(result.Data));
+                return Ok(ApiResponse<string>.Success($"Invite sent to {request.Email}"));
 
             return BadRequest(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
         }
