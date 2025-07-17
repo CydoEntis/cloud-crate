@@ -37,7 +37,8 @@ public class CrateRolesController : ControllerBase
 
         if (request.UserId == currentUserId && request.Role != CrateRole.Owner)
         {
-            return BadRequest(ApiResponse<string>.Error("Owners cannot remove their own owner role"));
+            return BadRequest(
+                ApiResponse<string>.ValidationFailed(new List<Error> { Errors.OwnerRoleRemovalNotAllowed }));
         }
 
         var user = await _userManager.FindByIdAsync(request.UserId);
