@@ -20,7 +20,6 @@ public class FolderController : ControllerBase
         _folderService = folderService;
     }
 
-
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
@@ -34,7 +33,7 @@ public class FolderController : ControllerBase
         var result = await _folderService.CreateFolderAsync(request, userId);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(result.Errors);
 
         return Ok(ApiResponse<object>.Success(result.Data, "Folder created successfully"));
     }
@@ -52,7 +51,7 @@ public class FolderController : ControllerBase
         var result = await _folderService.RenameFolderAsync(folderId, request.NewName, userId);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(result.Errors);
 
         return Ok(ApiResponse<object>.SuccessMessage("Folder renamed successfully"));
     }
@@ -67,7 +66,7 @@ public class FolderController : ControllerBase
         var result = await _folderService.DeleteFolderAsync(folderId, userId);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(result.Errors);
 
         return Ok(ApiResponse<object>.SuccessMessage("Folder deleted successfully"));
     }
@@ -82,7 +81,7 @@ public class FolderController : ControllerBase
         var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(result.Errors);
 
         return Ok(ApiResponse<object>.SuccessMessage("Folder moved successfully"));
     }
@@ -99,7 +98,7 @@ public class FolderController : ControllerBase
             await _folderService.GetFolderContentsAsync(crateId, parentFolderId, userId, search, page, pageSize);
 
         if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(result.Errors);
 
         return Ok(ApiResponse<object>.Success(result.Data, "Folder contents retrieved successfully"));
     }
