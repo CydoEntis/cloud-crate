@@ -64,6 +64,9 @@ public static class Errors
     public static Error EmailSendException(string details) =>
         new("ERR_EMAIL_SEND_EXCEPTION", $"Error sending email: {details}");
 
+    public static readonly Error OwnerRoleRemovalNotAllowed =
+        new("ERR_OWNER_ROLE_REMOVAL_NOT_ALLOWED", "Owners cannot remove their own owner role.");
+    
     public static Error Unexpected(string message) =>
         new("ERR_UNEXPECTED", message);
 
