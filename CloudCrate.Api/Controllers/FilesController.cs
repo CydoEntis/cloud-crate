@@ -7,6 +7,8 @@ using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using CloudCrate.Application.Common.Errors;
+using System.Collections.Generic;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -35,11 +37,12 @@ public class FilesController : ControllerBase
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to upload files."));
 
         if (request.File == null || request.File.Length == 0)
-            return BadRequest(ApiResponse<string>.Error("No file uploaded"));
+            return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error>
+                { Errors.ValidationFailed with { Message = "No file uploaded." } }));
 
         await using var stream = request.File.OpenReadStream();
 
-        var uploadRequest = new Application.DTOs.File.FileUploadRequest
+        var uploadRequest = new FileUploadRequest
         {
             CrateId = crateId,
             FolderId = request.FolderId,
@@ -51,9 +54,10 @@ public class FilesController : ControllerBase
 
         var result = await _fileService.UploadFileAsync(uploadRequest, user.Id);
 
-        return result.Succeeded
-            ? Ok(ApiResponse<object>.Success(result.Data, "File uploaded successfully"))
-            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
+        if (result.Succeeded)
+            return Ok(ApiResponse<FileObjectResponse>.Success(result.Data, "File uploaded successfully"));
+
+        return ApiResponseHelper.FromErrors<string>(result.Errors);
     }
 
     [HttpGet("{fileId}")]
@@ -65,11 +69,11 @@ public class FilesController : ControllerBase
 
         var fileResult = await _fileService.GetFileByIdAsync(fileId, user.Id);
         if (!fileResult.Succeeded)
-            return NotFound(ApiResponse<string>.Error(fileResult.Errors[0].Message, 404));
+            return ApiResponseHelper.FromErrors<string>(fileResult.Errors);
 
         var contentResult = await _fileService.DownloadFileAsync(fileId, user.Id);
         if (!contentResult.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(contentResult.Errors[0].Message));
+            return ApiResponseHelper.FromErrors<string>(contentResult.Errors);
 
         var file = fileResult.Data!;
         return File(contentResult.Data!, file.MimeType, file.Name);
@@ -86,9 +90,10 @@ public class FilesController : ControllerBase
             ? await _fileService.GetFilesInCrateRootAsync(crateId, user.Id)
             : await _fileService.GetFilesInFolderAsync(crateId, folderId.Value, user.Id);
 
-        return result.Succeeded
-            ? Ok(ApiResponse<object>.Success(result.Data, "Files retrieved successfully"))
-            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
+        if (result.Succeeded)
+            return Ok(ApiResponse<List<FileObjectResponse>>.Success(result.Data, "Files retrieved successfully"));
+
+        return ApiResponseHelper.FromErrors<string>(result.Errors);
     }
 
     [HttpDelete("{fileId}")]
@@ -100,9 +105,10 @@ public class FilesController : ControllerBase
 
         var result = await _fileService.DeleteFileAsync(fileId, user.Id);
 
-        return result.Succeeded
-            ? Ok(ApiResponse<object>.SuccessMessage("File deleted successfully"))
-            : BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
+        if (result.Succeeded)
+            return Ok(ApiResponse<object>.SuccessMessage("File deleted successfully"));
+
+        return ApiResponseHelper.FromErrors<string>(result.Errors);
     }
 
     [HttpPut("{fileId:guid}/move")]
@@ -114,9 +120,9 @@ public class FilesController : ControllerBase
 
         var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, userId);
 
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error(result.Errors[0].Message));
+        if (result.Succeeded)
+            return Ok(ApiResponse<object>.SuccessMessage("File moved successfully"));
 
-        return Ok(ApiResponse<object>.SuccessMessage("File moved successfully"));
+        return ApiResponseHelper.FromErrors<string>(result.Errors);
     }
 }
