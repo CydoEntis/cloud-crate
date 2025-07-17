@@ -1,5 +1,4 @@
-﻿using System.Security.Claims;
-using CloudCrate.Api.Common.Extensions;
+﻿using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Folder;

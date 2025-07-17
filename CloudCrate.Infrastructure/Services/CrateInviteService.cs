@@ -52,13 +52,12 @@ public class CrateInviteService : ICrateInviteService
         var emailResult = await _emailService.SendEmailAsync(
             invitedEmail,
             $"You have been invited to join the crate {model.CrateName} on CloudCrate!",
-            "InviteUser", // Template name without extension
+            "InviteEmail", 
             model
         );
 
         if (!emailResult.Succeeded)
         {
-            // Depending on business logic, rollback invite or just return failure
             return Result<CrateInvite>.Failure(emailResult.Errors);
         }
 

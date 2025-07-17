@@ -14,7 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using Amazon.S3;
-using Microsoft.Extensions.Options;
 using RazorLight;
 using Resend;
 using Scalar.AspNetCore;
@@ -54,7 +53,8 @@ builder.Services.AddTransient<IResend, ResendClient>();
 // Setup RazorLightEngine
 builder.Services.AddSingleton(sp =>
     new RazorLightEngineBuilder()
-        .UseFileSystemProject(Path.Combine(Directory.GetCurrentDirectory(), "EmailTemplates"))
+        .UseFileSystemProject(Path.Combine(Directory.GetCurrentDirectory(), "..", "CloudCrate.Infrastructure",
+            "EmailTemplates"))
         .UseMemoryCachingProvider()
         .Build());
 
@@ -112,8 +112,10 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<ICrateUserRoleService, CrateUserRolesService>();
+builder.Services.AddScoped<ICrateInviteService, CrateInviteService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
+builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
 
 
 // Registering Minio Storage
