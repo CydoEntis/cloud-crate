@@ -14,5 +14,22 @@ public class FileObject
     public Folder? Folder { get; set; }
 
 
-    public Guid? CategoryId { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public static FileObject Create(string name, long sizeInBytes, string mimeType, Guid crateId, Guid? folderId = null,
+        Guid? categoryId = null)
+    {
+        return new FileObject
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            SizeInBytes = sizeInBytes,
+            MimeType = mimeType,
+            CrateId = crateId,
+            FolderId = folderId,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+    }
 }

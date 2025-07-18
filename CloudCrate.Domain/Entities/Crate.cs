@@ -12,6 +12,10 @@ public class Crate
 
     public ICollection<CrateUserRole> Permissions { get; set; }
 
+    protected Crate()
+    {
+    }
+
     public static Crate Create(string name, string userId, string? color = null)
     {
         return new Crate
@@ -19,10 +23,20 @@ public class Crate
             Id = Guid.NewGuid(),
             Name = name,
             UserId = userId,
-            Color = color ?? "#4B9CED", 
+            Color = color ?? "#4B9CED",
             Folders = new List<Folder>(),
             Files = new List<FileObject>(),
             Permissions = new List<CrateUserRole>()
         };
+    }
+
+    public void Rename(string newName)
+    {
+        Name = newName;
+    }
+
+    public void SetColor(string newColor)
+    {
+        Color = newColor;
     }
 }

@@ -50,7 +50,7 @@ public class CrateUserRolesService : ICrateUserRoleService
         var permission = await GetUserRoleAsync(crateId, userId);
         return permission is not null && CrateRolePermissions.CanManagePermissions(permission.Role);
     }
-    
+
     public async Task AssignRoleAsync(Guid crateId, string userId, CrateRole role)
     {
         var permission = await _context.CrateUserRoles
@@ -58,12 +58,7 @@ public class CrateUserRolesService : ICrateUserRoleService
 
         if (permission == null)
         {
-            permission = new CrateUserRole
-            {
-                CrateId = crateId,
-                UserId = userId,
-                Role = role
-            };
+            permission = CrateUserRole.Create(crateId, userId, role);
             _context.CrateUserRoles.Add(permission);
         }
         else
@@ -74,5 +69,4 @@ public class CrateUserRolesService : ICrateUserRoleService
 
         await _context.SaveChangesAsync();
     }
-
 }

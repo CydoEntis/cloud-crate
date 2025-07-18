@@ -53,7 +53,6 @@ public class FileService : IFileService
                 SizeInBytes = f.SizeInBytes,
                 CrateId = f.CrateId,
                 FolderId = f.FolderId,
-                CategoryId = f.CategoryId
             })
             .ToListAsync();
 
@@ -81,7 +80,6 @@ public class FileService : IFileService
                 SizeInBytes = f.SizeInBytes,
                 CrateId = f.CrateId,
                 FolderId = f.FolderId,
-                CategoryId = f.CategoryId
             })
             .ToListAsync();
 
@@ -139,7 +137,6 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
-            CategoryId = file.CategoryId
         };
 
         return Result<FileObjectResponse>.Success(response);
@@ -206,7 +203,6 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
-            CategoryId = file.CategoryId
         };
 
         return Result<FileObjectResponse>.Success(response);

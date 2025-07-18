@@ -34,14 +34,12 @@ public class FolderService : IFolderService
                 return Result<FolderResponse>.Failure(Errors.FolderNotFound);
         }
 
-        var folder = new Folder
-        {
-            Id = Guid.NewGuid(),
-            Name = request.Name,
-            CrateId = request.CrateId,
-            ParentFolderId = request.ParentFolderId,
-            Color = request.Color,
-        };
+        var folder = Folder.Create(
+            request.Name,
+            request.CrateId,
+            request.ParentFolderId,
+            request.Color
+        );
 
         _context.Folders.Add(folder);
         await _context.SaveChangesAsync();

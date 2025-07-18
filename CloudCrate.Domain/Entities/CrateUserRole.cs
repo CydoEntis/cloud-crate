@@ -13,4 +13,17 @@ public class CrateUserRole
     public CrateRole Role { get; set; }
 
     public DateTime CreatedAt { get; set; }
+
+
+    public static CrateUserRole Create(Guid crateId, string userId, CrateRole role)
+    {
+        return new CrateUserRole
+        {
+            Id = Guid.NewGuid(),
+            CrateId = crateId,
+            UserId = userId,
+            Role = role,
+            CreatedAt = DateTime.UtcNow
+        };
+    }
 }
