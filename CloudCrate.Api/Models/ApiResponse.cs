@@ -5,16 +5,16 @@ namespace CloudCrate.Api.Models
 {
     public class ApiResponse<T>
     {
-        public bool IsSuccess { get; set; }
-        public T? Data { get; set; }
-        public string? Message { get; set; }
-        public int StatusCode { get; set; }
-        public List<Error>? Errors { get; set; }
+        public bool IsSuccess { get; init; }
+        public T? Value { get; init; }
+        public string? Message { get; init; }
+        public int StatusCode { get; init; }
+        public List<Error>? Errors { get; init; }
 
-        public ApiResponse(bool isSuccess, T? data, string? message, int statusCode, List<Error>? errors = null)
+        public ApiResponse(bool isSuccess, T? value, string? message, int statusCode, List<Error>? errors = null)
         {
             IsSuccess = isSuccess;
-            Data = data;
+            Value = value;
             Message = message;
             StatusCode = statusCode;
             Errors = errors;
