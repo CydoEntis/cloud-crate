@@ -18,10 +18,10 @@ public class Result
 
 public class Result<T> : Result
 {
-    public T? Data { get; set; }
+    public T? Value { get; set; }
 
-    public static Result<T> Success(T data) =>
-        new Result<T> { Succeeded = true, Data = data };
+    public static Result<T> Success(T value) =>
+        new Result<T> { Succeeded = true, Value = value };
 
     public new static Result<T> Failure(Error error) =>
         new Result<T> { Succeeded = false, Errors = new List<Error> { error } };
