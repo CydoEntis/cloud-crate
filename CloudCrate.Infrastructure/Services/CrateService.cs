@@ -21,7 +21,10 @@ public class CrateService : ICrateService
     private readonly IStorageService _storageService;
     private readonly ICrateUserRoleService _crateUserRoleService;
 
-    public CrateService(IAppDbContext context, UserManager<ApplicationUser> userManager, IStorageService storageService,
+    public CrateService(
+        IAppDbContext context,
+        UserManager<ApplicationUser> userManager,
+        IStorageService storageService,
         ICrateUserRoleService crateUserRoleService)
     {
         _context = context;
@@ -30,181 +33,271 @@ public class CrateService : ICrateService
         _crateUserRoleService = crateUserRoleService;
     }
 
-    public async Task<bool> CanCreateCrateAsync(string userId)
+    public async Task<Result<bool>> CanCreateCrateAsync(string userId)
     {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null) return false;
+        try
+        {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Result<bool>.Failure(Errors.User.NotFound);
 
-        var crateCount = await _context.Crates.CountAsync(c => c.UserId == userId);
+            var crateCount = await _context.Crates.CountAsync(c => c.UserId == userId);
+            var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
 
-        var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
-
-        return crateCount < crateLimit;
+            return Result<bool>.Success(crateCount < crateLimit);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
-    public async Task<int> GetCrateCountAsync(string userId)
+    public async Task<Result<int>> GetCrateCountAsync(string userId)
     {
-        return await _context.Crates.CountAsync(c => c.UserId == userId);
+        try
+        {
+            var count = await _context.Crates.CountAsync(c => c.UserId == userId);
+            return Result<int>.Success(count);
+        }
+        catch (Exception ex)
+        {
+            return Result<int>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
-    public async Task<long> GetTotalUsedStorageAsync(string userId)
+    public async Task<Result<long>> GetTotalUsedStorageAsync(string userId)
     {
-        return await _context.FileObjects
-            .Where(f => f.Crate.UserId == userId)
-            .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+        try
+        {
+            var totalBytes = await _context.FileObjects
+                .Where(f => f.Crate.UserId == userId)
+                .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+
+            return Result<long>.Success(totalBytes);
+        }
+        catch (Exception ex)
+        {
+            return Result<long>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
     public async Task<Result<Crate>> CreateCrateAsync(string userId, string name, string color)
     {
-        var canCreate = await CanCreateCrateAsync(userId);
-        if (!canCreate)
+        var canCreateResult = await CanCreateCrateAsync(userId);
+        if (!canCreateResult.Succeeded)
+            return Result<Crate>.Failure(canCreateResult.Errors);
+
+        if (!canCreateResult.Value)
+            return Result<Crate>.Failure(Errors.Crates.LimitReached);
+
+        try
         {
-            return Result<Crate>.Failure(Errors.CrateLimitReached);
+            var crate = Crate.Create(name, userId, color);
+
+            _context.Crates.Add(crate);
+            await _context.SaveChangesAsync();
+
+            var assignRoleResult = await _crateUserRoleService.AssignRoleAsync(crate.Id, userId, CrateRole.Owner);
+            if (!assignRoleResult.Succeeded)
+                return Result<Crate>.Failure(assignRoleResult.Errors);
+
+            return Result<Crate>.Success(crate);
         }
-
-        var crate = Crate.Create(name, userId, color);
-
-        _context.Crates.Add(crate);
-        await _context.SaveChangesAsync();
-
-        await _crateUserRoleService.AssignRoleAsync(crate.Id, userId, CrateRole.Owner);
-
-        return Result<Crate>.Success(crate);
+        catch (Exception ex)
+        {
+            return Result<Crate>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
     public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
         string? newColor)
     {
-        if (!await _crateUserRoleService.IsOwnerAsync(crateId, userId))
-            return Result<CrateResponse>.Failure(Errors.Unauthorized);
+        var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
+        if (!isOwnerResult.Succeeded)
+            return Result<CrateResponse>.Failure(isOwnerResult.Errors);
+        if (!isOwnerResult.Value)
+            return Result<CrateResponse>.Failure(Errors.User.Unauthorized);
 
-
-        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
-        if (crate == null)
-            return Result<CrateResponse>.Failure(Errors.CrateNotFound);
-
-        if (!string.IsNullOrWhiteSpace(newName))
-            crate.Name = newName;
-
-        if (!string.IsNullOrWhiteSpace(newColor))
-            crate.Color = newColor;
-
-        await _context.SaveChangesAsync();
-
-
-        var dto = new CrateResponse
+        try
         {
-            Id = crateId,
-            Name = crate.Name,
-            Color = crate.Color,
-        };
-        return Result<CrateResponse>.Success(dto);
-    }
+            var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
+            if (crate == null)
+                return Result<CrateResponse>.Failure(Errors.Crates.NotFound);
 
+            if (!string.IsNullOrWhiteSpace(newName))
+                crate.Name = newName;
+
+            if (!string.IsNullOrWhiteSpace(newColor))
+                crate.Color = newColor;
+
+            await _context.SaveChangesAsync();
+
+            var dto = new CrateResponse
+            {
+                Id = crateId,
+                Name = crate.Name,
+                Color = crate.Color,
+            };
+            return Result<CrateResponse>.Success(dto);
+        }
+        catch (Exception ex)
+        {
+            return Result<CrateResponse>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
-        if (!await _crateUserRoleService.IsOwnerAsync(crateId, userId))
-            return Result<CrateResponse>.Failure(Errors.Unauthorized);
-
+        var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
+        if (!isOwnerResult.Succeeded)
+            return Result.Failure(isOwnerResult.Errors);
+        if (!isOwnerResult.Value)
+            return Result.Failure(Errors.User.Unauthorized);
 
         using var transaction = await _context.Database.BeginTransactionAsync();
 
-        var crate = await _context.Crates
-            .Include(c => c.Files)
-            .Include(c => c.Folders)
-            .ThenInclude(f => f.Files)
-            .Include(c => c.Folders)
-            .ThenInclude(f => f.Subfolders)
-            .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
-
-        if (crate == null)
-            return Result.Failure(Errors.CrateNotFound);
-
-        var bucketName = $"crate-{crate.Id}".ToLowerInvariant();
-        var keysToDelete = new List<string>();
-
-        foreach (var file in crate.Files)
+        try
         {
-            var key = userId.GetObjectKey(crateId, null, file.Name);
-            keysToDelete.Add(key);
-            _context.FileObjects.Remove(file);
+            var crate = await _context.Crates
+                .Include(c => c.Files)
+                .Include(c => c.Folders)
+                .ThenInclude(f => f.Files)
+                .Include(c => c.Folders)
+                .ThenInclude(f => f.Subfolders)
+                .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
+
+            if (crate == null)
+                return Result.Failure(Errors.Crates.NotFound);
+
+            var bucketName = $"crate-{crate.Id}".ToLowerInvariant();
+            var keysToDelete = new List<string>();
+
+            foreach (var file in crate.Files)
+            {
+                var key = userId.GetObjectKey(crateId, null, file.Name);
+                keysToDelete.Add(key);
+                _context.FileObjects.Remove(file);
+            }
+
+            foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
+            {
+                await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
+            }
+
+            _context.Folders.RemoveRange(crate.Folders);
+            _context.Crates.Remove(crate);
+
+            var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
+            if (!deleteResult.Succeeded)
+            {
+                await transaction.RollbackAsync();
+                return deleteResult;
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Result.Success();
         }
-
-        foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
-        {
-            await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
-        }
-
-        _context.Folders.RemoveRange(crate.Folders);
-
-        _context.Crates.Remove(crate);
-
-        var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
-        if (!deleteResult.Succeeded)
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return deleteResult;
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
         }
-
-        await _context.SaveChangesAsync();
-        await transaction.CommitAsync();
-
-        return Result.Success();
     }
 
-    public async Task<List<Crate>> GetCratesAsync(string userId)
+    public async Task<Result<List<Crate>>> GetCratesAsync(string userId)
     {
-        return await _context.Crates
-            .Where(c => c.UserId == userId)
-            .ToListAsync();
+        try
+        {
+            var crates = await _context.Crates
+                .Where(c => c.UserId == userId)
+                .ToListAsync();
+
+            return Result<List<Crate>>.Success(crates);
+        }
+        catch (Exception ex)
+        {
+            return Result<List<Crate>>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
-        var crate = await _context.Crates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
-
-        if (crate == null)
-            return Result<CrateDetailsResponse>.Failure(Errors.CrateNotFound);
-
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user == null)
-            return Result<CrateDetailsResponse>.Failure(Errors.UserNotFound);
-
-        var files = await _context.FileObjects
-            .Where(f => f.CrateId == crateId)
-            .ToListAsync();
-
-        var totalBytes = files.Sum(f => f.SizeInBytes);
-        var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
-
-        var breakdownMap = new Dictionary<string, double>();
-        foreach (var group in files.GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
+        try
         {
-            var groupBytes = group.Sum(f => f.SizeInBytes);
-            var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2);
-            breakdownMap[group.Key] = groupSizeMb;
+            var crate = await _context.Crates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == crateId && c.UserId == userId);
+
+            if (crate == null)
+                return Result<CrateDetailsResponse>.Failure(Errors.Crates.NotFound);
+
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user == null)
+                return Result<CrateDetailsResponse>.Failure(Errors.User.NotFound);
+
+            var files = await _context.FileObjects
+                .Where(f => f.CrateId == crateId)
+                .ToListAsync();
+
+            var totalBytes = files.Sum(f => f.SizeInBytes);
+            var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
+
+            var breakdownMap = new Dictionary<string, double>();
+            foreach (var group in files.GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
+            {
+                var groupBytes = group.Sum(f => f.SizeInBytes);
+                var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2);
+                breakdownMap[group.Key] = groupSizeMb;
+            }
+
+            var usageDto = new CrateDetailsResponse
+            {
+                Id = crate.Id,
+                Name = crate.Name,
+                Color = crate.Color,
+                TotalUsedStorage = totalUsedMb,
+                StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
+                BreakdownByType = breakdownMap
+                    .Select(pair => new FileTypeBreakdownDto
+                    {
+                        Type = pair.Key,
+                        SizeMb = pair.Value
+                    })
+                    .ToList()
+            };
+
+            return Result<CrateDetailsResponse>.Success(usageDto);
         }
-
-        var usageDto = new CrateDetailsResponse
+        catch (Exception ex)
         {
-            Id = crate.Id,
-            Name = crate.Name,
-            Color = crate.Color,
-            TotalUsedStorage = totalUsedMb,
-            StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
-            BreakdownByType = breakdownMap
-                .Select(pair => new FileTypeBreakdownDto
-                {
-                    Type = pair.Key,
-                    SizeMb = pair.Value
-                })
-                .ToList()
-        };
-
-        return Result<CrateDetailsResponse>.Success(usageDto);
+            return Result<CrateDetailsResponse>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 
     private async Task CollectFolderDeletionsAsync(Folder folder, Guid crateId, string userId,
@@ -217,7 +310,7 @@ public class CrateService : ICrateService
             _context.FileObjects.Remove(file);
         }
 
-        var subfolders = folder.Subfolders?.ToList() ?? new();
+        var subfolders = folder.Subfolders?.ToList() ?? new List<Folder>();
         foreach (var subfolder in subfolders)
         {
             await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);

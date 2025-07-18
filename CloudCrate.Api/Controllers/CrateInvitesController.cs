@@ -46,7 +46,7 @@ namespace CloudCrate.Api.Controllers
             var result = await _inviteService.GetInviteByTokenAsync(token);
 
             if (result.Succeeded)
-                return Ok(ApiResponse<CrateInvite?>.Success(result.Data));
+                return Ok(ApiResponse<CrateInvite?>.Success(result.Value));
 
             return NotFound(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
         }

@@ -3,6 +3,10 @@ using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using Microsoft.Extensions.Options;
 using CloudCrate.Application.Common.Settings;
+using System.IO;
+using System.Threading.Tasks;
+using System;
+using System.Collections.Generic;
 
 public class LocalStorageService : IStorageService
 {
@@ -37,9 +41,9 @@ public class LocalStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FolderCreationFailed with
+            return Result.Failure(Errors.Folders.CreationFailed with
             {
-                Message = $"{Errors.FolderCreationFailed.Message} ({ex.Message})"
+                Message = $"{Errors.Folders.CreationFailed.Message} ({ex.Message})"
             });
         }
     }
@@ -61,9 +65,9 @@ public class LocalStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileSaveFailed with
+            return Result.Failure(Errors.Files.SaveFailed with
             {
-                Message = $"{Errors.FileSaveFailed.Message} ({ex.Message})"
+                Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
             });
         }
     }
@@ -75,16 +79,16 @@ public class LocalStorageService : IStorageService
             var filePath = GetFilePath(userId, crateId, folderId, fileName);
 
             if (!File.Exists(filePath))
-                return Result<byte[]>.Failure(Errors.FileNotFound);
+                return Result<byte[]>.Failure(Errors.Files.NotFound);
 
             var bytes = await File.ReadAllBytesAsync(filePath);
             return Result<byte[]>.Success(bytes);
         }
         catch (Exception ex)
         {
-            return Result<byte[]>.Failure(Errors.FileReadFailed with
+            return Result<byte[]>.Failure(Errors.Files.ReadFailed with
             {
-                Message = $"{Errors.FileReadFailed.Message} ({ex.Message})"
+                Message = $"{Errors.Files.ReadFailed.Message} ({ex.Message})"
             });
         }
     }
@@ -102,9 +106,9 @@ public class LocalStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileDeleteFailed with
+            return Result.Failure(Errors.Files.DeleteFailed with
             {
-                Message = $"{Errors.FileDeleteFailed.Message} ({ex.Message})"
+                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
             });
         }
     }
@@ -132,9 +136,9 @@ public class LocalStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileDeleteFailed with
+            return Result.Failure(Errors.Files.DeleteFailed with
             {
-                Message = $"{Errors.FileDeleteFailed.Message} ({ex.Message})"
+                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
             });
         }
     }

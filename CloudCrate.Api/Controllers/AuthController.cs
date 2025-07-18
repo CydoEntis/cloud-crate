@@ -38,7 +38,7 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return Unauthorized(ApiResponse<object>.Unauthorized("Invalid credentials"));
 
-        return Ok(ApiResponse<object>.Success(new { accessToken = result.Data }, "Login successful"));
+        return Ok(ApiResponse<object>.Success(new { accessToken = result.Value }, "Login successful"));
     }
 
     [Authorize]
@@ -55,6 +55,6 @@ public class AuthController : ControllerBase
         if (!result.Succeeded)
             return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
 
-        return Ok(ApiResponse<object>.Success(result.Data!, "User retrieved successfully"));
+        return Ok(ApiResponse<object>.Success(result.Value!, "User retrieved successfully"));
     }
 }

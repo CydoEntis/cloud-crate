@@ -48,16 +48,16 @@ public class CrateInviteService : ICrateInviteService
             model: emailModel
         );
 
+        // emailResult.Errors is probably List<Error> or similar, just forward it directly
         return !emailResult.Succeeded ? Result.Failure(emailResult.Errors) : Result.Success();
     }
-
 
     public async Task<Result<CrateInvite?>> GetInviteByTokenAsync(string token)
     {
         var invite = await _context.CrateInvites.FirstOrDefaultAsync(i => i.Token == token);
 
         if (invite == null)
-            return Result<CrateInvite?>.Failure(Errors.InviteNotFound);
+            return Result<CrateInvite?>.Failure(Errors.Invites.NotFound);
 
         return Result<CrateInvite?>.Success(invite);
     }
@@ -66,13 +66,13 @@ public class CrateInviteService : ICrateInviteService
     {
         var inviteResult = await GetInviteByTokenAsync(token);
 
-        if (!inviteResult.Succeeded || inviteResult.Data == null)
-            return Result.Failure(Errors.InviteNotFound);
+        if (!inviteResult.Succeeded || inviteResult.Value == null)
+            return Result.Failure(Errors.Invites.NotFound);
 
-        var invite = inviteResult.Data;
+        var invite = inviteResult.Value;
 
         if (invite.Status != InviteStatus.Pending)
-            return Result.Failure(Errors.InviteInvalid);
+            return Result.Failure(Errors.Invites.Invalid);
 
         invite.Status = InviteStatus.Accepted;
 
@@ -87,13 +87,13 @@ public class CrateInviteService : ICrateInviteService
     {
         var inviteResult = await GetInviteByTokenAsync(token);
 
-        if (!inviteResult.Succeeded || inviteResult.Data == null)
-            return Result.Failure(Errors.InviteNotFound);
+        if (!inviteResult.Succeeded || inviteResult.Value == null)
+            return Result.Failure(Errors.Invites.NotFound);
 
-        var invite = inviteResult.Data;
+        var invite = inviteResult.Value;
 
         if (invite.Status != InviteStatus.Pending)
-            return Result.Failure(Errors.InviteInvalid);
+            return Result.Failure(Errors.Invites.Invalid);
 
         invite.Status = InviteStatus.Declined;
         await _context.SaveChangesAsync();

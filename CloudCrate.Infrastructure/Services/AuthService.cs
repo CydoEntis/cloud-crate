@@ -1,6 +1,7 @@
 ﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Auth;
@@ -16,7 +17,9 @@ public class AuthService : IAuthService
     private readonly IJwtTokenService _jwtTokenService;
     private readonly ICrateService _crateService;
 
-    public AuthService(UserManager<ApplicationUser> userManager, IJwtTokenService jwtTokenService,
+    public AuthService(
+        UserManager<ApplicationUser> userManager,
+        IJwtTokenService jwtTokenService,
         ICrateService crateService)
     {
         _userManager = userManager;
@@ -32,9 +35,7 @@ public class AuthService : IAuthService
         if (!result.Succeeded)
         {
             var errors = result.Errors
-                .Select(e => new Error(
-                    Code: MapIdentityErrorCodeToErrorCode(e.Code),
-                    Message: e.Description))
+                .Select(e => IdentityErrorMapper.Map(e.Code, e.Description))
                 .ToList();
 
             return Result.Failure(errors);
@@ -48,12 +49,7 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(email);
         if (user == null || !await _userManager.CheckPasswordAsync(user, password))
         {
-            var errors = new List<Error>
-            {
-                new Error("ERR_INVALID_CREDENTIALS", "Invalid credentials")
-            };
-
-            return Result<string>.Failure(errors);
+            return Result<string>.Failure(Errors.User.Unauthorized.WithMessage("Invalid credentials"));
         }
 
         var accessToken = _jwtTokenService.GenerateToken(new UserTokenInfo
@@ -70,10 +66,15 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByIdAsync(userId);
 
         if (user == null)
-            return Result<UserResponse>.Failure(Errors.UserNotFound);
+            return Result<UserResponse>.Failure(Errors.User.NotFound);
 
-        var crateCount = await _crateService.GetCrateCountAsync(userId);
-        var usedStorage = await _crateService.GetTotalUsedStorageAsync(userId);
+        var crateCountResult = await _crateService.GetCrateCountAsync(userId);
+        if (!crateCountResult.Succeeded)
+            return Result<UserResponse>.Failure(crateCountResult.Errors);
+
+        var usedStorageResult = await _crateService.GetTotalUsedStorageAsync(userId);
+        if (!usedStorageResult.Succeeded)
+            return Result<UserResponse>.Failure(usedStorageResult.Errors);
 
         var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
 
@@ -82,28 +83,11 @@ public class AuthService : IAuthService
             Id = user.Id,
             Email = user.Email!,
             CrateLimit = crateLimit,
-            UsedStorage = usedStorage,
-            CrateCount = crateCount,
+            UsedStorage = usedStorageResult.Value,
+            CrateCount = crateCountResult.Value,
             Plan = user.Plan,
         };
 
         return Result<UserResponse>.Success(response);
-    }
-
-
-    private string MapIdentityErrorCodeToErrorCode(string code)
-    {
-        return code switch
-        {
-            "DuplicateUserName" => "ERR_DUPLICATE_USERNAME",
-            "InvalidEmail" => "ERR_INVALID_EMAIL",
-            "DuplicateEmail" => "ERR_DUPLICATE_EMAIL",
-            "PasswordTooShort" => "ERR_PASSWORD_TOO_SHORT",
-            "PasswordRequiresNonAlphanumeric" => "ERR_PASSWORD_REQUIRES_NON_ALPHANUMERIC",
-            "PasswordRequiresDigit" => "ERR_PASSWORD_REQUIRES_DIGIT",
-            "PasswordRequiresUpper" => "ERR_PASSWORD_REQUIRES_UPPER",
-            "PasswordRequiresLower" => "ERR_PASSWORD_REQUIRES_LOWER",
-            _ => "ERR_GENERAL"
-        };
     }
 }

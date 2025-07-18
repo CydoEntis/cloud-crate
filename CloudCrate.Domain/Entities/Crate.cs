@@ -5,13 +5,10 @@ public class Crate
     public Guid Id { get; set; }
     public string Name { get; set; }
     public string UserId { get; set; }
-
     public string Color { get; set; }
     public ICollection<Folder> Folders { get; set; }
     public ICollection<FileObject> Files { get; set; }
-
     public ICollection<CrateUserRole> Permissions { get; set; }
-
     protected Crate()
     {
     }

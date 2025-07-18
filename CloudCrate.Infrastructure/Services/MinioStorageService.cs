@@ -5,7 +5,6 @@ using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 
-
 namespace CloudCrate.Infrastructure.Services;
 
 public class MinioStorageService : IStorageService
@@ -52,7 +51,10 @@ public class MinioStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileSaveFailed with { Message = ex.Message });
+            return Result.Failure(Errors.Files.SaveFailed with
+            {
+                Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
+            });
         }
     }
 
@@ -70,11 +72,14 @@ public class MinioStorageService : IStorageService
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            return Result<byte[]>.Failure(Errors.FileNotFound);
+            return Result<byte[]>.Failure(Errors.Files.NotFound);
         }
         catch (Exception ex)
         {
-            return Result<byte[]>.Failure(Errors.FileReadFailed with { Message = ex.Message });
+            return Result<byte[]>.Failure(Errors.Files.ReadFailed with
+            {
+                Message = $"{Errors.Files.ReadFailed.Message} ({ex.Message})"
+            });
         }
     }
 
@@ -90,17 +95,22 @@ public class MinioStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileDeleteFailed with { Message = ex.Message });
+            return Result.Failure(Errors.Files.DeleteFailed with
+            {
+                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
+            });
         }
     }
 
     public bool FileExists(string userId, Guid crateId, Guid? folderId, string fileName)
     {
+        // Optional: Implement if needed. For now, just return true as placeholder.
         return true;
     }
 
     public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
     {
+        // S3-compatible storage doesn't require directory creation, so success by default.
         return Result.Success();
     }
 
@@ -119,14 +129,20 @@ public class MinioStorageService : IStorageService
             if (response.DeleteErrors.Any())
             {
                 var errorMessages = string.Join("; ", response.DeleteErrors.Select(e => $"{e.Key}: {e.Message}"));
-                return Result.Failure(Errors.FileDeleteFailed with { Message = errorMessages });
+                return Result.Failure(Errors.Files.DeleteFailed with
+                {
+                    Message = $"{Errors.Files.DeleteFailed.Message}: {errorMessages}"
+                });
             }
 
             return Result.Success();
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.FileDeleteFailed with { Message = ex.Message });
+            return Result.Failure(Errors.Files.DeleteFailed with
+            {
+                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
+            });
         }
     }
 }

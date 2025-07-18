@@ -67,7 +67,7 @@ public class FileService : IFileService
 
         if (folder == null)
         {
-            return Result<List<FileObjectResponse>>.Failure(Errors.FolderNotFound);
+            return Result<List<FileObjectResponse>>.Failure(Errors.Folders.NotFound);
         }
 
         var files = await _context.FileObjects
@@ -92,7 +92,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.UserId == userId);
 
         if (crate == null)
-            return Result<FileObjectResponse>.Failure(Errors.CrateNotFound);
+            return Result<FileObjectResponse>.Failure(Errors.Crates.NotFound);
 
         if (request.FolderId.HasValue)
         {
@@ -100,7 +100,7 @@ public class FileService : IFileService
                 .FirstOrDefaultAsync(f => f.Id == request.FolderId && f.Crate.UserId == userId);
 
             if (folder == null)
-                return Result<FileObjectResponse>.Failure(Errors.FolderNotFound);
+                return Result<FileObjectResponse>.Failure(Errors.Folders.NotFound);
         }
 
         var fileId = Guid.NewGuid();
@@ -148,7 +148,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
 
         if (file == null)
-            return Result<byte[]>.Failure(Errors.FileNotFound);
+            return Result<byte[]>.Failure(Errors.Files.NotFound);
 
         var fileResult = await _storageService.ReadFileAsync(
             userId,
@@ -160,7 +160,7 @@ public class FileService : IFileService
         if (!fileResult.Succeeded)
             return Result<byte[]>.Failure(fileResult.Errors.First());
 
-        return Result<byte[]>.Success(fileResult.Data);
+        return Result<byte[]>.Success(fileResult.Value);
     }
 
     public async Task<Result> DeleteFileAsync(Guid fileId, string userId)
@@ -169,7 +169,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
 
         if (file == null)
-            return Result.Failure(Errors.FileNotFound);
+            return Result.Failure(Errors.Files.NotFound);
 
         var deleteResult = await _storageService.DeleteFileAsync(
             userId,
@@ -193,7 +193,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
 
         if (file == null)
-            return Result<FileObjectResponse>.Failure(Errors.FileNotFound);
+            return Result<FileObjectResponse>.Failure(Errors.Files.NotFound);
 
         var response = new FileObjectResponse
         {
@@ -215,7 +215,7 @@ public class FileService : IFileService
             .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
 
         if (file == null)
-            return Result.Failure(Errors.FileNotFound);
+            return Result.Failure(Errors.Files.NotFound);
 
         if (newParentId.HasValue)
         {
@@ -224,7 +224,7 @@ public class FileService : IFileService
                 .FirstOrDefaultAsync(f => f.Id == newParentId.Value && f.Crate.UserId == userId);
 
             if (newParentFolder == null)
-                return Result.Failure(Errors.FolderNotFound);
+                return Result.Failure(Errors.Folders.NotFound);
         }
 
         file.FolderId = newParentId;

@@ -34,7 +34,7 @@ public class FolderController : ControllerBase
         if (!result.Succeeded)
             return ApiResponseHelper.FromErrors<string>(result.Errors);
 
-        return Ok(ApiResponse<object>.Success(result.Data, "Folder created successfully"));
+        return Ok(ApiResponse<object>.Success(result.Value, "Folder created successfully"));
     }
 
     [HttpPut("{folderId:guid}/rename")]
@@ -99,6 +99,6 @@ public class FolderController : ControllerBase
         if (!result.Succeeded)
             return ApiResponseHelper.FromErrors<string>(result.Errors);
 
-        return Ok(ApiResponse<object>.Success(result.Data, "Folder contents retrieved successfully"));
+        return Ok(ApiResponse<object>.Success(result.Value, "Folder contents retrieved successfully"));
     }
 }

@@ -1,4 +1,6 @@
-﻿using CloudCrate.Application.Common.Interfaces;
+﻿using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Interfaces;
+using CloudCrate.Application.Common.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.Permissions;
@@ -15,58 +17,152 @@ public class CrateUserRolesService : ICrateUserRoleService
         _context = context;
     }
 
-    public async Task<CrateUserRole?> GetUserRoleAsync(Guid crateId, string userId)
+    public async Task<Result<CrateUserRole?>> GetUserRoleAsync(Guid crateId, string userId)
     {
-        return await _context.CrateUserRoles
-            .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
-    }
-
-    public async Task<bool> IsOwnerAsync(Guid crateId, string userId)
-    {
-        var permission = await GetUserRoleAsync(crateId, userId);
-        return permission?.Role == CrateRole.Owner;
-    }
-
-    public async Task<bool> CanUserUploadAsync(Guid crateId, string userId)
-    {
-        var permission = await GetUserRoleAsync(crateId, userId);
-        return permission is not null && CrateRolePermissions.CanUpload(permission.Role);
-    }
-
-    public async Task<bool> CanUserDownloadAsync(Guid crateId, string userId)
-    {
-        var permission = await GetUserRoleAsync(crateId, userId);
-        return permission is not null && CrateRolePermissions.CanDownload(permission.Role);
-    }
-
-    public async Task<bool> CanUserDeleteFileAsync(Guid crateId, string userId)
-    {
-        var permission = await GetUserRoleAsync(crateId, userId);
-        return permission is not null && CrateRolePermissions.CanDeleteFiles(permission.Role);
-    }
-
-    public async Task<bool> CanUserManagePermissionsAsync(Guid crateId, string userId)
-    {
-        var permission = await GetUserRoleAsync(crateId, userId);
-        return permission is not null && CrateRolePermissions.CanManagePermissions(permission.Role);
-    }
-
-    public async Task AssignRoleAsync(Guid crateId, string userId, CrateRole role)
-    {
-        var permission = await _context.CrateUserRoles
-            .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
-
-        if (permission == null)
+        try
         {
-            permission = CrateUserRole.Create(crateId, userId, role);
-            _context.CrateUserRoles.Add(permission);
-        }
-        else
-        {
-            permission.Role = role;
-            _context.CrateUserRoles.Update(permission);
-        }
+            var role = await _context.CrateUserRoles
+                .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
 
-        await _context.SaveChangesAsync();
+            return Result<CrateUserRole?>.Success(role);
+        }
+        catch (Exception ex)
+        {
+            return Result<CrateUserRole?>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result<bool>> IsOwnerAsync(Guid crateId, string userId)
+    {
+        try
+        {
+            var roleResult = await GetUserRoleAsync(crateId, userId);
+            if (!roleResult.Succeeded)
+                return Result<bool>.Failure(roleResult.Errors);
+
+            return Result<bool>.Success(roleResult.Value?.Role == CrateRole.Owner);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result<bool>> CanUserUploadAsync(Guid crateId, string userId)
+    {
+        try
+        {
+            var roleResult = await GetUserRoleAsync(crateId, userId);
+            if (!roleResult.Succeeded)
+                return Result<bool>.Failure(roleResult.Errors);
+
+            var canUpload = roleResult.Value is not null && CrateRolePermissions.CanUpload(roleResult.Value.Role);
+            return Result<bool>.Success(canUpload);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result<bool>> CanUserDownloadAsync(Guid crateId, string userId)
+    {
+        try
+        {
+            var roleResult = await GetUserRoleAsync(crateId, userId);
+            if (!roleResult.Succeeded)
+                return Result<bool>.Failure(roleResult.Errors);
+
+            var canDownload = roleResult.Value is not null && CrateRolePermissions.CanDownload(roleResult.Value.Role);
+            return Result<bool>.Success(canDownload);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result<bool>> CanUserDeleteFileAsync(Guid crateId, string userId)
+    {
+        try
+        {
+            var roleResult = await GetUserRoleAsync(crateId, userId);
+            if (!roleResult.Succeeded)
+                return Result<bool>.Failure(roleResult.Errors);
+
+            var canDelete = roleResult.Value is not null && CrateRolePermissions.CanDeleteFiles(roleResult.Value.Role);
+            return Result<bool>.Success(canDelete);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result<bool>> CanUserManagePermissionsAsync(Guid crateId, string userId)
+    {
+        try
+        {
+            var roleResult = await GetUserRoleAsync(crateId, userId);
+            if (!roleResult.Succeeded)
+                return Result<bool>.Failure(roleResult.Errors);
+
+            var canManage = roleResult.Value is not null &&
+                            CrateRolePermissions.CanManagePermissions(roleResult.Value.Role);
+            return Result<bool>.Success(canManage);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role)
+    {
+        try
+        {
+            var permission = await _context.CrateUserRoles
+                .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
+
+            if (permission == null)
+            {
+                permission = CrateUserRole.Create(crateId, userId, role);
+                _context.CrateUserRoles.Add(permission);
+            }
+            else
+            {
+                permission.Role = role;
+                _context.CrateUserRoles.Update(permission);
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 }

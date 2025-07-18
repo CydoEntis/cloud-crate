@@ -23,7 +23,7 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.UserId == userId);
 
         if (crate == null)
-            return Result<FolderResponse>.Failure(Errors.CrateNotFound);
+            return Result<FolderResponse>.Failure(Errors.Crates.NotFound);
 
         if (request.ParentFolderId.HasValue)
         {
@@ -31,7 +31,7 @@ public class FolderService : IFolderService
                 .FirstOrDefaultAsync(f => f.Id == request.ParentFolderId && f.Crate.UserId == userId);
 
             if (parent == null)
-                return Result<FolderResponse>.Failure(Errors.FolderNotFound);
+                return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
         }
 
         var folder = Folder.Create(
@@ -60,7 +60,7 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
 
         if (folder == null)
-            return Result.Failure(Errors.FolderNotFound);
+            return Result.Failure(Errors.Folders.NotFound);
 
         folder.Name = newName;
         await _context.SaveChangesAsync();
@@ -68,7 +68,6 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    // TODO: Potentially make it so when a folder is deleted, it deletes all the contents of that folder.
     public async Task<Result> DeleteFolderAsync(Guid folderId, string userId)
     {
         var folder = await _context.Folders
@@ -78,10 +77,10 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
 
         if (folder == null)
-            return Result.Failure(Errors.FolderNotFound);
+            return Result.Failure(Errors.Folders.NotFound);
 
         if (folder.Subfolders.Any() || folder.Files.Any())
-            return Result.Failure(Errors.FolderNotEmpty);
+            return Result.Failure(Errors.Folders.NotEmpty);
 
         _context.Folders.Remove(folder);
         await _context.SaveChangesAsync();
@@ -96,7 +95,7 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
 
         if (folder == null)
-            return Result.Failure(Errors.FolderNotFound);
+            return Result.Failure(Errors.Folders.NotFound);
 
         if (newParentId.HasValue)
         {
@@ -105,16 +104,16 @@ public class FolderService : IFolderService
                 .FirstOrDefaultAsync(f => f.Id == newParentId.Value && f.Crate.UserId == userId);
 
             if (newParent == null)
-                return Result.Failure(Errors.FolderNotFound);
+                return Result.Failure(Errors.Folders.NotFound);
 
             if (newParentId == folder.Id)
-                return Result.Failure(Errors.InvalidMove);
+                return Result.Failure(Errors.Folders.InvalidMove);
 
             Guid? currentParentId = newParentId;
             while (currentParentId != null)
             {
                 if (currentParentId == folder.Id)
-                    return Result.Failure(Errors.InvalidMove);
+                    return Result.Failure(Errors.Folders.InvalidMove);
 
                 currentParentId = await _context.Folders
                     .Where(f => f.Id == currentParentId)
@@ -142,7 +141,7 @@ public class FolderService : IFolderService
             .AnyAsync(c => c.Id == crateId && c.UserId == userId);
 
         if (!crateExists)
-            return Result<FolderContentsResponse>.Failure(Errors.CrateNotFound);
+            return Result<FolderContentsResponse>.Failure(Errors.Crates.NotFound);
 
         // Folders
         var foldersQuery = _context.Folders

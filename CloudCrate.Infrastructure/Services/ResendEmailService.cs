@@ -40,7 +40,10 @@ public class ResendEmailService : IEmailService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.EmailSendException(ex.Message));
+            return Result.Failure(Errors.Email.SendException(ex.Message) with
+            {
+                Message = $"{Errors.Email.SendFailed.Message} ({ex.Message})"
+            });
         }
     }
 }
