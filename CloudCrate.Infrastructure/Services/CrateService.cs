@@ -62,13 +62,7 @@ public class CrateService : ICrateService
             return Result<Crate>.Failure(Errors.CrateLimitReached);
         }
 
-        var crate = new Crate
-        {
-            Id = Guid.NewGuid(),
-            Name = name,
-            UserId = userId,
-            Color = color
-        };
+        var crate = Crate.Create(name, userId, color);
 
         _context.Crates.Add(crate);
         await _context.SaveChangesAsync();
