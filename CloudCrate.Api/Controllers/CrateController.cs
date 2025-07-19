@@ -91,4 +91,18 @@ public class CrateController : ControllerBase
 
         return result.ToActionResult(this, successMessage: "Crate retrieved successfully");
     }
+
+    [HttpGet("{crateId:guid}/members")]
+    public async Task<IActionResult> GetCrateMembers(
+        Guid crateId,
+        [FromQuery] CrateMemberRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+
+        var result = await _crateService.GetCrateMembersAsync(crateId, request);
+
+        return result.ToActionResult(this, successMessage: "Crate members retrieved successfully");
+    }
 }
