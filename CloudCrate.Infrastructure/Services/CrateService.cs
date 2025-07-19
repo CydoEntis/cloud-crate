@@ -91,14 +91,14 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<Crate>> CreateCrateAsync(string userId, string name, string color)
+    public async Task<Result<CrateResponse>> CreateCrateAsync(string userId, string name, string color)
     {
         var canCreateResult = await CanCreateCrateAsync(userId);
         if (!canCreateResult.Succeeded)
-            return Result<Crate>.Failure(canCreateResult.Errors);
+            return Result<CrateResponse>.Failure(canCreateResult.Errors);
 
         if (!canCreateResult.Value)
-            return Result<Crate>.Failure(Errors.Crates.LimitReached);
+            return Result<CrateResponse>.Failure(Errors.Crates.LimitReached);
 
         try
         {
@@ -109,18 +109,26 @@ public class CrateService : ICrateService
 
             var assignRoleResult = await _crateUserRoleService.AssignRoleAsync(crate.Id, userId, CrateRole.Owner);
             if (!assignRoleResult.Succeeded)
-                return Result<Crate>.Failure(assignRoleResult.Errors);
+                return Result<CrateResponse>.Failure(assignRoleResult.Errors);
 
-            return Result<Crate>.Success(crate);
+            var response = new CrateResponse
+            {
+                Id = crate.Id,
+                Name = crate.Name,
+                Color = crate.Color
+            };
+
+            return Result<CrateResponse>.Success(response);
         }
         catch (Exception ex)
         {
-            return Result<Crate>.Failure(Errors.Common.InternalServerError with
+            return Result<CrateResponse>.Failure(Errors.Common.InternalServerError with
             {
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
         }
     }
+
 
     public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
         string? newColor)
@@ -330,32 +338,58 @@ public class CrateService : ICrateService
     {
         try
         {
-            var users = _userManager.Users;
-            var roles = _context.CrateUserRoles.Where(r => r.CrateId == crateId);
+            // 1. Get all roles for the crate
+            var rolesQuery = _context.CrateUserRoles
+                .Where(r => r.CrateId == crateId);
 
-            var membersQuery = roles
-                .Join(users,
-                    role => role.UserId,
-                    user => user.Id,
-                    (role, user) => new CrateMemberResponse
-                    {
-                        UserId = user.Id,
-                        Email = user.Email,
-                        Role = role.Role
-                    });
+            var userIdsQuery = rolesQuery
+                .Select(r => r.UserId)
+                .Distinct();
+
+            // 2. Apply user email filtering if applicable
+            var usersQuery = _userManager.Users
+                .Where(u => userIdsQuery.Contains(u.Id));
 
             if (!string.IsNullOrWhiteSpace(request.Email))
             {
-                var loweredSearch = request.Email.Trim().ToLower();
-                membersQuery = membersQuery.Where(m => m.Email.ToLower().Contains(loweredSearch));
+                var lowered = request.Email.Trim().ToLower();
+                usersQuery = usersQuery.Where(u => u.Email.ToLower().Contains(lowered));
             }
 
-            var pagedMembers = await membersQuery
+            // 3. Get paginated users
+            var pagedUsers = await usersQuery
+                .OrderBy(u => u.Email) // Optional: deterministic pagination
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .ToListAsync();
 
-            return Result<List<CrateMemberResponse>>.Success(pagedMembers);
+            if (pagedUsers.Count == 0)
+            {
+                return Result<List<CrateMemberResponse>>.Success([]);
+            }
+
+            var userIds = pagedUsers.Select(u => u.Id).ToList();
+
+            // 4. Get only roles for paged users
+            var roles = await rolesQuery
+                .Where(r => userIds.Contains(r.UserId))
+                .ToListAsync();
+
+            // 5. Combine info
+            var result = pagedUsers
+                .Select(user =>
+                {
+                    var role = roles.FirstOrDefault(r => r.UserId == user.Id);
+                    return new CrateMemberResponse
+                    {
+                        UserId = user.Id,
+                        Email = user.Email,
+                        Role = role?.Role ?? CrateRole.Viewer
+                    };
+                })
+                .ToList();
+
+            return Result<List<CrateMemberResponse>>.Success(result);
         }
         catch (Exception ex)
         {
