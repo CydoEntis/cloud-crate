@@ -40,5 +40,7 @@ namespace CloudCrate.Api.Models
 
         public static ApiResponse<T> Error(string message = "An error occurred", int statusCode = 400) =>
             new(false, default, message, statusCode);
+
+ 
     }
 }
