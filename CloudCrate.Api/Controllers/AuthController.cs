@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Api.Requests.Auth;
@@ -23,11 +24,7 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await _authService.RegisterAsync(request.Email, request.Password);
-
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<object>.ValidationFailed(result.Errors));
-
-        return Ok(ApiResponse<object>.SuccessMessage("Registration successful"));
+        return result.ToActionResult(this, 201, "User registered successfully");
     }
 
     [HttpPost("login")]
@@ -35,10 +32,7 @@ public class AuthController : ControllerBase
     {
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
-        if (!result.Succeeded)
-            return Unauthorized(ApiResponse<object>.Unauthorized("Invalid credentials"));
-
-        return Ok(ApiResponse<object>.Success(new { accessToken = result.Value }, "Login successful"));
+        return result.ToActionResult(this, 200, "Login successful");
     }
 
     [Authorize]
@@ -46,15 +40,11 @@ public class AuthController : ControllerBase
     public async Task<IActionResult> GetCurrentUser()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _authService.GetUserByIdAsync(userId);
 
-        if (!result.Succeeded)
-            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
-
-        return Ok(ApiResponse<object>.Success(result.Value!, "User retrieved successfully"));
+        return result.ToActionResult(this, 200, "User retrieved successfully");
     }
 }

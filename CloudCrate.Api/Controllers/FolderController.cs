@@ -4,6 +4,7 @@ using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Folder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -19,10 +20,12 @@ public class FolderController : ControllerBase
         _folderService = folderService;
     }
 
+    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
+
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
-        var userId = User.GetUserId();
+        var userId = GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -31,16 +34,13 @@ public class FolderController : ControllerBase
 
         var result = await _folderService.CreateFolderAsync(request, userId);
 
-        if (!result.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(result.Errors);
-
-        return Ok(ApiResponse<object>.Success(result.Value, "Folder created successfully"));
+        return result.ToActionResult(this, 200, "Folder created successfully");
     }
 
     [HttpPut("{folderId:guid}/rename")]
     public async Task<IActionResult> RenameFolder(Guid crateId, Guid folderId, [FromBody] RenameFolderRequest request)
     {
-        var userId = User.GetUserId();
+        var userId = GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
@@ -49,56 +49,44 @@ public class FolderController : ControllerBase
 
         var result = await _folderService.RenameFolderAsync(folderId, request.NewName, userId);
 
-        if (!result.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(result.Errors);
-
-        return Ok(ApiResponse<object>.SuccessMessage("Folder renamed successfully"));
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder renamed successfully");
     }
 
     [HttpDelete("{folderId:guid}")]
     public async Task<IActionResult> DeleteFolder(Guid crateId, Guid folderId)
     {
-        var userId = User.GetUserId();
+        var userId = GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _folderService.DeleteFolderAsync(folderId, userId);
 
-        if (!result.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(result.Errors);
-
-        return Ok(ApiResponse<object>.SuccessMessage("Folder deleted successfully"));
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder deleted successfully");
     }
 
     [HttpPut("{folderId:guid}/move")]
     public async Task<IActionResult> MoveFolder(Guid crateId, Guid folderId, [FromBody] MoveFolderRequest request)
     {
-        var userId = User.GetUserId();
+        var userId = GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
 
-        if (!result.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(result.Errors);
-
-        return Ok(ApiResponse<object>.SuccessMessage("Folder moved successfully"));
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder moved successfully");
     }
 
     [HttpGet("contents/{parentFolderId:guid?}")]
     public async Task<IActionResult> GetFolderContents(Guid crateId, Guid? parentFolderId, [FromQuery] string? search,
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
     {
-        var userId = User.GetUserId();
+        var userId = GetUserId();
         if (userId == null)
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
         var result =
             await _folderService.GetFolderContentsAsync(crateId, parentFolderId, userId, search, page, pageSize);
 
-        if (!result.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(result.Errors);
-
-        return Ok(ApiResponse<object>.Success(result.Value, "Folder contents retrieved successfully"));
+        return result.ToActionResult(this, successMessage: "Folder contents retrieved successfully");
     }
 }

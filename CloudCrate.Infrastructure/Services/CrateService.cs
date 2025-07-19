@@ -4,6 +4,7 @@ using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Utils;
+using CloudCrate.Application.DTOs;
 using CloudCrate.Application.DTOs.Crate;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Domain.Entities;
@@ -206,7 +207,8 @@ public class CrateService : ICrateService
             if (!deleteResult.Succeeded)
             {
                 await transaction.RollbackAsync();
-                return deleteResult;
+                // Assuming deleteResult is Result type, convert to Result
+                return Result.Failure(deleteResult.Errors);
             }
 
             await _context.SaveChangesAsync();
@@ -223,6 +225,7 @@ public class CrateService : ICrateService
             });
         }
     }
+
 
     public async Task<Result<List<Crate>>> GetCratesAsync(string userId)
     {

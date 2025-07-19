@@ -103,6 +103,12 @@ public static class Errors
             new("ERR_INVITE_INVALID", "Invite has already been used or declined.", 400);
     }
 
+    public static class Roles
+    {
+        public static Error Validation(string code, string message) =>
+            new(code, message, 400);
+    }
+
     public static class Email
     {
         public static readonly Error SendFailed =

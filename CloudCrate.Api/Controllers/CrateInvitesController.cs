@@ -1,9 +1,9 @@
 ﻿using System.Security.Claims;
+using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.DTOs.Invites;
-using CloudCrate.Domain.Entities;
+using CloudCrate.Application.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,12 +32,8 @@ namespace CloudCrate.Api.Controllers
 
             var result = await _inviteService.CreateInviteAsync(crateId, request.Email, userId, request.Role);
 
-            if (result.Succeeded)
-                return Ok(ApiResponse<string>.Success($"Invite sent to {request.Email}"));
-
-            return BadRequest(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
+            return result.ToActionResult(this, 201, $"Invite sent to {request.Email}");
         }
-
 
         [HttpGet("token/{token}")]
         [AllowAnonymous]
@@ -45,10 +41,7 @@ namespace CloudCrate.Api.Controllers
         {
             var result = await _inviteService.GetInviteByTokenAsync(token);
 
-            if (result.Succeeded)
-                return Ok(ApiResponse<CrateInvite?>.Success(result.Value));
-
-            return NotFound(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
+            return result.ToActionResult(this, successMessage: "Invite retrieved");
         }
 
         [HttpPost("token/{token}/accept")]
@@ -60,10 +53,7 @@ namespace CloudCrate.Api.Controllers
 
             var result = await _inviteService.AcceptInviteAsync(token, userId, _roleService);
 
-            if (result.Succeeded)
-                return Ok(ApiResponse<object>.SuccessMessage("Invite accepted"));
-
-            return BadRequest(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
+            return result.ToActionResult(this, successMessage: "Invite accepted");
         }
 
         [HttpPost("token/{token}/decline")]
@@ -75,10 +65,7 @@ namespace CloudCrate.Api.Controllers
 
             var result = await _inviteService.DeclineInviteAsync(token);
 
-            if (result.Succeeded)
-                return Ok(ApiResponse<object>.SuccessMessage("Invite declined"));
-
-            return BadRequest(ApiResponse<List<Error>>.ValidationFailed(result.Errors));
+            return result.ToActionResult(this, successMessage: "Invite declined");
         }
     }
 }

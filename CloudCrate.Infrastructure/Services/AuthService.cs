@@ -27,7 +27,7 @@ public class AuthService : IAuthService
         _crateService = crateService;
     }
 
-    public async Task<Result> RegisterAsync(string email, string password)
+    public async Task<Result<UserResponse>> RegisterAsync(string email, string password)
     {
         var user = new ApplicationUser { UserName = email, Email = email };
         var result = await _userManager.CreateAsync(user, password);
@@ -38,11 +38,18 @@ public class AuthService : IAuthService
                 .Select(e => IdentityErrorMapper.Map(e.Code, e.Description))
                 .ToList();
 
-            return Result.Failure(errors);
+            return Result<UserResponse>.Failure(errors);
         }
 
-        return Result.Success();
+        var userResponse = new UserResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+        };
+
+        return Result<UserResponse>.Success(userResponse);
     }
+
 
     public async Task<Result<string>> LoginAsync(string email, string password)
     {

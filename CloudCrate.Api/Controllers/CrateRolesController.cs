@@ -7,6 +7,7 @@ using System.Security.Claims;
 using CloudCrate.Application.DTOs.Roles;
 using Microsoft.AspNetCore.Identity;
 using CloudCrate.Api.Models;
+using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Application.Common.Errors;
 
 namespace CloudCrate.Api.Controllers;
@@ -30,22 +31,25 @@ public class CrateRolesController : ControllerBase
     {
         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(currentUserId))
-            return Unauthorized(ApiResponse<string>.Unauthorized("You are not authorized"));
+            return Unauthorized(ApiResponse<object>.Unauthorized("You are not authorized"));
 
-        if (!await _roleService.IsOwnerAsync(crateId, currentUserId))
-            return StatusCode(403, ApiResponse<string>.Forbidden("Only the owner can assign roles"));
+        var isOwnerResult = await _roleService.IsOwnerAsync(crateId, currentUserId);
+        if (!isOwnerResult.Succeeded || !isOwnerResult.Value)
+            return StatusCode(403, ApiResponse<object>.Forbidden("Only the owner can assign roles"));
 
         if (request.UserId == currentUserId && request.Role != CrateRole.Owner)
         {
-            return BadRequest(
-                ApiResponse<string>.ValidationFailed(new List<Error> { Errors.OwnerRoleRemovalNotAllowed }));
+            var error = Errors.Roles.Validation("CrateRole.SelfDemotion",
+                "You cannot demote yourself from the owner role.");
+            return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error> { error }));
         }
 
         var user = await _userManager.FindByIdAsync(request.UserId);
         if (user == null)
             return NotFound(ApiResponse<string>.NotFound("Target user not found"));
 
-        await _roleService.AssignRoleAsync(crateId, request.UserId, request.Role);
-        return Ok(ApiResponse<object>.SuccessMessage("Role assigned successfully"));
+        var result = await _roleService.AssignRoleAsync(crateId, request.UserId, request.Role);
+
+        return result.ToActionResult(this, 204, "Role assigned successfully");
     }
 }

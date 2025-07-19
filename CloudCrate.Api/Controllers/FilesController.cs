@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Application.Common.Errors;
 using System.Collections.Generic;
+using System.Security.Claims;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -37,8 +38,11 @@ public class FilesController : ControllerBase
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to upload files."));
 
         if (request.File == null || request.File.Length == 0)
-            return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error>
-                { Errors.ValidationFailed with { Message = "No file uploaded." } }));
+        {
+            var error = new Error(Errors.Validation.Failed.Code, "No file uploaded.",
+                Errors.Validation.Failed.StatusCode);
+            return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error> { error }));
+        }
 
         await using var stream = request.File.OpenReadStream();
 
@@ -54,10 +58,7 @@ public class FilesController : ControllerBase
 
         var result = await _fileService.UploadFileAsync(uploadRequest, user.Id);
 
-        if (result.Succeeded)
-            return Ok(ApiResponse<FileObjectResponse>.Success(result.Data, "File uploaded successfully"));
-
-        return ApiResponseHelper.FromErrors<string>(result.Errors);
+        return result.ToActionResult(this, 200, "File uploaded successfully");
     }
 
     [HttpGet("{fileId}")]
@@ -69,14 +70,14 @@ public class FilesController : ControllerBase
 
         var fileResult = await _fileService.GetFileByIdAsync(fileId, user.Id);
         if (!fileResult.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(fileResult.Errors);
+            return fileResult.ToActionResult(this);
 
         var contentResult = await _fileService.DownloadFileAsync(fileId, user.Id);
         if (!contentResult.Succeeded)
-            return ApiResponseHelper.FromErrors<string>(contentResult.Errors);
+            return contentResult.ToActionResult(this);
 
-        var file = fileResult.Data!;
-        return File(contentResult.Data!, file.MimeType, file.Name);
+        var file = fileResult.Value!;
+        return File(contentResult.Value!, file.MimeType, file.Name);
     }
 
     [HttpGet]
@@ -84,16 +85,14 @@ public class FilesController : ControllerBase
     {
         var user = await GetCurrentUserAsync();
         if (user == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+            return Unauthorized(
+                ApiResponse<string>.Unauthorized("You do not have permission to access this resource."));
 
         var result = folderId is null
             ? await _fileService.GetFilesInCrateRootAsync(crateId, user.Id)
             : await _fileService.GetFilesInFolderAsync(crateId, folderId.Value, user.Id);
 
-        if (result.Succeeded)
-            return Ok(ApiResponse<List<FileObjectResponse>>.Success(result.Data, "Files retrieved successfully"));
-
-        return ApiResponseHelper.FromErrors<string>(result.Errors);
+        return result.ToActionResult(this, successMessage: "Files retrieved successfully");
     }
 
     [HttpDelete("{fileId}")]
@@ -105,24 +104,19 @@ public class FilesController : ControllerBase
 
         var result = await _fileService.DeleteFileAsync(fileId, user.Id);
 
-        if (result.Succeeded)
-            return Ok(ApiResponse<object>.SuccessMessage("File deleted successfully"));
-
-        return ApiResponseHelper.FromErrors<string>(result.Errors);
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "File deleted successfully");
     }
 
     [HttpPut("{fileId:guid}/move")]
     public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
     {
-        var userId = User.GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(
+                ApiResponse<string>.Unauthorized("You do not have permission to access this resource."));
 
         var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, userId);
 
-        if (result.Succeeded)
-            return Ok(ApiResponse<object>.SuccessMessage("File moved successfully"));
-
-        return ApiResponseHelper.FromErrors<string>(result.Errors);
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "File moved successfully");
     }
 }

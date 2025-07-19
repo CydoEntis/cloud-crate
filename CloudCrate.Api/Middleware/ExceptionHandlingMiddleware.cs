@@ -1,9 +1,5 @@
 ﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Errors;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System.Net;
 
 namespace CloudCrate.Api.Middleware;
 
@@ -33,8 +29,14 @@ public class ExceptionHandlingMiddleware
         {
             _logger.LogError(ex, "Unhandled exception occurred");
 
+            if (context.Response.HasStarted)
+            {
+                throw;
+            }
+
+            context.Response.Clear();
             context.Response.ContentType = "application/json";
-            context.Response.StatusCode = (int)HttpStatusCode.InternalServerError;
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
 
             var errorMessage = _env.IsDevelopment()
                 ? $"{ex.Message} — {ex.GetType().Name}"
@@ -42,11 +44,16 @@ public class ExceptionHandlingMiddleware
 
             var error = new Error("ERR_UNHANDLED_EXCEPTION", errorMessage);
 
-            var response = ApiResponse<object>.Error(
+            var response = new ApiResponse<object>(
+                isSuccess: false,
+                value: null,
                 message: "Unhandled exception",
-                statusCode: StatusCodes.Status500InternalServerError
+                statusCode: StatusCodes.Status500InternalServerError,
+                errors: new List<Error> { error }
             );
-            response.Errors = new List<Error> { error };
+
+            await context.Response.WriteAsJsonAsync(response);
+
 
             await context.Response.WriteAsJsonAsync(response);
         }

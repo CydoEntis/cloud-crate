@@ -1,4 +1,5 @@
 ﻿using System.Security.Claims;
+using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Interfaces;
@@ -30,10 +31,8 @@ public class CrateController : ControllerBase
 
         var result = await _crateService.CreateCrateAsync(userId, request.Name, request.Color);
 
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
-
-        return Ok(ApiResponse<object>.Success(result.Data!, "Crate created successfully"));
+        // Note: specify 'this' explicitly and generic parameter if needed
+        return result.ToActionResult(this, 201, "Crate created successfully");
     }
 
     [HttpGet]
@@ -43,8 +42,9 @@ public class CrateController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var crates = await _crateService.GetCratesAsync(userId);
-        return Ok(ApiResponse<object>.Success(crates, "Crates retrieved successfully"));
+        var result = await _crateService.GetCratesAsync(userId);
+
+        return result.ToActionResult(this, successMessage: "Crates retrieved successfully");
     }
 
     [HttpPut("{crateId:guid}")]
@@ -54,6 +54,7 @@ public class CrateController : ControllerBase
         {
             var errors = ModelState.Values.SelectMany(v => v.Errors)
                 .Select(e => e.ErrorMessage).ToList();
+
             return BadRequest(ApiResponse<string>.ValidationFailed(
                 errors.Select(msg => new Error("ERR_VALIDATION", msg)).ToList()));
         }
@@ -64,12 +65,8 @@ public class CrateController : ControllerBase
 
         var result = await _crateService.UpdateCrateAsync(crateId, userId, request.Name, request.Color);
 
-        if (!result.Succeeded)
-            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
-
-        return Ok(ApiResponse<object>.Success(result.Data!, "Crate updated successfully"));
+        return result.ToActionResult(this, successMessage: "Crate updated successfully");
     }
-
 
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
@@ -80,10 +77,7 @@ public class CrateController : ControllerBase
 
         var result = await _crateService.DeleteCrateAsync(crateId, userId);
 
-        if (!result.Succeeded)
-            return NotFound(ApiResponse<string>.Error(result.Errors[0].Message, 404));
-
-        return Ok(ApiResponse<object>.SuccessMessage("Crate deleted successfully"));
+        return result.ToActionResult(this, successMessage: "Crate deleted successfully");
     }
 
     [HttpGet("{crateId:guid}")]
@@ -95,9 +89,6 @@ public class CrateController : ControllerBase
 
         var result = await _crateService.GetCrateAsync(crateId, userId);
 
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.ValidationFailed(result.Errors));
-
-        return Ok(ApiResponse<CrateDetailsResponse>.Success(result.Data!, "Crate retrieved successfully"));
+        return result.ToActionResult(this, successMessage: "Crate retrieved successfully");
     }
 }
