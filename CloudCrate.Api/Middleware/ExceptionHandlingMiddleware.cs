@@ -31,6 +31,7 @@ public class ExceptionHandlingMiddleware
 
             if (context.Response.HasStarted)
             {
+                _logger.LogWarning("Response already started, cannot write error response.");
                 throw;
             }
 
@@ -51,9 +52,6 @@ public class ExceptionHandlingMiddleware
                 statusCode: StatusCodes.Status500InternalServerError,
                 errors: new List<Error> { error }
             );
-
-            await context.Response.WriteAsJsonAsync(response);
-
 
             await context.Response.WriteAsJsonAsync(response);
         }
