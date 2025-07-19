@@ -1,8 +1,17 @@
 ﻿namespace CloudCrate.Domain.Enums;
 
+using System.Text.Json.Serialization;
+using System.Runtime.Serialization;
+
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum CrateRole
 {
-    Owner,      // Full control, including deleting the crate
-    Editor,     // Can upload/download/delete files
-    Viewer      // Read-only access
+    [EnumMember(Value = "Owner")] 
+    Owner,
+
+    [EnumMember(Value = "Editor")] 
+    Editor,
+
+    [EnumMember(Value = "Viewer")] 
+    Viewer
 }
