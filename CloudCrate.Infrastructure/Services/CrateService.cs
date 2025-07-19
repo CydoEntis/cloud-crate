@@ -303,6 +303,7 @@ public class CrateService : ICrateService
         }
     }
 
+
     private async Task CollectFolderDeletionsAsync(Folder folder, Guid crateId, string userId,
         List<string> keysToDelete)
     {
@@ -320,5 +321,48 @@ public class CrateService : ICrateService
         }
 
         _context.Folders.Remove(folder);
+    }
+
+
+    public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(
+        Guid crateId,
+        CrateMemberRequest request)
+    {
+        try
+        {
+            var users = _userManager.Users;
+            var roles = _context.CrateUserRoles.Where(r => r.CrateId == crateId);
+
+            var membersQuery = roles
+                .Join(users,
+                    role => role.UserId,
+                    user => user.Id,
+                    (role, user) => new CrateMemberResponse
+                    {
+                        UserId = user.Id,
+                        Email = user.Email,
+                        Role = role.Role
+                    });
+
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                var loweredSearch = request.Email.Trim().ToLower();
+                membersQuery = membersQuery.Where(m => m.Email.ToLower().Contains(loweredSearch));
+            }
+
+            var pagedMembers = await membersQuery
+                .Skip((request.PageNumber - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+
+            return Result<List<CrateMemberResponse>>.Success(pagedMembers);
+        }
+        catch (Exception ex)
+        {
+            return Result<List<CrateMemberResponse>>.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+            });
+        }
     }
 }
