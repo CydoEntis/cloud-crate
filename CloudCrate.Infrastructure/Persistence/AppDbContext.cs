@@ -1,9 +1,11 @@
 ﻿using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Domain.Entities;
+using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace CloudCrate.Infrastructure.Persistence;
 
@@ -29,5 +31,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
+        builder.Entity<CrateUserRole>()
+            .Property(r => r.Role)
+            .HasConversion(new EnumToStringConverter<CrateRole>());
     }
 }
