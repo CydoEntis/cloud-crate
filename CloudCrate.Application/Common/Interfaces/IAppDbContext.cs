@@ -13,7 +13,7 @@ public interface IAppDbContext
 
     DbSet<FileObject> FileObjects { get; }
     DbSet<Folder> Folders { get; }
-    
+
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

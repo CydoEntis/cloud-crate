@@ -8,7 +8,7 @@ public class Crate
     public string Color { get; set; }
     public ICollection<Folder> Folders { get; set; }
     public ICollection<FileObject> Files { get; set; }
-    public ICollection<CrateUserRole> Permissions { get; set; }
+    public ICollection<CrateUserRole> Members { get; set; }
     protected Crate()
     {
     }
@@ -23,7 +23,7 @@ public class Crate
             Color = color ?? "#4B9CED",
             Folders = new List<Folder>(),
             Files = new List<FileObject>(),
-            Permissions = new List<CrateUserRole>()
+            Members = new List<CrateUserRole>()
         };
     }
 
