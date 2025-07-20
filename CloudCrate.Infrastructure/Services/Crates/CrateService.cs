@@ -142,7 +142,7 @@ public class CrateService : ICrateService
         var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
         if (!isOwnerResult.Succeeded)
             return Result<CrateResponse>.Failure(isOwnerResult.Errors);
-        // Fix: safely unwrap nullable bool with GetValueOrDefault()
+
         if (!isOwnerResult.Value)
             return Result<CrateResponse>.Failure(Errors.User.Unauthorized);
 
@@ -182,12 +182,10 @@ public class CrateService : ICrateService
         var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
         if (!isOwnerResult.Succeeded)
             return Result.Failure(isOwnerResult.Errors);
-        // Fix: safely unwrap nullable bool with GetValueOrDefault()
         if (!isOwnerResult.Value)
             return Result.Failure(Errors.User.Unauthorized);
 
         using var transaction = await _context.Database.BeginTransactionAsync();
-
         try
         {
             var crate = await _context.Crates
@@ -201,46 +199,39 @@ public class CrateService : ICrateService
             if (crate == null)
                 return Result.Failure(Errors.Crates.NotFound);
 
-            var bucketName = $"crate-{crate.Id}".ToLowerInvariant();
+            // Collect keys to delete for logging or use, but you don't need them if you delete whole bucket
             var keysToDelete = new List<string>();
 
+            // Remove all files from DB
             foreach (var file in crate.Files)
-            {
-                var key = userId.GetObjectKey(crateId, null, file.Name);
-                keysToDelete.Add(key);
                 _context.FileObjects.Remove(file);
-            }
 
             foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
-            {
                 await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
-            }
 
             _context.Folders.RemoveRange(crate.Folders);
             _context.Crates.Remove(crate);
 
-            // Delete all files from bucket first
-            if (keysToDelete.Any())
+            // Save DB changes first
+            await _context.SaveChangesAsync();
+
+            // Delete all files in bucket
+            var deleteFilesResult = await _storageService.DeleteAllFilesInBucketAsync(crateId);
+            if (!deleteFilesResult.Succeeded)
             {
-                var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
-                if (!deleteResult.Succeeded)
-                {
-                    await transaction.RollbackAsync();
-                    return Result.Failure(deleteResult.Errors);
-                }
+                await transaction.RollbackAsync();
+                return Result.Failure(deleteFilesResult.Errors);
             }
 
-            // Delete the entire bucket itself now
-            var bucketDeleteResult = await _storageService.DeleteBucketAsync(bucketName);
+            // Delete bucket
+            var bucketDeleteResult = await _storageService.DeleteBucketAsync(crateId);
             if (!bucketDeleteResult.Succeeded)
             {
                 await transaction.RollbackAsync();
                 return Result.Failure(bucketDeleteResult.Errors);
             }
 
-            await _context.SaveChangesAsync();
             await transaction.CommitAsync();
-
             return Result.Success();
         }
         catch (Exception ex)
@@ -295,7 +286,8 @@ public class CrateService : ICrateService
             var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
 
             var breakdownMap = new Dictionary<string, double>();
-            foreach (var group in files.GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
+            foreach (var group in files.GroupBy(f =>
+                         MimeCategoryHelper.GetMimeCategory(f.MimeType ?? string.Empty)))
             {
                 var groupBytes = group.Sum(f => f.SizeInBytes);
                 var groupSizeMb = Math.Round(groupBytes / 1024.0 / 1024.0, 2);
@@ -327,25 +319,6 @@ public class CrateService : ICrateService
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
         }
-    }
-
-    private async Task CollectFolderDeletionsAsync(Domain.Entities.Folder folder, Guid crateId, string userId,
-        List<string> keysToDelete)
-    {
-        foreach (var file in folder.Files)
-        {
-            var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
-            keysToDelete.Add(key);
-            _context.FileObjects.Remove(file);
-        }
-
-        var subfolders = folder.Subfolders?.ToList() ?? new List<Domain.Entities.Folder>();
-        foreach (var subfolder in subfolders)
-        {
-            await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
-        }
-
-        _context.Folders.Remove(folder);
     }
 
     public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(
@@ -408,6 +381,28 @@ public class CrateService : ICrateService
             {
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
+        }
+    }
+
+
+    private async Task CollectFolderDeletionsAsync(
+        Domain.Entities.Folder folder,
+        Guid crateId,
+        string userId,
+        List<string> keysToDelete)
+    {
+        // Collect files in this folder
+        foreach (var file in folder.Files)
+        {
+            var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
+            keysToDelete.Add(key);
+            _context.FileObjects.Remove(file);
+        }
+
+        // Recursively handle subfolders
+        foreach (var subfolder in folder.Subfolders)
+        {
+            await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
         }
     }
 }

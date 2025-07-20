@@ -122,6 +122,21 @@ public class LocalStorageService : IStorageService
         return File.Exists(filePath);
     }
 
+    public Task<Result> DeleteAllFilesInBucketAsync(Guid crateId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<Result> DeleteBucketAsync(Guid crateId)
+    {
+        throw new NotImplementedException();
+    }
+
+    public Task<Result> BatchDeleteFilesAsync(string userId, Guid crateId, List<(Guid? folderId, string fileName)> files)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task<Result> DeleteFilesAsync(string bucketName, IEnumerable<string> keys)
     {
         try
