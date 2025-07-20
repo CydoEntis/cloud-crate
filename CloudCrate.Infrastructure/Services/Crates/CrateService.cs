@@ -113,6 +113,11 @@ public class CrateService : ICrateService
             if (!assignRoleResult.Succeeded)
                 return Result<CrateResponse>.Failure(assignRoleResult.Errors);
 
+            var bucketName = $"crate-{crate.Id}".ToLowerInvariant();
+            var storageResult = await _storageService.EnsureBucketExistsAsync(bucketName);
+            if (!storageResult.Succeeded)
+                return Result<CrateResponse>.Failure(storageResult.Errors);
+
             var response = new CrateResponse
             {
                 Id = crate.Id,
@@ -131,13 +136,13 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
         string? newColor)
     {
         var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
         if (!isOwnerResult.Succeeded)
             return Result<CrateResponse>.Failure(isOwnerResult.Errors);
+        // Fix: safely unwrap nullable bool with GetValueOrDefault()
         if (!isOwnerResult.Value)
             return Result<CrateResponse>.Failure(Errors.User.Unauthorized);
 
@@ -177,6 +182,7 @@ public class CrateService : ICrateService
         var isOwnerResult = await _crateUserRoleService.IsOwnerAsync(crateId, userId);
         if (!isOwnerResult.Succeeded)
             return Result.Failure(isOwnerResult.Errors);
+        // Fix: safely unwrap nullable bool with GetValueOrDefault()
         if (!isOwnerResult.Value)
             return Result.Failure(Errors.User.Unauthorized);
 
@@ -213,12 +219,23 @@ public class CrateService : ICrateService
             _context.Folders.RemoveRange(crate.Folders);
             _context.Crates.Remove(crate);
 
-            var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
-            if (!deleteResult.Succeeded)
+            // Delete all files from bucket first
+            if (keysToDelete.Any())
+            {
+                var deleteResult = await _storageService.DeleteFilesAsync(bucketName, keysToDelete);
+                if (!deleteResult.Succeeded)
+                {
+                    await transaction.RollbackAsync();
+                    return Result.Failure(deleteResult.Errors);
+                }
+            }
+
+            // Delete the entire bucket itself now
+            var bucketDeleteResult = await _storageService.DeleteBucketAsync(bucketName);
+            if (!bucketDeleteResult.Succeeded)
             {
                 await transaction.RollbackAsync();
-                // Assuming deleteResult is Result type, convert to Result
-                return Result.Failure(deleteResult.Errors);
+                return Result.Failure(bucketDeleteResult.Errors);
             }
 
             await _context.SaveChangesAsync();
@@ -235,7 +252,6 @@ public class CrateService : ICrateService
             });
         }
     }
-
 
     public async Task<Result<List<Crate>>> GetCratesAsync(string userId)
     {
@@ -313,7 +329,6 @@ public class CrateService : ICrateService
         }
     }
 
-
     private async Task CollectFolderDeletionsAsync(Domain.Entities.Folder folder, Guid crateId, string userId,
         List<string> keysToDelete)
     {
@@ -332,7 +347,6 @@ public class CrateService : ICrateService
 
         _context.Folders.Remove(folder);
     }
-
 
     public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(
         Guid crateId,
@@ -364,7 +378,7 @@ public class CrateService : ICrateService
 
             if (pagedUsers.Count == 0)
             {
-                return Result<List<CrateMemberResponse>>.Success([]);
+                return Result<List<CrateMemberResponse>>.Success(new List<CrateMemberResponse>());
             }
 
             var userIds = pagedUsers.Select(u => u.Id).ToList();
