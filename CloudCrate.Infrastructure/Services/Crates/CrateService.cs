@@ -1,19 +1,21 @@
 ﻿using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Extensions;
-using CloudCrate.Application.Common.Interfaces;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Common.Utils;
-using CloudCrate.Application.DTOs;
-using CloudCrate.Application.DTOs.Crate;
-using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.DTOs.Crate.Request;
+using CloudCrate.Application.DTOs.Crate.Response;
+using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Interfaces.Crate;
+using CloudCrate.Application.Interfaces.Persistence;
+using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace CloudCrate.Infrastructure.Services;
+namespace CloudCrate.Infrastructure.Services.Crates;
 
 public class CrateService : ICrateService
 {
@@ -240,7 +242,7 @@ public class CrateService : ICrateService
         try
         {
             var crates = await _context.Crates
-                .Where(c => c.UserId == userId)
+                .Where(c => c.UserId == userId).OrderByDescending(c => c.CreatedAt)
                 .ToListAsync();
 
             return Result<List<Crate>>.Success(crates);
@@ -312,7 +314,7 @@ public class CrateService : ICrateService
     }
 
 
-    private async Task CollectFolderDeletionsAsync(Folder folder, Guid crateId, string userId,
+    private async Task CollectFolderDeletionsAsync(Domain.Entities.Folder folder, Guid crateId, string userId,
         List<string> keysToDelete)
     {
         foreach (var file in folder.Files)
@@ -322,7 +324,7 @@ public class CrateService : ICrateService
             _context.FileObjects.Remove(file);
         }
 
-        var subfolders = folder.Subfolders?.ToList() ?? new List<Folder>();
+        var subfolders = folder.Subfolders?.ToList() ?? new List<Domain.Entities.Folder>();
         foreach (var subfolder in subfolders)
         {
             await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
@@ -338,7 +340,6 @@ public class CrateService : ICrateService
     {
         try
         {
-            // 1. Get all roles for the crate
             var rolesQuery = _context.CrateUserRoles
                 .Where(r => r.CrateId == crateId);
 
@@ -346,7 +347,6 @@ public class CrateService : ICrateService
                 .Select(r => r.UserId)
                 .Distinct();
 
-            // 2. Apply user email filtering if applicable
             var usersQuery = _userManager.Users
                 .Where(u => userIdsQuery.Contains(u.Id));
 
@@ -356,9 +356,8 @@ public class CrateService : ICrateService
                 usersQuery = usersQuery.Where(u => u.Email.ToLower().Contains(lowered));
             }
 
-            // 3. Get paginated users
             var pagedUsers = await usersQuery
-                .OrderBy(u => u.Email) // Optional: deterministic pagination
+                .OrderBy(u => u.Email)
                 .Skip((request.PageNumber - 1) * request.PageSize)
                 .Take(request.PageSize)
                 .ToListAsync();
@@ -370,12 +369,10 @@ public class CrateService : ICrateService
 
             var userIds = pagedUsers.Select(u => u.Id).ToList();
 
-            // 4. Get only roles for paged users
             var roles = await rolesQuery
                 .Where(r => userIds.Contains(r.UserId))
                 .ToListAsync();
 
-            // 5. Combine info
             var result = pagedUsers
                 .Select(user =>
                 {
