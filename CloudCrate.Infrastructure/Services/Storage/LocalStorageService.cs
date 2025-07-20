@@ -29,6 +29,11 @@ public class LocalStorageService : IStorageService
         return Path.Combine(dirPath, fileName);
     }
 
+    public Task<Result> EnsureBucketExistsAsync(string bucketName)
+    {
+        throw new NotImplementedException();
+    }
+
     public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
     {
         try
@@ -139,5 +144,10 @@ public class LocalStorageService : IStorageService
                 Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
             });
         }
+    }
+
+    public Task<Result> DeleteBucketAsync(string bucketName)
+    {
+        throw new NotImplementedException();
     }
 }

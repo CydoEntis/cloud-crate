@@ -16,13 +16,25 @@ public class MinioStorageService : IStorageService
         _s3Client = s3Client;
     }
 
-    private string GetObjectKey(string userId, Guid crateId, Guid? folderId, string fileName)
+    public async Task<Result> EnsureBucketExistsAsync(string bucketName)
     {
-        var parts = new List<string> { userId, crateId.ToString() };
-        if (folderId.HasValue)
-            parts.Add(folderId.Value.ToString());
-        parts.Add(fileName);
-        return string.Join("/", parts);
+        try
+        {
+            bool? exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName);
+            if (exists != true)
+            {
+                await _s3Client.PutBucketAsync(bucketName);
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"Failed to create bucket {bucketName}. ({ex.Message})"
+            });
+        }
     }
 
     public async Task<Result> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
@@ -32,7 +44,8 @@ public class MinioStorageService : IStorageService
 
         try
         {
-            if (!await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName))
+            bool? exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName);
+            if (exists != true)
             {
                 await _s3Client.PutBucketAsync(bucketName);
             }
@@ -118,10 +131,18 @@ public class MinioStorageService : IStorageService
     {
         try
         {
+            var keysList = objectKeys.ToList();
+
+            if (!keysList.Any())
+            {
+                // No keys to delete, return success immediately
+                return Result.Success();
+            }
+
             var deleteRequest = new DeleteObjectsRequest
             {
                 BucketName = bucketName,
-                Objects = objectKeys.Select(key => new KeyVersion { Key = key }).ToList()
+                Objects = keysList.Select(key => new KeyVersion { Key = key }).ToList()
             };
 
             var response = await _s3Client.DeleteObjectsAsync(deleteRequest);
@@ -144,5 +165,73 @@ public class MinioStorageService : IStorageService
                 Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
             });
         }
+    }
+
+    public async Task<Result> DeleteBucketAsync(string bucketName)
+    {
+        try
+        {
+            var keysToDelete = new List<string>();
+            string? continuationToken = null;
+
+            do
+            {
+                var listRequest = new ListObjectsV2Request
+                {
+                    BucketName = bucketName,
+                    ContinuationToken = continuationToken,
+                };
+                var listResponse = await _s3Client.ListObjectsV2Async(listRequest);
+
+                if (listResponse.S3Objects != null)
+                {
+                    keysToDelete.AddRange(listResponse.S3Objects.Select(o => o.Key));
+                }
+
+                continuationToken = (listResponse.IsTruncated == true) ? listResponse.NextContinuationToken : null;
+            } while (continuationToken != null);
+
+            if (keysToDelete.Any())
+            {
+                var deleteRequest = new DeleteObjectsRequest
+                {
+                    BucketName = bucketName,
+                    Objects = keysToDelete.Select(key => new KeyVersion { Key = key }).ToList()
+                };
+
+                var deleteResponse = await _s3Client.DeleteObjectsAsync(deleteRequest);
+
+                if (deleteResponse.DeleteErrors.Any())
+                {
+                    var errorMessages = string.Join("; ",
+                        deleteResponse.DeleteErrors.Select(e => $"{e.Key}: {e.Message}"));
+                    return Result.Failure(Errors.Files.DeleteFailed with
+                    {
+                        Message = $"Failed to delete objects before bucket deletion: {errorMessages}"
+                    });
+                }
+            }
+
+            await _s3Client.DeleteBucketAsync(bucketName);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"Failed to delete bucket {bucketName}. ({ex.Message})"
+            });
+        }
+    }
+
+
+    private string GetObjectKey(string userId, Guid crateId, Guid? folderId, string fileName)
+    {
+        var parts = new List<string> { userId, crateId.ToString() };
+        if (folderId.HasValue)
+            parts.Add(folderId.Value.ToString());
+        parts.Add(fileName);
+        return string.Join("/", parts);
     }
 }
