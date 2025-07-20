@@ -2,11 +2,10 @@
 using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Interfaces;
-using CloudCrate.Application.DTOs.Crate;
+using CloudCrate.Application.DTOs.Crate.Request;
+using CloudCrate.Application.Interfaces.Crate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using CreateCrateRequest = CloudCrate.Api.Requests.Crate.CreateCrateRequest;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -31,7 +30,6 @@ public class CrateController : ControllerBase
 
         var result = await _crateService.CreateCrateAsync(userId, request.Name, request.Color);
 
-        // Note: specify 'this' explicitly and generic parameter if needed
         return result.ToActionResult(this, 201, "Crate created successfully");
     }
 

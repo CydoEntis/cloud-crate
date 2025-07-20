@@ -1,4 +1,4 @@
-﻿using CloudCrate.Application.Common.Interfaces;
+﻿using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;

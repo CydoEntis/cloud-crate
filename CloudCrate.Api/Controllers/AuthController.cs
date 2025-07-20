@@ -2,9 +2,8 @@
 using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
 using Microsoft.AspNetCore.Mvc;
-using CloudCrate.Api.Requests.Auth;
-using CloudCrate.Application.Common.Interfaces;
-using CloudCrate.Application.DTOs.Auth;
+using CloudCrate.Application.DTOs.Auth.Request;
+using CloudCrate.Application.Interfaces.Auth;
 using Microsoft.AspNetCore.Authorization;
 
 namespace CloudCrate.Api.Controllers;
