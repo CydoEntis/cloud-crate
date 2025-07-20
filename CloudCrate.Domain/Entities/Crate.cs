@@ -6,6 +6,8 @@ public class Crate
     public string Name { get; set; }
     public string UserId { get; set; }
     public string Color { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
     public ICollection<Folder> Folders { get; set; }
     public ICollection<FileObject> Files { get; set; }
     public ICollection<CrateUserRole> Members { get; set; }
@@ -21,6 +23,8 @@ public class Crate
             Name = name,
             UserId = userId,
             Color = color ?? "#4B9CED",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
             Folders = new List<Folder>(),
             Files = new List<FileObject>(),
             Members = new List<CrateUserRole>()
