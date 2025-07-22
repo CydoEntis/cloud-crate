@@ -8,9 +8,9 @@ public class Crate
     public string Color { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
-    public ICollection<Folder> Folders { get; private set; }
-    public ICollection<FileObject> Files { get; private set; }
-    public ICollection<CrateUserRole> Members { get; private set; }
+    public ICollection<Folder> Folders { get; set; }
+    public ICollection<FileObject> Files { get; set; }
+    public ICollection<CrateUserRole> Members { get; set; }
 
     protected Crate()
     {
