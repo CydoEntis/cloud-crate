@@ -6,303 +6,238 @@ using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.Interfaces.Storage;
 using Microsoft.Extensions.Logging;
 
-namespace CloudCrate.Infrastructure.Services.Storage
+namespace CloudCrate.Infrastructure.Services.Storage;
+
+public class MinioStorageService : IStorageService
 {
-    public class MinioStorageService : IStorageService
+    private readonly IAmazonS3 _s3Client;
+    private readonly ILogger<MinioStorageService> _logger;
+    private const int DeleteBatchSize = 1000;
+
+    public MinioStorageService(IAmazonS3 s3Client, ILogger<MinioStorageService> logger)
     {
-        private readonly IAmazonS3 _s3Client;
-        private readonly ILogger<MinioStorageService> _logger;
-        private const int DeleteBatchSize = 1000;
+        _s3Client = s3Client;
+        _logger = logger;
+    }
 
-        public MinioStorageService(IAmazonS3 s3Client, ILogger<MinioStorageService> logger)
+    public async Task<Result> EnsureBucketExistsAsync(string bucketName)
+    {
+        try
         {
-            _s3Client = s3Client;
-            _logger = logger;
-        }
+            var exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName);
+            if (!exists)
+                await _s3Client.PutBucketAsync(bucketName);
 
-        public async Task<Result> EnsureBucketExistsAsync(string bucketName)
-        {
-            try
-            {
-                var exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName);
-                if (!exists)
-                    await _s3Client.PutBucketAsync(bucketName);
-
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to create bucket {Bucket}", bucketName);
-                return Result.Failure(Errors.Common.InternalServerError with
-                {
-                    Message = $"Failed to create bucket {bucketName}. ({ex.Message})"
-                });
-            }
-        }
-
-        public async Task<Result> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
-            Stream content)
-        {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-            try
-            {
-                await EnsureBucketExistsAsync(bucketName);
-                var key = GetObjectKey(userId, crateId, folderId, fileName);
-
-                var request = new PutObjectRequest
-                {
-                    BucketName = bucketName,
-                    Key = key,
-                    InputStream = content
-                };
-
-                await _s3Client.PutObjectAsync(request);
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", fileName, bucketName);
-                return Result.Failure(Errors.Files.SaveFailed with
-                {
-                    Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
-                });
-            }
-        }
-
-        public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
-        {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-            var key = GetObjectKey(userId, crateId, folderId, fileName);
-
-            try
-            {
-                var response = await _s3Client.GetObjectAsync(bucketName, key);
-                using var ms = new MemoryStream();
-                await response.ResponseStream.CopyToAsync(ms);
-                return Result<byte[]>.Success(ms.ToArray());
-            }
-            catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                return Result<byte[]>.Failure(Errors.Files.NotFound);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to read file {Key}", key);
-                return Result<byte[]>.Failure(Errors.Files.ReadFailed with
-                {
-                    Message = $"{Errors.Files.ReadFailed.Message} ({ex.Message})"
-                });
-            }
-        }
-
-        public async Task<Result> DeleteFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
-        {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-            var key = GetObjectKey(userId, crateId, folderId, fileName);
-
-            try
-            {
-                await _s3Client.DeleteObjectAsync(bucketName, key);
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to delete file {Key}", key);
-                return Result.Failure(Errors.Files.DeleteFailed with
-                {
-                    Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
-                });
-            }
-        }
-
-        public bool FileExists(string userId, Guid crateId, Guid? folderId, string fileName)
-        {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-            var key = GetObjectKey(userId, crateId, folderId, fileName);
-
-            try
-            {
-                var response = _s3Client.GetObjectMetadataAsync(bucketName, key).GetAwaiter().GetResult();
-                return true;
-            }
-            catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
-            {
-                return false;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Could not verify file existence for {Key}", key);
-                return false;
-            }
-        }
-
-        public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
-        {
-            // No-op for S3 — folders are virtual.
             return Result.Success();
         }
-
-        public async Task<Result> DeleteAllFilesInBucketAsync(Guid crateId)
+        catch (Exception ex)
         {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-
-            try
+            _logger.LogError(ex, "Failed to create bucket {Bucket}", bucketName);
+            return Result.Failure(Errors.Common.InternalServerError with
             {
-                ListObjectsV2Response listResponse;
-                string continuationToken = null;
-
-                do
-                {
-                    var request = new ListObjectsV2Request
-                    {
-                        BucketName = bucketName,
-                        ContinuationToken = continuationToken,
-                        MaxKeys = 1000
-                    };
-
-                    listResponse = await _s3Client.ListObjectsV2Async(request);
-
-                    if (listResponse?.S3Objects == null || !listResponse.S3Objects.Any())
-                    {
-                        _logger.LogInformation("No objects found in bucket {Bucket} to delete.", bucketName);
-                        break;
-                    }
-
-                    var keysToDelete = listResponse.S3Objects
-                        .Where(obj => obj != null && !string.IsNullOrEmpty(obj.Key))
-                        .Select(obj => new KeyVersion { Key = obj.Key })
-                        .ToList();
-
-                    if (keysToDelete.Count > 0)
-                    {
-                        var deleteRequest = new DeleteObjectsRequest
-                        {
-                            BucketName = bucketName,
-                            Objects = keysToDelete
-                        };
-
-                        var deleteResponse = await _s3Client.DeleteObjectsAsync(deleteRequest);
-
-                        if (deleteResponse.DeleteErrors != null && deleteResponse.DeleteErrors.Any())
-                        {
-                            _logger.LogError("Errors deleting objects in bucket {Bucket}: {Errors}", bucketName,
-                                deleteResponse.DeleteErrors);
-                            return Result.Failure(Errors.Common.InternalServerError with
-                            {
-                                Message = $"Errors deleting some objects in bucket {bucketName}."
-                            });
-                        }
-                    }
-
-                    continuationToken = (listResponse.IsTruncated == true) ? listResponse.NextContinuationToken : null;
-                } while (continuationToken != null);
-
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to delete all files in bucket {Bucket}", bucketName);
-                return Result.Failure(Errors.Common.InternalServerError with
-                {
-                    Message = $"Failed to delete all files in bucket {bucketName}. ({ex.Message})"
-                });
-            }
+                Message = $"Failed to create bucket {bucketName}. ({ex.Message})"
+            });
         }
+    }
 
-
-        public async Task<Result> DeleteBucketAsync(Guid crateId)
+    public async Task<Result> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
+        Stream content)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        try
         {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
+            await EnsureBucketExistsAsync(bucketName);
+            var key = GetObjectKey(userId, crateId, folderId, fileName);
 
-            try
+            var request = new PutObjectRequest
             {
-                var deleteFilesResult = await DeleteAllFilesInBucketAsync(crateId);
-                if (!deleteFilesResult.Succeeded)
-                    return deleteFilesResult;
+                BucketName = bucketName,
+                Key = key,
+                InputStream = content
+            };
 
-                await _s3Client.DeleteBucketAsync(bucketName);
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to delete bucket {Bucket}", bucketName);
-                return Result.Failure(Errors.Common.InternalServerError with
-                {
-                    Message = $"Failed to delete bucket {bucketName}. ({ex.Message})"
-                });
-            }
+            await _s3Client.PutObjectAsync(request);
+            return Result.Success();
         }
-
-        public async Task<Result> BatchDeleteFilesAsync(string userId, Guid crateId,
-            List<(Guid? folderId, string fileName)> files)
+        catch (Exception ex)
         {
-            var bucketName = $"crate-{crateId}".ToLowerInvariant();
-
-            try
+            _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", fileName, bucketName);
+            return Result.Failure(Errors.Files.SaveFailed with
             {
-                var keysToDelete = files.Select(f => new KeyVersion
-                {
-                    Key = GetObjectKey(userId, crateId, f.folderId, f.fileName)
-                }).ToList();
+                Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
+            });
+        }
+    }
 
-                foreach (var batch in keysToDelete.Batch(DeleteBatchSize))
+    public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var key = GetObjectKey(userId, crateId, folderId, fileName);
+
+        try
+        {
+            var response = await _s3Client.GetObjectAsync(bucketName, key);
+            using var ms = new MemoryStream();
+            await response.ResponseStream.CopyToAsync(ms);
+            return Result<byte[]>.Success(ms.ToArray());
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return Result<byte[]>.Failure(Errors.Files.NotFound);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read file {Key}", key);
+            return Result<byte[]>.Failure(Errors.Files.ReadFailed with
+            {
+                Message = $"{Errors.Files.ReadFailed.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public async Task<Result> DeleteFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var key = GetObjectKey(userId, crateId, folderId, fileName);
+
+        try
+        {
+            await _s3Client.DeleteObjectAsync(bucketName, key);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete file {Key}", key);
+            return Result.Failure(Errors.Files.DeleteFailed with
+            {
+                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
+            });
+        }
+    }
+
+    public bool FileExists(string userId, Guid crateId, Guid? folderId, string fileName)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var key = GetObjectKey(userId, crateId, folderId, fileName);
+
+        try
+        {
+            var response = _s3Client.GetObjectMetadataAsync(bucketName, key).GetAwaiter().GetResult();
+            return true;
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not verify file existence for {Key}", key);
+            return false;
+        }
+    }
+
+    public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
+    {
+        // No-op for S3 — folders are virtual.
+        return Result.Success();
+    }
+
+    public async Task<Result> DeleteAllFilesInBucketAsync(Guid crateId)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+
+        try
+        {
+            string? continuationToken = null;
+
+            do
+            {
+                var request = new ListObjectsV2Request
+                {
+                    BucketName = bucketName,
+                    ContinuationToken = continuationToken,
+                    MaxKeys = 1000
+                };
+
+                var listResponse = await _s3Client.ListObjectsV2Async(request);
+
+                if (listResponse?.S3Objects == null || listResponse.S3Objects.Count == 0)
+                {
+                    _logger.LogInformation("No objects found in bucket {Bucket} to delete.", bucketName);
+                    break;
+                }
+
+                var keysToDelete = listResponse.S3Objects
+                    .Where(obj => obj != null && !string.IsNullOrEmpty(obj.Key))
+                    .Select(obj => new KeyVersion { Key = obj.Key })
+                    .ToList();
+
+                if (keysToDelete.Count > 0)
                 {
                     var deleteRequest = new DeleteObjectsRequest
                     {
                         BucketName = bucketName,
-                        Objects = batch.ToList()
+                        Objects = keysToDelete
                     };
 
                     var deleteResponse = await _s3Client.DeleteObjectsAsync(deleteRequest);
 
-                    if (deleteResponse.DeleteErrors.Count > 0)
+                    if (deleteResponse.DeleteErrors != null && deleteResponse.DeleteErrors.Count != 0)
                     {
-                        foreach (var error in deleteResponse.DeleteErrors)
+                        _logger.LogError("Errors deleting objects in bucket {Bucket}: {Errors}", bucketName,
+                            deleteResponse.DeleteErrors);
+                        return Result.Failure(Errors.Common.InternalServerError with
                         {
-                            _logger.LogWarning("Failed to delete object {Key}: {Message}", error.Key, error.Message);
-                        }
+                            Message = $"Errors deleting some objects in bucket {bucketName}."
+                        });
                     }
                 }
 
-                return Result.Success();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to batch delete files in bucket {Bucket}", bucketName);
-                return Result.Failure(Errors.Common.InternalServerError with
-                {
-                    Message = $"Failed to batch delete files in bucket {bucketName}. ({ex.Message})"
-                });
-            }
-        }
+                continuationToken = (listResponse.IsTruncated == true) ? listResponse.NextContinuationToken : null;
+            } while (continuationToken != null);
 
-        private static string GetObjectKey(string userId, Guid crateId, Guid? folderId, string fileName)
+            return Result.Success();
+        }
+        catch (Exception ex)
         {
-            var parts = new List<string> { userId, crateId.ToString() };
-            if (folderId.HasValue)
-                parts.Add(folderId.Value.ToString());
-            parts.Add(fileName);
-            return string.Join("/", parts);
+            _logger.LogError(ex, "Failed to delete all files in bucket {Bucket}", bucketName);
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"Failed to delete all files in bucket {bucketName}. ({ex.Message})"
+            });
         }
     }
 
-    public static class IEnumerableExtensions
-    {
-        public static IEnumerable<IEnumerable<T>> Batch<T>(this IEnumerable<T> source, int size)
-        {
-            List<T> bucket = new(size);
-            foreach (var item in source)
-            {
-                bucket.Add(item);
-                if (bucket.Count == size)
-                {
-                    yield return bucket;
-                    bucket = new List<T>(size);
-                }
-            }
 
-            if (bucket.Count > 0)
-                yield return bucket;
+    public async Task<Result> DeleteBucketAsync(Guid crateId)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+
+        try
+        {
+            var deleteFilesResult = await DeleteAllFilesInBucketAsync(crateId);
+            if (!deleteFilesResult.Succeeded)
+                return deleteFilesResult;
+
+            await _s3Client.DeleteBucketAsync(bucketName);
+            return Result.Success();
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete bucket {Bucket}", bucketName);
+            return Result.Failure(Errors.Common.InternalServerError with
+            {
+                Message = $"Failed to delete bucket {bucketName}. ({ex.Message})"
+            });
+        }
+    }
+
+    private static string GetObjectKey(string userId, Guid crateId, Guid? folderId, string fileName)
+    {
+        var parts = new List<string> { userId, crateId.ToString() };
+        if (folderId.HasValue)
+            parts.Add(folderId.Value.ToString());
+        parts.Add(fileName);
+        return string.Join("/", parts);
     }
 }
