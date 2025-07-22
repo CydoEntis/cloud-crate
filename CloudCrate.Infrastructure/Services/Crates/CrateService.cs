@@ -153,10 +153,10 @@ public class CrateService : ICrateService
                 return Result<CrateResponse>.Failure(Errors.Crates.NotFound);
 
             if (!string.IsNullOrWhiteSpace(newName))
-                crate.Name = newName;
+                crate.Rename(newName);
 
             if (!string.IsNullOrWhiteSpace(newColor))
-                crate.Color = newColor;
+                crate.SetColor(newColor);
 
             await _context.SaveChangesAsync();
 
@@ -199,10 +199,8 @@ public class CrateService : ICrateService
             if (crate == null)
                 return Result.Failure(Errors.Crates.NotFound);
 
-            // Collect keys to delete for logging or use, but you don't need them if you delete whole bucket
             var keysToDelete = new List<string>();
 
-            // Remove all files from DB
             foreach (var file in crate.Files)
                 _context.FileObjects.Remove(file);
 
@@ -212,10 +210,8 @@ public class CrateService : ICrateService
             _context.Folders.RemoveRange(crate.Folders);
             _context.Crates.Remove(crate);
 
-            // Save DB changes first
             await _context.SaveChangesAsync();
 
-            // Delete all files in bucket
             var deleteFilesResult = await _storageService.DeleteAllFilesInBucketAsync(crateId);
             if (!deleteFilesResult.Succeeded)
             {
@@ -223,7 +219,6 @@ public class CrateService : ICrateService
                 return Result.Failure(deleteFilesResult.Errors);
             }
 
-            // Delete bucket
             var bucketDeleteResult = await _storageService.DeleteBucketAsync(crateId);
             if (!bucketDeleteResult.Succeeded)
             {
