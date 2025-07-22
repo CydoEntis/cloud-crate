@@ -2,15 +2,16 @@
 
 public class Crate
 {
-    public Guid Id { get; set; }
-    public string Name { get; set; }
-    public string UserId { get; set; }
-    public string Color { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdatedAt { get; set; }
-    public ICollection<Folder> Folders { get; set; }
-    public ICollection<FileObject> Files { get; set; }
-    public ICollection<CrateUserRole> Members { get; set; }
+    public Guid Id { get; private set; }
+    public string Name { get; private set; }
+    public string UserId { get; private set; }
+    public string Color { get; private set; }
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
+    public ICollection<Folder> Folders { get; private set; }
+    public ICollection<FileObject> Files { get; private set; }
+    public ICollection<CrateUserRole> Members { get; private set; }
+
     protected Crate()
     {
     }
@@ -34,10 +35,12 @@ public class Crate
     public void Rename(string newName)
     {
         Name = newName;
+        UpdatedAt = DateTime.UtcNow;
     }
 
     public void SetColor(string newColor)
     {
         Color = newColor;
+        UpdatedAt = DateTime.UtcNow;
     }
 }
