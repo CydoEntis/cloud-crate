@@ -43,4 +43,9 @@ public class Crate
         Color = newColor;
         UpdatedAt = DateTime.UtcNow;
     }
+
+    public string GetCrateStorageName()
+    {
+        return $"crate-{Id}".ToLowerInvariant();
+    }
 }
