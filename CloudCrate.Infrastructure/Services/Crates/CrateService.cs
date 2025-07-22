@@ -36,28 +36,6 @@ public class CrateService : ICrateService
         _crateUserRoleService = crateUserRoleService;
     }
 
-    public async Task<Result<bool>> CanCreateCrateAsync(string userId)
-    {
-        try
-        {
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-                return Result<bool>.Failure(Errors.User.NotFound);
-
-            var crateCount = await _context.Crates.CountAsync(c => c.UserId == userId);
-            var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
-
-            return Result<bool>.Success(crateCount < crateLimit);
-        }
-        catch (Exception ex)
-        {
-            return Result<bool>.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
-            });
-        }
-    }
-
     public async Task<Result<int>> GetCrateCountAsync(string userId)
     {
         try
@@ -95,12 +73,15 @@ public class CrateService : ICrateService
 
     public async Task<Result<CrateResponse>> CreateCrateAsync(string userId, string name, string color)
     {
-        var canCreateResult = await CanCreateCrateAsync(userId);
-        if (!canCreateResult.Succeeded)
-            return Result<CrateResponse>.Failure(canCreateResult.Errors);
+        var user = await _userManager.FindByIdAsync(userId);
 
-        if (!canCreateResult.Value)
+        if (user == null)
+            return Result<CrateResponse>.Failure(Errors.User.NotFound);
+
+        var canCreate = await CanCreateCrateAsync(userId, user.Plan);
+        if (!canCreate)
             return Result<CrateResponse>.Failure(Errors.Crates.LimitReached);
+
 
         try
         {
@@ -399,5 +380,12 @@ public class CrateService : ICrateService
         {
             await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
         }
+    }
+    
+    private async Task<bool> CanCreateCrateAsync(string userId, SubscriptionPlan subscriptionPlan)
+    {
+        var crateLimit = SubscriptionLimits.GetCrateLimit(subscriptionPlan);
+        var crateCount = await _context.Crates.CountAsync(c => c.UserId == userId);
+        return crateCount < crateLimit;
     }
 }

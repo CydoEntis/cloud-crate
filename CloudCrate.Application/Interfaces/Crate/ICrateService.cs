@@ -1,12 +1,12 @@
 ﻿using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Crate.Request;
 using CloudCrate.Application.DTOs.Crate.Response;
+using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.Interfaces.Crate;
 
 public interface ICrateService
 {
-    Task<Result<bool>> CanCreateCrateAsync(string userId);
     Task<Result<int>> GetCrateCountAsync(string userId);
     Task<Result<long>> GetTotalUsedStorageAsync(string userId);
     Task<Result<CrateResponse>> CreateCrateAsync(string userId, string name, string color);
