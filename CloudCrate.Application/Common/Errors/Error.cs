@@ -101,6 +101,12 @@ public static class Errors
 
         public static readonly Error Invalid =
             new("ERR_INVITE_INVALID", "Invite has already been used or declined.", 400);
+
+        public static readonly Error Expired =
+            new("ERR_INVITE_EXPIRED", "This invite link has expired.", 410);
+
+        public static readonly Error AlreadyExists =
+            new("ERR_INVITE_EXISTS", "An invite has already been sent to this email for this crate.", 409);
     }
 
     public static class Roles
