@@ -109,7 +109,7 @@ public class CrateInviteService : ICrateInviteService
 
     private string BuildInviteLink(string token)
     {
-        var baseUrl = _config["FrontendBaseUrl"] ?? "https://cloudcrate.codystine.com";
+        var baseUrl = _config["Email:clientUrl"] ?? "https://cloudcrate.codystine.com";
         return $"{baseUrl}/invite/{token}";
     }
 

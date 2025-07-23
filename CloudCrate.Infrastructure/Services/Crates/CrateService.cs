@@ -124,15 +124,24 @@ public class CrateService : ICrateService
             if (user == null)
                 return Result<CrateDetailsResponse>.Failure(Errors.User.NotFound);
 
-            var fileStats = await _context.FileObjects
+            var groupedByMimeType = await _context.FileObjects
                 .Where(f => f.CrateId == crateId)
-                .GroupBy(f => MimeCategoryHelper.GetMimeCategory(f.MimeType))
+                .GroupBy(f => f.MimeType)
                 .Select(g => new
                 {
-                    Category = g.Key,
+                    MimeType = g.Key,
                     TotalBytes = g.Sum(f => (long?)f.SizeInBytes) ?? 0
                 })
                 .ToListAsync();
+
+            var fileStats = groupedByMimeType
+                .GroupBy(g => MimeCategoryHelper.GetMimeCategory(g.MimeType))
+                .Select(g => new
+                {
+                    Category = g.Key,
+                    TotalBytes = g.Sum(x => x.TotalBytes)
+                })
+                .ToList();
 
             var totalBytes = fileStats.Sum(s => s.TotalBytes);
             var totalUsedMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
@@ -165,6 +174,7 @@ public class CrateService : ICrateService
             });
         }
     }
+
 
     public async Task<Result<int>> GetCrateCountAsync(string userId)
     {

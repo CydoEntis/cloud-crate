@@ -1,7 +1,6 @@
 ﻿using System.Security.Claims;
 using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.DTOs.Invite.Request;
 using CloudCrate.Application.Interfaces.Crate;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -9,29 +8,16 @@ using Microsoft.AspNetCore.Mvc;
 namespace CloudCrate.Api.Controllers
 {
     [ApiController]
-    [Route("api/crates/{crateId:guid}/invites")]
-    [Authorize]
-    public class CrateInvitesController : ControllerBase
+    [Route("api/invites")]
+    public class InvitesController : ControllerBase
     {
         private readonly ICrateInviteService _inviteService;
         private readonly ICrateUserRoleService _roleService;
 
-        public CrateInvitesController(ICrateInviteService inviteService, ICrateUserRoleService roleService)
+        public InvitesController(ICrateInviteService inviteService, ICrateUserRoleService roleService)
         {
             _inviteService = inviteService;
             _roleService = roleService;
-        }
-
-        [HttpPost]
-        public async Task<IActionResult> CreateInvite(Guid crateId, [FromBody] CrateInviteRequest request)
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized(ApiResponse<object>.Unauthorized());
-
-            var result = await _inviteService.CreateInviteAsync(crateId, request.Email, userId, request.Role);
-
-            return result.ToActionResult(this, 201, $"Invite sent to {request.Email}");
         }
 
         [HttpGet("token/{token}")]
@@ -39,11 +25,11 @@ namespace CloudCrate.Api.Controllers
         public async Task<IActionResult> GetInviteByToken(string token)
         {
             var result = await _inviteService.GetInviteByTokenAsync(token);
-
             return result.ToActionResult(this, successMessage: "Invite retrieved");
         }
 
         [HttpPost("token/{token}/accept")]
+        [Authorize]
         public async Task<IActionResult> AcceptInvite(string token)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -51,11 +37,11 @@ namespace CloudCrate.Api.Controllers
                 return Unauthorized(ApiResponse<object>.Unauthorized("You must be logged in to accept invites."));
 
             var result = await _inviteService.AcceptInviteAsync(token, userId, _roleService);
-
             return result.ToActionResult(this, successMessage: "Invite accepted");
         }
 
         [HttpPost("token/{token}/decline")]
+        [Authorize]
         public async Task<IActionResult> DeclineInvite(string token)
         {
             var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -63,7 +49,6 @@ namespace CloudCrate.Api.Controllers
                 return Unauthorized(ApiResponse<object>.Unauthorized("You must be logged in to decline invites."));
 
             var result = await _inviteService.DeclineInviteAsync(token);
-
             return result.ToActionResult(this, successMessage: "Invite declined");
         }
     }
