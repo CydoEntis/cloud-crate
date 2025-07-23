@@ -208,15 +208,17 @@ public class CrateService : ICrateService
     {
         try
         {
-            var rolesQuery = _context.CrateUserRoles
-                .Where(r => r.CrateId == crateId);
-
-            var userIdsQuery = rolesQuery
+            var memberUserIds = await _context.CrateUserRoles
+                .Where(r => r.CrateId == crateId)
                 .Select(r => r.UserId)
-                .Distinct();
+                .Distinct()
+                .ToListAsync();
+
+            if (memberUserIds.Count == 0)
+                return Result<List<CrateMemberResponse>>.Success([]);
 
             var usersQuery = _userManager.Users
-                .Where(u => userIdsQuery.Contains(u.Id));
+                .Where(u => memberUserIds.Contains(u.Id));
 
             if (!string.IsNullOrWhiteSpace(request.Email))
             {
@@ -231,26 +233,20 @@ public class CrateService : ICrateService
                 .ToListAsync();
 
             if (pagedUsers.Count == 0)
-            {
-                return Result<List<CrateMemberResponse>>.Success(new List<CrateMemberResponse>());
-            }
+                return Result<List<CrateMemberResponse>>.Success([]);
 
-            var userIds = pagedUsers.Select(u => u.Id).ToList();
+            var pagedUserIds = pagedUsers.Select(u => u.Id).ToList();
 
-            var roles = await rolesQuery
-                .Where(r => userIds.Contains(r.UserId))
-                .ToListAsync();
+            var roleMap = await _context.CrateUserRoles
+                .Where(r => r.CrateId == crateId && pagedUserIds.Contains(r.UserId))
+                .ToDictionaryAsync(r => r.UserId, r => r.Role);
 
             var result = pagedUsers
-                .Select(user =>
+                .Select(user => new CrateMemberResponse
                 {
-                    var role = roles.FirstOrDefault(r => r.UserId == user.Id);
-                    return new CrateMemberResponse
-                    {
-                        UserId = user.Id,
-                        Email = user.Email,
-                        Role = role?.Role ?? CrateRole.Viewer
-                    };
+                    UserId = user.Id,
+                    Email = user.Email,
+                    Role = roleMap.GetValueOrDefault(user.Id, CrateRole.Viewer)
                 })
                 .ToList();
 
@@ -376,7 +372,6 @@ public class CrateService : ICrateService
         string userId,
         List<string> keysToDelete)
     {
-        // Collect files in this folder
         foreach (var file in folder.Files)
         {
             var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
@@ -384,7 +379,6 @@ public class CrateService : ICrateService
             _context.FileObjects.Remove(file);
         }
 
-        // Recursively handle subfolders
         foreach (var subfolder in folder.Subfolders)
         {
             await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
