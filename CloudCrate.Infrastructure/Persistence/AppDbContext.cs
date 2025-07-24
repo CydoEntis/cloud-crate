@@ -30,9 +30,20 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        foreach (var entityType in builder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.ClrType.GetProperties())
+            {
+                if (property.PropertyType.IsEnum)
+                {
+                    builder
+                        .Entity(entityType.ClrType)
+                        .Property(property.Name)
+                        .HasConversion<string>();
+                }
+            }
+        }
+
         base.OnModelCreating(builder);
-        builder.Entity<CrateUserRole>()
-            .Property(r => r.Role)
-            .HasConversion(new EnumToStringConverter<CrateRole>());
     }
 }
