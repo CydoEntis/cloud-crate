@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Invite.Response;
 using CloudCrate.Application.Email.Models;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Email;
@@ -58,26 +59,31 @@ public class CrateInviteService : ICrateInviteService
         return Result.Success();
     }
 
-
-    public async Task<Result<CrateInvite>> GetInviteByTokenAsync(string token)
+    public async Task<Result<CrateInviteDetailsResponse>> GetInviteByTokenAsync(string token)
     {
         var invite = await _context.CrateInvites
+            .Include(i => i.Crate)
             .AsNoTracking()
             .FirstOrDefaultAsync(i => i.Token == token);
 
         if (invite is null)
-            return Result<CrateInvite>.Failure(Errors.Invites.NotFound);
+            return Result<CrateInviteDetailsResponse>.Failure(Errors.Invites.NotFound);
 
-        return Result<CrateInvite>.Success(invite);
+        return Result<CrateInviteDetailsResponse>.Success(CrateInviteDetailsResponse.FromEntity(invite));
     }
 
     public async Task<Result> AcceptInviteAsync(string token, string userId, ICrateUserRoleService roleService)
     {
-        var inviteResult = await GetValidPendingInvite(token);
-        if (!inviteResult.Succeeded)
-            return Result.Failure(inviteResult.Errors);
+        var invite = await GetTrackedInviteByTokenAsync(token);
 
-        var invite = inviteResult.Value;
+        if (invite == null)
+            return Result.Failure(Errors.Invites.NotFound);
+
+        if (invite.Status != InviteStatus.Pending)
+            return Result.Failure(Errors.Invites.Invalid);
+
+        if (invite.ExpiresAt.HasValue && invite.ExpiresAt.Value < DateTime.UtcNow)
+            return Result.Failure(Errors.Invites.Expired);
 
         invite.UpdateInviteStatus(InviteStatus.Accepted);
 
@@ -86,19 +92,33 @@ public class CrateInviteService : ICrateInviteService
             return Result.Failure(roleResult.Errors);
 
         await _context.SaveChangesAsync();
+
         return Result.Success();
     }
 
     public async Task<Result> DeclineInviteAsync(string token)
     {
-        var inviteResult = await GetValidPendingInvite(token);
-        if (!inviteResult.Succeeded)
-            return Result.Failure(inviteResult.Errors);
+        var invite = await GetTrackedInviteByTokenAsync(token);
 
-        inviteResult.Value.UpdateInviteStatus(InviteStatus.Declined);
+        if (invite == null)
+            return Result.Failure(Errors.Invites.NotFound);
+
+        if (invite.Status != InviteStatus.Pending)
+            return Result.Failure(Errors.Invites.Invalid);
+
+        if (invite.ExpiresAt.HasValue && invite.ExpiresAt.Value < DateTime.UtcNow)
+            return Result.Failure(Errors.Invites.Expired);
+
+        invite.UpdateInviteStatus(InviteStatus.Declined);
         await _context.SaveChangesAsync();
 
         return Result.Success();
+    }
+
+    private async Task<CrateInvite?> GetTrackedInviteByTokenAsync(string token)
+    {
+        return await _context.CrateInvites
+            .FirstOrDefaultAsync(i => i.Token == token);
     }
 
     private async Task<string?> GetCrateName(Guid crateId)
@@ -125,23 +145,5 @@ public class CrateInviteService : ICrateInviteService
             templateName: "InviteEmail",
             model: model
         );
-    }
-
-
-    private async Task<Result<CrateInvite>> GetValidPendingInvite(string token)
-    {
-        var inviteResult = await GetInviteByTokenAsync(token);
-        if (!inviteResult.Succeeded || inviteResult.Value is null)
-            return Result<CrateInvite>.Failure(Errors.Invites.NotFound);
-
-        var invite = inviteResult.Value;
-
-        if (invite.Status != InviteStatus.Pending)
-            return Result<CrateInvite>.Failure(Errors.Invites.Invalid);
-
-        if (invite.ExpiresAt.HasValue && invite.ExpiresAt.Value < DateTime.UtcNow)
-            return Result<CrateInvite>.Failure(Errors.Invites.Expired);
-
-        return Result<CrateInvite>.Success(invite);
     }
 }

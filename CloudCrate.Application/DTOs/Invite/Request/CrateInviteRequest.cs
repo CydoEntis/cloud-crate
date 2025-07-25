@@ -10,4 +10,6 @@ public class CrateInviteRequest
     public CrateRole Role { get; set; }
 
     public DateTime? ExpiresAt { get; set; }
+    
+    
 }
