@@ -11,4 +11,5 @@ public class UserProfileResponse
     public double UsedStorageMb { get; set; }
     public bool CanCreateMoreCrates { get; set; }
     public int CrateLimit { get; set; }
+    public int CrateCount { get; set; }
 }

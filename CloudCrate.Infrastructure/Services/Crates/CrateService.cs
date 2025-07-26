@@ -80,7 +80,6 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result<List<CrateResponse>>> GetCratesAsync(string userId)
     {
         try
@@ -118,14 +117,13 @@ public class CrateService : ICrateService
     {
         try
         {
-            // Check if the user is a member of the crate
             var isMember = await _context.CrateMembers
                 .AnyAsync(m => m.CrateId == crateId && m.UserId == userId);
 
             if (!isMember)
                 return Result<CrateDetailsResponse>.Failure(Errors.Crates.NotFound);
 
-            // Get the crate
+
             var crate = await _context.Crates
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.Id == crateId);
@@ -137,7 +135,7 @@ public class CrateService : ICrateService
             if (user == null)
                 return Result<CrateDetailsResponse>.Failure(Errors.User.NotFound);
 
-            // File type breakdown
+
             var groupedByMimeType = await _context.FileObjects
                 .Where(f => f.CrateId == crateId)
                 .GroupBy(f => f.MimeType)

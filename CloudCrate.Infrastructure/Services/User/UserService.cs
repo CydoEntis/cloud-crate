@@ -3,6 +3,7 @@ using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Storage.Response;
 using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
@@ -85,7 +86,7 @@ public class UserService : IUserService
             return Result<UserProfileResponse>.Failure(canCreateCrateResult.Errors);
 
         var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
-
+        var crateCount = await GetOwnedCrateCountAsync(userId);
         var userProfile = new UserProfileResponse
         {
             UserId = user.Id,
@@ -95,9 +96,16 @@ public class UserService : IUserService
             UsedStorageMb = storageSummaryResult.Value.UsedStorageMb,
             CanCreateMoreCrates = canCreateCrateResult.Value,
             CrateLimit = crateLimit,
+            CrateCount = crateCount
         };
 
         return Result<UserProfileResponse>.Success(userProfile);
     }
-    
+
+    private async Task<int> GetOwnedCrateCountAsync(string userId)
+    {
+        return await _context.CrateMembers
+            .Where(m => m.UserId == userId && m.Role == CrateRole.Owner)
+            .CountAsync();
+    }
 }
