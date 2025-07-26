@@ -12,7 +12,7 @@ public interface ICrateInviteService
 
     Task<Result<CrateInviteDetailsResponse>> GetInviteByTokenAsync(string token);
 
-    Task<Result> AcceptInviteAsync(string token, string userId, ICrateUserRoleService roleService);
+    Task<Result> AcceptInviteAsync(string token, string userId, ICrateMemberService roleService);
 
     Task<Result> DeclineInviteAsync(string token);
 }

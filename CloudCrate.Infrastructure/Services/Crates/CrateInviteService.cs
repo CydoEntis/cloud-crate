@@ -72,7 +72,7 @@ public class CrateInviteService : ICrateInviteService
         return Result<CrateInviteDetailsResponse>.Success(CrateInviteDetailsResponse.FromEntity(invite));
     }
 
-    public async Task<Result> AcceptInviteAsync(string token, string userId, ICrateUserRoleService roleService)
+    public async Task<Result> AcceptInviteAsync(string token, string userId, ICrateMemberService roleService)
     {
         var invite = await GetTrackedInviteByTokenAsync(token);
 
