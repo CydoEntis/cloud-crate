@@ -9,27 +9,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Services.Crates;
 
-public class CrateUserRolesService : ICrateUserRoleService
+public class CrateMemberService : ICrateMemberService
 {
     private readonly IAppDbContext _context;
 
-    public CrateUserRolesService(IAppDbContext context)
+    public CrateMemberService(IAppDbContext context)
     {
         _context = context;
     }
 
-    public async Task<Result<CrateUserRole?>> GetUserRoleAsync(Guid crateId, string userId)
+    public async Task<Result<CrateMember?>> GetUserRoleAsync(Guid crateId, string userId)
     {
         try
         {
-            var role = await _context.CrateUserRoles
+            var role = await _context.CrateMembers
                 .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
 
-            return Result<CrateUserRole?>.Success(role);
+            return Result<CrateMember?>.Success(role);
         }
         catch (Exception ex)
         {
-            return Result<CrateUserRole?>.Failure(Errors.Common.InternalServerError with
+            return Result<CrateMember?>.Failure(Errors.Common.InternalServerError with
             {
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
@@ -140,18 +140,18 @@ public class CrateUserRolesService : ICrateUserRoleService
     {
         try
         {
-            var permission = await _context.CrateUserRoles
+            var permission = await _context.CrateMembers
                 .FirstOrDefaultAsync(p => p.CrateId == crateId && p.UserId == userId);
 
             if (permission == null)
             {
-                permission = CrateUserRole.Create(crateId, userId, role);
-                _context.CrateUserRoles.Add(permission);
+                permission = CrateMember.Create(crateId, userId, role);
+                _context.CrateMembers.Add(permission);
             }
             else
             {
                 permission.Role = role;
-                _context.CrateUserRoles.Update(permission);
+                _context.CrateMembers.Update(permission);
             }
 
             await _context.SaveChangesAsync();
@@ -165,5 +165,14 @@ public class CrateUserRolesService : ICrateUserRoleService
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
         }
+    }
+
+    public async Task RemoveAllMembersFromCrateAsync(Guid crateId)
+    {
+        var members = await _context.CrateMembers
+            .Where(m => m.CrateId == crateId)
+            .ToListAsync();
+
+        _context.CrateMembers.RemoveRange(members);
     }
 }

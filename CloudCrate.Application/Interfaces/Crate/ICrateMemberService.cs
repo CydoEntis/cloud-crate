@@ -4,9 +4,9 @@ using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.Interfaces.Crate;
 
-public interface ICrateUserRoleService
+public interface ICrateMemberService
 {
-    Task<Result<CrateUserRole?>> GetUserRoleAsync(Guid crateId, string userId);
+    Task<Result<CrateMember?>> GetUserRoleAsync(Guid crateId, string userId);
     Task<Result<bool>> CanUserUploadAsync(Guid crateId, string userId);
     Task<Result<bool>> CanUserDownloadAsync(Guid crateId, string userId);
     Task<Result<bool>> CanUserDeleteFileAsync(Guid crateId, string userId);
@@ -14,4 +14,6 @@ public interface ICrateUserRoleService
     Task<Result<bool>> IsOwnerAsync(Guid crateId, string userId);
 
     Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role);
+
+    Task RemoveAllMembersFromCrateAsync(Guid crateId);
 }
