@@ -63,17 +63,4 @@ public class AuthService : IAuthService
 
         return Result<string>.Success(accessToken);
     }
-
-    // public async Task<Result<UserResponse>> GetUserByIdAsync(string userId)
-    // {
-    //     var user = await _userManager.FindByIdAsync(userId);
-    //     if (user == null)
-    //         return Result<UserResponse>.Failure(Errors.User.NotFound);
-    //
-    //     return Result<UserResponse>.Success(new UserResponse
-    //     {
-    //         Id = user.Id,
-    //         Email = user.Email
-    //     });
-    // }
 }
