@@ -2,7 +2,7 @@
 
 namespace CloudCrate.Domain.Entities;
 
-public class CrateUserRole
+public class CrateMember
 {
     public Guid Id { get; set; }
     public Guid CrateId { get; set; }
@@ -14,10 +14,11 @@ public class CrateUserRole
 
     public DateTime CreatedAt { get; set; }
 
+    public DateTime UpdatedAt { get; set; }
 
-    public static CrateUserRole Create(Guid crateId, string userId, CrateRole role)
+    public static CrateMember Create(Guid crateId, string userId, CrateRole role)
     {
-        return new CrateUserRole
+        return new CrateMember
         {
             Id = Guid.NewGuid(),
             CrateId = crateId,
