@@ -34,16 +34,16 @@ public class AuthController : ControllerBase
         return result.ToActionResult(this, 200, "Login successful");
     }
 
-    [Authorize]
-    [HttpGet("user")]
-    public async Task<IActionResult> GetCurrentUser()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-
-        var result = await _authService.GetUserByIdAsync(userId);
-
-        return result.ToActionResult(this, 200, "User retrieved successfully");
-    }
+    // [Authorize]
+    // [HttpGet("user")]
+    // public async Task<IActionResult> GetCurrentUser()
+    // {
+    //     var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    //     if (string.IsNullOrWhiteSpace(userId))
+    //         return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+    //
+    //     var result = await _authService.GetUserByIdAsync(userId);
+    //
+    //     return result.ToActionResult(this, 200, "User retrieved successfully");
+    // }
 }
