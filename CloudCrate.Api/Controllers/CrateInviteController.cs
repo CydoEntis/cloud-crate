@@ -13,9 +13,9 @@ namespace CloudCrate.Api.Controllers
     public class CrateInviteController : ControllerBase
     {
         private readonly ICrateInviteService _inviteService;
-        private readonly ICrateUserRoleService _roleService;
+        private readonly ICrateMemberService _roleService;
 
-        public CrateInviteController(ICrateInviteService inviteService, ICrateUserRoleService roleService)
+        public CrateInviteController(ICrateInviteService inviteService, ICrateMemberService roleService)
         {
             _inviteService = inviteService;
             _roleService = roleService;

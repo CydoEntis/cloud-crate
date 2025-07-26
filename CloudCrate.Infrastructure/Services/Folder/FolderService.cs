@@ -3,6 +3,7 @@ using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
+using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -12,26 +13,27 @@ namespace CloudCrate.Infrastructure.Services.Folder;
 public class FolderService : IFolderService
 {
     private readonly IAppDbContext _context;
+    private readonly ICratePermissionService _cratePermissionService;
 
-    public FolderService(IAppDbContext context)
+    public FolderService(
+        IAppDbContext context,
+        ICratePermissionService cratePermissionService)
     {
         _context = context;
+        _cratePermissionService = cratePermissionService;
     }
 
     public async Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId)
     {
-        var crate = await _context.Crates
-            .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.UserId == userId);
-
-        if (crate == null)
-            return Result<FolderResponse>.Failure(Errors.Crates.NotFound);
+        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
+        if (!editPermission.Succeeded)
+            return Result<FolderResponse>.Failure(editPermission.Errors);
 
         if (request.ParentFolderId.HasValue)
         {
-            var parent = await _context.Folders
-                .FirstOrDefaultAsync(f => f.Id == request.ParentFolderId && f.Crate.UserId == userId);
-
-            if (parent == null)
+            var parentExists =
+                await _context.Folders.AnyAsync(f => f.Id == request.ParentFolderId && f.CrateId == request.CrateId);
+            if (!parentExists)
                 return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
         }
 
@@ -58,10 +60,14 @@ public class FolderService : IFolderService
     {
         var folder = await _context.Folders
             .Include(f => f.Crate)
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == folderId);
 
         if (folder == null)
             return Result.Failure(Errors.Folders.NotFound);
+
+        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!editPermission.Succeeded)
+            return Result.Failure(editPermission.Errors);
 
         folder.Name = newName;
         await _context.SaveChangesAsync();
@@ -75,10 +81,14 @@ public class FolderService : IFolderService
             .Include(f => f.Crate)
             .Include(f => f.Subfolders)
             .Include(f => f.Files)
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == folderId);
 
         if (folder == null)
             return Result.Failure(Errors.Folders.NotFound);
+
+        var ownerPermission = await _cratePermissionService.CheckOwnerPermissionAsync(folder.CrateId, userId);
+        if (!ownerPermission.Succeeded)
+            return Result.Failure(ownerPermission.Errors);
 
         if (folder.Subfolders.Any() || folder.Files.Any())
             return Result.Failure(Errors.Folders.NotEmpty);
@@ -93,18 +103,22 @@ public class FolderService : IFolderService
     {
         var folder = await _context.Folders
             .Include(f => f.Crate)
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == folderId);
 
         if (folder == null)
             return Result.Failure(Errors.Folders.NotFound);
+
+        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!editPermission.Succeeded)
+            return Result.Failure(editPermission.Errors);
 
         if (newParentId.HasValue)
         {
             var newParent = await _context.Folders
                 .Include(f => f.Crate)
-                .FirstOrDefaultAsync(f => f.Id == newParentId.Value && f.Crate.UserId == userId);
+                .FirstOrDefaultAsync(f => f.Id == newParentId.Value);
 
-            if (newParent == null)
+            if (newParent == null || newParent.CrateId != folder.CrateId)
                 return Result.Failure(Errors.Folders.NotFound);
 
             if (newParentId == folder.Id)
@@ -135,26 +149,19 @@ public class FolderService : IFolderService
         string userId,
         string? search,
         int page = 1,
-        int pageSize = 20
-    )
+        int pageSize = 20)
     {
-        var crateExists = await _context.Crates
-            .AnyAsync(c => c.Id == crateId && c.UserId == userId);
+        var viewPermission = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
+        if (!viewPermission.Succeeded)
+            return Result<FolderContentsResponse>.Failure(viewPermission.Errors);
 
-        if (!crateExists)
-            return Result<FolderContentsResponse>.Failure(Errors.Crates.NotFound);
+        // The rest stays the same...
 
-        // Folders
         var foldersQuery = _context.Folders
-            .Where(f => f.CrateId == crateId &&
-                        f.ParentFolderId == parentFolderId &&
-                        f.Crate.UserId == userId);
+            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId);
 
-        // Files
         var filesQuery = _context.FileObjects
-            .Where(f => f.CrateId == crateId &&
-                        f.FolderId == parentFolderId &&
-                        f.Crate.UserId == userId);
+            .Where(f => f.CrateId == crateId && f.FolderId == parentFolderId);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -188,28 +195,25 @@ public class FolderService : IFolderService
             })
             .ToListAsync();
 
-        // Merge and sort
         var combined = folders
             .Concat(files)
             .OrderBy(i => i.Type)
             .ThenBy(i => i.Name)
             .ToList();
 
-        // Pagination
         var totalCount = combined.Count;
         var pagedItems = combined
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToList();
 
-        // Parent-of-parent for virtual "Back"
         Guid? parentOfCurrentFolderId = null;
         string currentFolderName = "Root";
 
         if (parentFolderId.HasValue)
         {
             var folderInfo = await _context.Folders
-                .Where(f => f.Id == parentFolderId && f.Crate.UserId == userId)
+                .Where(f => f.Id == parentFolderId)
                 .Select(f => new { f.Name, f.ParentFolderId })
                 .FirstOrDefaultAsync();
 

@@ -6,9 +6,9 @@ using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
+using CloudCrate.Application.Interfaces.Crate;
+using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Domain.Entities;
-using CloudCrate.Infrastructure.Identity;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Services.Files;
@@ -16,23 +16,27 @@ namespace CloudCrate.Infrastructure.Services.Files;
 public class FileService : IFileService
 {
     private readonly IAppDbContext _context;
-    private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStorageService _storageService;
+    private readonly ICratePermissionService _cratePermissionService;
 
     public FileService(
         IAppDbContext context,
-        UserManager<ApplicationUser> userManager,
-        IStorageService storageService)
+        IStorageService storageService,
+        ICratePermissionService cratePermissionService)
     {
         _context = context;
-        _userManager = userManager;
         _storageService = storageService;
+        _cratePermissionService = cratePermissionService;
     }
 
     public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
     {
+        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
+        if (!permissionCheck.Succeeded)
+            return Result<List<FolderResponse>>.Failure(permissionCheck.Errors);
+
         var folders = await _context.Folders
-            .Where(f => f.CrateId == crateId && f.Crate.UserId == userId)
+            .Where(f => f.CrateId == crateId)
             .Select(f => new FolderResponse
             {
                 Id = f.Id,
@@ -47,8 +51,12 @@ public class FileService : IFileService
 
     public async Task<Result<List<FileObjectResponse>>> GetFilesInCrateRootAsync(Guid crateId, string userId)
     {
+        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
+        if (!permissionCheck.Succeeded)
+            return Result<List<FileObjectResponse>>.Failure(permissionCheck.Errors);
+
         var files = await _context.FileObjects
-            .Where(f => f.CrateId == crateId && f.FolderId == null && f.Crate.UserId == userId)
+            .Where(f => f.CrateId == crateId && f.FolderId == null)
             .Select(f => new FileObjectResponse
             {
                 Id = f.Id,
@@ -66,13 +74,13 @@ public class FileService : IFileService
     public async Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid crateId, Guid folderId,
         string userId)
     {
-        var folder = await _context.Folders
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.CrateId == crateId && f.Crate.UserId == userId);
+        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
+        if (!permissionCheck.Succeeded)
+            return Result<List<FileObjectResponse>>.Failure(permissionCheck.Errors);
 
-        if (folder == null)
-        {
+        var folderExists = await _context.Folders.AnyAsync(f => f.Id == folderId && f.CrateId == crateId);
+        if (!folderExists)
             return Result<List<FileObjectResponse>>.Failure(Errors.Folders.NotFound);
-        }
 
         var files = await _context.FileObjects
             .Where(f => f.FolderId == folderId)
@@ -92,18 +100,15 @@ public class FileService : IFileService
 
     public async Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId)
     {
-        var crate = await _context.Crates
-            .FirstOrDefaultAsync(c => c.Id == request.CrateId && c.UserId == userId);
-
-        if (crate == null)
-            return Result<FileObjectResponse>.Failure(Errors.Crates.NotFound);
+        var uploadPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
+        if (!uploadPermission.Succeeded)
+            return Result<FileObjectResponse>.Failure(uploadPermission.Errors);
 
         if (request.FolderId.HasValue)
         {
-            var folder = await _context.Folders
-                .FirstOrDefaultAsync(f => f.Id == request.FolderId && f.Crate.UserId == userId);
-
-            if (folder == null)
+            var folderExists =
+                await _context.Folders.AnyAsync(f => f.Id == request.FolderId && f.CrateId == request.CrateId);
+            if (!folderExists)
                 return Result<FileObjectResponse>.Failure(Errors.Folders.NotFound);
         }
 
@@ -149,10 +154,14 @@ public class FileService : IFileService
     public async Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId)
     {
         var file = await _context.FileObjects
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (file == null)
             return Result<byte[]>.Failure(Errors.Files.NotFound);
+
+        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(file.CrateId, userId);
+        if (!permissionCheck.Succeeded)
+            return Result<byte[]>.Failure(permissionCheck.Errors);
 
         var fileResult = await _storageService.ReadFileAsync(
             userId,
@@ -170,10 +179,14 @@ public class FileService : IFileService
     public async Task<Result> DeleteFileAsync(Guid fileId, string userId)
     {
         var file = await _context.FileObjects
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (file == null)
             return Result.Failure(Errors.Files.NotFound);
+
+        var deletePermission = await _cratePermissionService.CheckDeletePermissionAsync(file.CrateId, userId);
+        if (!deletePermission.Succeeded)
+            return Result.Failure(deletePermission.Errors);
 
         var deleteResult = await _storageService.DeleteFileAsync(
             userId,
@@ -194,10 +207,14 @@ public class FileService : IFileService
     public async Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId)
     {
         var file = await _context.FileObjects
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (file == null)
             return Result<FileObjectResponse>.Failure(Errors.Files.NotFound);
+
+        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(file.CrateId, userId);
+        if (!permissionCheck.Succeeded)
+            return Result<FileObjectResponse>.Failure(permissionCheck.Errors);
 
         var response = new FileObjectResponse
         {
@@ -215,19 +232,20 @@ public class FileService : IFileService
     public async Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId)
     {
         var file = await _context.FileObjects
-            .Include(f => f.Crate)
-            .FirstOrDefaultAsync(f => f.Id == fileId && f.Crate.UserId == userId);
+            .FirstOrDefaultAsync(f => f.Id == fileId);
 
         if (file == null)
             return Result.Failure(Errors.Files.NotFound);
 
+        var deletePermission = await _cratePermissionService.CheckDeletePermissionAsync(file.CrateId, userId);
+        if (!deletePermission.Succeeded)
+            return Result.Failure(deletePermission.Errors);
+
         if (newParentId.HasValue)
         {
-            var newParentFolder = await _context.Folders
-                .Include(f => f.Crate)
-                .FirstOrDefaultAsync(f => f.Id == newParentId.Value && f.Crate.UserId == userId);
-
-            if (newParentFolder == null)
+            var folderExists =
+                await _context.Folders.AnyAsync(f => f.Id == newParentId.Value && f.CrateId == file.CrateId);
+            if (!folderExists)
                 return Result.Failure(Errors.Folders.NotFound);
         }
 

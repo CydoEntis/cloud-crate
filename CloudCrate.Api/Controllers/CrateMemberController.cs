@@ -15,12 +15,12 @@ namespace CloudCrate.Api.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/crates/{crateId:guid}/roles")]
-public class CrateRolesController : ControllerBase
+public class CrateMemberController : ControllerBase
 {
-    private readonly ICrateUserRoleService _roleService;
+    private readonly ICrateMemberService _roleService;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public CrateRolesController(ICrateUserRoleService roleService, UserManager<ApplicationUser> userManager)
+    public CrateMemberController(ICrateMemberService roleService, UserManager<ApplicationUser> userManager)
     {
         _roleService = roleService;
         _userManager = userManager;
