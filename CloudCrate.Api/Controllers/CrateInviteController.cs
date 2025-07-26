@@ -10,12 +10,12 @@ namespace CloudCrate.Api.Controllers
 {
     [ApiController]
     [Route("api/invite")]
-    public class InviteController : ControllerBase
+    public class CrateInviteController : ControllerBase
     {
         private readonly ICrateInviteService _inviteService;
         private readonly ICrateUserRoleService _roleService;
 
-        public InviteController(ICrateInviteService inviteService, ICrateUserRoleService roleService)
+        public CrateInviteController(ICrateInviteService inviteService, ICrateUserRoleService roleService)
         {
             _inviteService = inviteService;
             _roleService = roleService;
