@@ -8,7 +8,7 @@ public interface IAppDbContext
 {
     DatabaseFacade Database { get; }
     DbSet<Domain.Entities.Crate> Crates { get; }
-    DbSet<CrateUserRole> CrateUserRoles { get; }
+    DbSet<CrateMember> CrateMembers { get; }
     public DbSet<CrateInvite> CrateInvites { get; set; }
 
     DbSet<FileObject> FileObjects { get; }
