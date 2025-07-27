@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.DTOs.Crate.Response;
 
@@ -6,6 +7,7 @@ public class CrateDetailsResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = String.Empty;
+    public CrateRole Role { get; set; }
     public string Color { get; set; } = String.Empty;
     public double TotalUsedStorage { get; set; }
     public double StorageLimit { get; set; }
