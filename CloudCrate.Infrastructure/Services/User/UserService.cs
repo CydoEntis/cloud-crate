@@ -102,6 +102,16 @@ public class UserService : IUserService
         return Result<UserProfileResponse>.Success(userProfile);
     }
 
+    public async Task<Dictionary<string, string>> GetEmailsByUserIdsAsync(IEnumerable<string> userIds)
+    {
+        var users = await _userManager.Users
+            .Where(u => userIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.Email })
+            .ToListAsync();
+
+        return users.ToDictionary(u => u.Id, u => u.Email ?? "");
+    }
+
     private async Task<int> GetOwnedCrateCountAsync(string userId)
     {
         return await _context.CrateMembers
