@@ -9,7 +9,6 @@ public class CrateMember
     public Crate Crate { get; set; } = null!;
 
     public string UserId { get; set; } = string.Empty!;
-
     public CrateRole Role { get; set; }
 
     public DateTime CreatedAt { get; set; }

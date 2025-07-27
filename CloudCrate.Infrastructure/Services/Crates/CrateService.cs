@@ -84,35 +84,85 @@ public class CrateService : ICrateService
     {
         try
         {
-            // Get all crate memberships for the user
             var memberships = await _context.CrateMembers
                 .AsNoTracking()
                 .Where(m => m.UserId == userId)
-                .Include(m => m.Crate)
+                .Select(m => new
+                {
+                    Role = m.Role,
+                    Crate = new
+                    {
+                        m.Crate.Id,
+                        m.Crate.Name,
+                        m.Crate.Color,
+                        m.Crate.CreatedAt,
+                        Members = m.Crate.Members.Select(mem => new
+                        {
+                            mem.UserId,
+                            mem.Role
+                        }).ToList()
+                    }
+                })
                 .ToListAsync();
+
+            var allUserIds = memberships
+                .SelectMany(m => m.Crate.Members)
+                .Select(mem => mem.UserId)
+                .Distinct()
+                .ToList();
+
+            var emails = await _userService.GetEmailsByUserIdsAsync(allUserIds);
+
+            string GetEmail(string id) => emails.TryGetValue(id, out var email) ? email : "unknown";
 
             var owned = memberships
                 .Where(m => m.Role == CrateRole.Owner)
-                .Select(m => m.Crate)
-                .OrderByDescending(c => c.CreatedAt)
-                .Select(crate => new CrateResponse
+                .Select(m =>
                 {
-                    Id = crate.Id,
-                    Name = crate.Name,
-                    Color = crate.Color
+                    var crate = m.Crate;
+                    var owner = crate.Members.FirstOrDefault(mem => mem.Role == CrateRole.Owner);
+
+                    return new CrateResponse
+                    {
+                        Id = crate.Id,
+                        Name = crate.Name,
+                        Color = crate.Color,
+                        Owner = GetEmail(owner.UserId),
+                        Role = CrateRole.Owner,
+                        Members = crate.Members.Select(mem => new CrateMemberResponse
+                        {
+                            UserId = mem.UserId,
+                            Email = GetEmail(mem.UserId),
+                            Role = mem.Role
+                        }).ToList()
+                    };
                 })
+                .OrderByDescending(c => c.Id)
                 .ToList();
 
             var joined = memberships
                 .Where(m => m.Role != CrateRole.Owner)
-                .Select(m => m.Crate)
-                .OrderByDescending(c => c.CreatedAt)
-                .Select(crate => new CrateResponse
+                .Select(m =>
                 {
-                    Id = crate.Id,
-                    Name = crate.Name,
-                    Color = crate.Color
+                    var crate = m.Crate;
+                    var owner = crate.Members.FirstOrDefault(mem => mem.Role == CrateRole.Owner);
+
+                    return new CrateResponse
+                    {
+                        Id = crate.Id,
+                        Name = crate.Name,
+                        Color = crate.Color,
+                        Owner = GetEmail(owner.UserId),
+                        Role = m.Role,
+                        Members = crate.Members.Select(mem => new CrateMemberResponse
+                        {
+                            UserId = mem.UserId,
+                            Email = GetEmail(mem.UserId),
+                            Role = mem.Role
+                        }).ToList()
+                    };
                 })
+                .OrderByDescending(c => c.Id)
                 .ToList();
 
             return Result<UserCratesResponse>.Success(new UserCratesResponse
