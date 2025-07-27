@@ -80,47 +80,66 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<List<CrateResponse>>> GetCratesAsync(string userId)
+    public async Task<Result<UserCratesResponse>> GetCratesAsync(string userId)
     {
         try
         {
-            var crateIds = await _context.CrateMembers
-                .Where(r => r.UserId == userId)
-                .Select(r => r.CrateId)
-                .ToListAsync();
-
-            var crates = await _context.Crates
+            // Get all crate memberships for the user
+            var memberships = await _context.CrateMembers
                 .AsNoTracking()
-                .Where(c => crateIds.Contains(c.Id))
-                .OrderByDescending(c => c.CreatedAt)
+                .Where(m => m.UserId == userId)
+                .Include(m => m.Crate)
                 .ToListAsync();
 
-            var responses = crates.Select(crate => new CrateResponse
-            {
-                Id = crate.Id,
-                Name = crate.Name,
-                Color = crate.Color
-            }).ToList();
+            var owned = memberships
+                .Where(m => m.Role == CrateRole.Owner)
+                .Select(m => m.Crate)
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(crate => new CrateResponse
+                {
+                    Id = crate.Id,
+                    Name = crate.Name,
+                    Color = crate.Color
+                })
+                .ToList();
 
-            return Result<List<CrateResponse>>.Success(responses);
+            var joined = memberships
+                .Where(m => m.Role != CrateRole.Owner)
+                .Select(m => m.Crate)
+                .OrderByDescending(c => c.CreatedAt)
+                .Select(crate => new CrateResponse
+                {
+                    Id = crate.Id,
+                    Name = crate.Name,
+                    Color = crate.Color
+                })
+                .ToList();
+
+            return Result<UserCratesResponse>.Success(new UserCratesResponse
+            {
+                Owned = owned,
+                Joined = joined
+            });
         }
         catch (Exception ex)
         {
-            return Result<List<CrateResponse>>.Failure(Errors.Common.InternalServerError with
+            return Result<UserCratesResponse>.Failure(Errors.Common.InternalServerError with
             {
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
         }
     }
 
+
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
         try
         {
-            var isMember = await _context.CrateMembers
-                .AnyAsync(m => m.CrateId == crateId && m.UserId == userId);
+            var member = await _context.CrateMembers
+                .AsNoTracking()
+                .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
 
-            if (!isMember)
+            if (member is null)
                 return Result<CrateDetailsResponse>.Failure(Errors.Crates.NotFound);
 
 
@@ -170,6 +189,7 @@ public class CrateService : ICrateService
             {
                 Id = crate.Id,
                 Name = crate.Name,
+                Role = member.Role,
                 Color = crate.Color,
                 TotalUsedStorage = totalUsedMb,
                 StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
