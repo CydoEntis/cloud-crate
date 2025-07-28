@@ -2,9 +2,9 @@
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Auth.Request;
 using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.Interfaces.Auth;
-using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 
@@ -23,10 +23,17 @@ public class AuthService : IAuthService
         _jwtTokenService = jwtTokenService;
     }
 
-    public async Task<Result<UserResponse>> RegisterAsync(string email, string password)
+    public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
     {
-        var user = new ApplicationUser { UserName = email, Email = email };
-        var result = await _userManager.CreateAsync(user, password);
+        var user = new ApplicationUser
+        {
+            UserName = request.Email,
+            Email = request.Email,
+            DisplayName = request.DisplayName,
+            ProfilePictureUrl = request.ProfilePictureUrl
+        };
+
+        var result = await _userManager.CreateAsync(user, request.Password);
 
         if (!result.Succeeded)
         {
@@ -34,33 +41,39 @@ public class AuthService : IAuthService
                 .Select(e => IdentityErrorMapper.Map(e.Code, e.Description))
                 .ToList();
 
-            return Result<UserResponse>.Failure(errors);
+            return Result<AuthResponse>.Failure(errors);
         }
 
-        var userResponse = new UserResponse
-        {
-            Id = user.Id,
-            Email = user.Email,
-        };
-
-        return Result<UserResponse>.Success(userResponse);
-    }
-
-
-    public async Task<Result<string>> LoginAsync(string email, string password)
-    {
-        var user = await _userManager.FindByEmailAsync(email);
-        if (user == null || !await _userManager.CheckPasswordAsync(user, password))
-        {
-            return Result<string>.Failure(Errors.User.Unauthorized.WithMessage("Invalid credentials"));
-        }
-
-        var accessToken = _jwtTokenService.GenerateToken(new UserTokenInfo
+        var token = _jwtTokenService.GenerateToken(new UserTokenInfo
         {
             UserId = user.Id,
             Email = user.Email!
         });
 
-        return Result<string>.Success(accessToken);
+        return Result<AuthResponse>.Success(new AuthResponse
+        {
+            Token = token
+        });
+    }
+
+    public async Task<Result<AuthResponse>> LoginAsync(string email, string password)
+    {
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user == null || !await _userManager.CheckPasswordAsync(user, password))
+        {
+            return Result<AuthResponse>.Failure(
+                Errors.User.Unauthorized.WithMessage("Invalid credentials"));
+        }
+
+        var token = _jwtTokenService.GenerateToken(new UserTokenInfo
+        {
+            UserId = user.Id,
+            Email = user.Email!
+        });
+
+        return Result<AuthResponse>.Success(new AuthResponse
+        {
+            Token = token
+        });
     }
 }
