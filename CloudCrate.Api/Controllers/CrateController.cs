@@ -34,13 +34,15 @@ public class CrateController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetCrates()
+    public async Task<IActionResult> GetCrates([FromQuery] CrateQueryParameters queryParameters)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result = await _crateService.GetCratesAsync(userId);
+        queryParameters.UserId = userId;
+
+        var result = await _crateService.GetCratesAsync(queryParameters);
 
         return result.ToActionResult(this, successMessage: "Crates retrieved successfully");
     }

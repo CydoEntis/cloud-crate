@@ -80,15 +80,78 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<List<CrateResponse>>> GetCratesAsync(string userId)
+    public async Task<Result<List<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
         try
         {
-            var crates = await _context.Crates
-                .Where(c => c.Members.Any(m => m.UserId == userId))
+            var query = _context.Crates
                 .Include(c => c.Members)
                 .Include(c => c.Files)
-                .ToListAsync();
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(parameters.UserId))
+            {
+                query = query.Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
+            }
+            else
+            {
+                return Result<List<CrateResponse>>.Failure(Errors.User.Unauthorized with
+                {
+                    Message = "UserId is required"
+                });
+            }
+
+            if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
+            {
+                var term = parameters.SearchTerm.Trim().ToLower();
+                query = query.Where(c => c.Name.ToLower().Contains(term));
+            }
+
+            if (parameters.SortBy.HasValue)
+            {
+                if (parameters.SortBy == CrateSortBy.Owned)
+                {
+                    query = query.Where(c =>
+                        c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+                }
+                else if (parameters.SortBy == CrateSortBy.Joined)
+                {
+                    query = query.Where(c =>
+                        c.Members.Any(m => m.UserId == parameters.UserId) &&
+                        !c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+                }
+                else
+                {
+                    bool descending = parameters.OrderBy == OrderBy.Desc;
+
+                    switch (parameters.SortBy.Value)
+                    {
+                        case CrateSortBy.Name:
+                            query = descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name);
+                            break;
+
+                        case CrateSortBy.JoinedAt:
+                            query = descending
+                                ? query.OrderByDescending(c =>
+                                    c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate)
+                                : query.OrderBy(c =>
+                                    c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate);
+                            break;
+
+                        case CrateSortBy.UsedStorage:
+                            query = descending
+                                ? query.OrderByDescending(c => c.Files.Sum(f => f.SizeInBytes))
+                                : query.OrderBy(c => c.Files.Sum(f => f.SizeInBytes));
+                            break;
+                    }
+                }
+            }
+            else
+            {
+                query = query.OrderBy(c => c.Name);
+            }
+
+            var crates = await query.ToListAsync();
 
             var ownerUserIds = crates
                 .Select(c => c.Members.FirstOrDefault(m => m.Role == CrateRole.Owner)?.UserId)
@@ -102,7 +165,7 @@ public class CrateService : ICrateService
             {
                 var ownerMember = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
                 var ownerProfile = ownerProfiles.FirstOrDefault(p => p.Id == ownerMember?.UserId);
-                var currentUserMembership = crate.Members.FirstOrDefault(m => m.UserId == userId);
+                var currentUserMembership = crate.Members.FirstOrDefault(m => m.UserId == parameters.UserId);
 
                 return new CrateResponse
                 {
@@ -121,7 +184,6 @@ public class CrateService : ICrateService
                     },
                 };
             }).ToList();
-
 
             return Result<List<CrateResponse>>.Success(crateResponses);
         }
