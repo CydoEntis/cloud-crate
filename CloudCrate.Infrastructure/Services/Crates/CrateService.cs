@@ -100,7 +100,19 @@ public class CrateService : ICrateService
                         {
                             mem.UserId,
                             mem.Role
-                        }).ToList()
+                        }).ToList(),
+
+                        MemberCount = m.Crate.Members.Count,
+                        FirstThreeMembers = m.Crate.Members
+                            .OrderBy(mem => mem.UserId)
+                            .Take(3)
+                            .Select(mem => new
+                            {
+                                mem.UserId,
+                                mem.Role
+                            }).ToList(),
+
+                        TotalStorageUsed = m.Crate.Files.Sum(f => (long?)f.SizeInBytes) ?? 0
                     }
                 })
                 .ToListAsync();
@@ -129,12 +141,14 @@ public class CrateService : ICrateService
                         Color = crate.Color,
                         Owner = GetEmail(owner.UserId),
                         Role = CrateRole.Owner,
-                        Members = crate.Members.Select(mem => new CrateMemberResponse
+                        TotalStorageUsed = crate.TotalStorageUsed,
+                        MemberCount = crate.MemberCount,
+                        FirstThreeMembers = crate.FirstThreeMembers.Select(mem => new CrateMemberResponse
                         {
                             UserId = mem.UserId,
                             Email = GetEmail(mem.UserId),
                             Role = mem.Role
-                        }).ToList()
+                        }).ToList(),
                     };
                 })
                 .OrderByDescending(c => c.Id)
@@ -154,12 +168,14 @@ public class CrateService : ICrateService
                         Color = crate.Color,
                         Owner = GetEmail(owner.UserId),
                         Role = m.Role,
-                        Members = crate.Members.Select(mem => new CrateMemberResponse
+                        TotalStorageUsed = crate.TotalStorageUsed,
+                        MemberCount = crate.MemberCount,
+                        FirstThreeMembers = crate.FirstThreeMembers.Select(mem => new CrateMemberResponse
                         {
                             UserId = mem.UserId,
                             Email = GetEmail(mem.UserId),
                             Role = mem.Role
-                        }).ToList()
+                        }).ToList(),
                     };
                 })
                 .OrderByDescending(c => c.Id)

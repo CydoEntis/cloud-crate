@@ -6,6 +6,8 @@ public class UserProfileResponse
 {
     public string UserId { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
+    public string DisplayName { get; set; } = string.Empty;
+    public string ProfilePicture { get; set; } = string.Empty;
     public SubscriptionPlan Plan { get; set; }
     public double TotalStorageMb { get; set; }
     public double UsedStorageMb { get; set; }

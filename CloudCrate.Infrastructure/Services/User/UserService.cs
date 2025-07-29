@@ -91,6 +91,8 @@ public class UserService : IUserService
         {
             UserId = user.Id,
             Email = user.Email!,
+            DisplayName = user.DisplayName,
+            ProfilePicture = user.ProfilePictureUrl,
             Plan = user.Plan,
             TotalStorageMb = storageSummaryResult.Value.TotalStorageMb,
             UsedStorageMb = storageSummaryResult.Value.UsedStorageMb,
