@@ -104,14 +104,21 @@ public class UserService : IUserService
         return Result<UserProfileResponse>.Success(userProfile);
     }
 
-    public async Task<Dictionary<string, string>> GetEmailsByUserIdsAsync(IEnumerable<string> userIds)
+
+    public async Task<List<UserResponse>> GetUsersByIdsAsync(IEnumerable<string> userIds)
     {
         var users = await _userManager.Users
             .Where(u => userIds.Contains(u.Id))
-            .Select(u => new { u.Id, u.Email })
+            .Select(u => new UserResponse
+            {
+                Id = u.Id,
+                Email = u.Email ?? "",
+                DisplayName = u.DisplayName ?? "Unknown",
+                ProfilePictureUrl = u.ProfilePictureUrl
+            })
             .ToListAsync();
 
-        return users.ToDictionary(u => u.Id, u => u.Email ?? "");
+        return users;
     }
 
     private async Task<int> GetOwnedCrateCountAsync(string userId)

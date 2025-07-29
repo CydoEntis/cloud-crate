@@ -6,6 +6,9 @@ namespace CloudCrate.Application.Interfaces.Crate;
 
 public interface ICrateMemberService
 {
+    Task<List<Domain.Entities.Crate>> GetCratesForUserAsync(string userId);
+    Task<DateTime?> GetUsersJoinDateAsync(Guid crateId, string userId);
+    Task<CrateMember?> GetCrateOwnerAsync(Guid crateId);
     Task<Result<CrateMember?>> GetUserRoleAsync(Guid crateId, string userId);
     Task<Result<bool>> CanUserUploadAsync(Guid crateId, string userId);
     Task<Result<bool>> CanUserDownloadAsync(Guid crateId, string userId);

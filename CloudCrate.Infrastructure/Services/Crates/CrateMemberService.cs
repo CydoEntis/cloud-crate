@@ -18,6 +18,34 @@ public class CrateMemberService : ICrateMemberService
         _context = context;
     }
 
+
+    public async Task<List<Crate>> GetCratesForUserAsync(string userId)
+    {
+        return await _context.CrateMembers
+            .Where(m => m.UserId == userId)
+            .Select(m => m.Crate)
+            .Include(c => c.Members)
+            .Include(c => c.Files)
+            .ToListAsync();
+    }
+
+
+    public async Task<DateTime?> GetUsersJoinDateAsync(Guid crateId, string userId)
+    {
+        var foundMember = await _context.CrateMembers
+            .FirstOrDefaultAsync(c => c.CrateId == crateId && c.UserId == userId);
+
+        return foundMember?.JoinedDate;
+    }
+
+
+    public async Task<CrateMember?> GetCrateOwnerAsync(Guid crateId)
+    {
+        return await _context.CrateMembers
+            .Where(c => c.CrateId == crateId && c.Role == CrateRole.Owner)
+            .SingleOrDefaultAsync();
+    }
+
     public async Task<Result<CrateMember?>> GetUserRoleAsync(Guid crateId, string userId)
     {
         try

@@ -29,6 +29,13 @@ public class FileService : IFileService
         _cratePermissionService = cratePermissionService;
     }
 
+    public async Task<long> GetTotalStorageUsedAsync(Guid crateId)
+    {
+        return await _context.FileObjects
+            .Where(f => f.CrateId == crateId)
+            .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+    }
+
     public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
     {
         var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);

@@ -9,5 +9,5 @@ public interface IUserService
     Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId);
     Task<Result<bool>> CanCreateCrateAsync(string userId);
     Task<Result<UserProfileResponse>> GetUserProfileAsync(string userId);
-    Task<Dictionary<string, string>> GetEmailsByUserIdsAsync(IEnumerable<string> userIds);
+    Task<List<UserResponse>> GetUsersByIdsAsync(IEnumerable<string> userIds);
 }

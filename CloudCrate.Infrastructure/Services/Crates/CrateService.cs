@@ -80,118 +80,57 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<UserCratesResponse>> GetCratesAsync(string userId)
+    public async Task<Result<List<CrateResponse>>> GetCratesAsync(string userId)
     {
         try
         {
-            var memberships = await _context.CrateMembers
-                .AsNoTracking()
-                .Where(m => m.UserId == userId)
-                .Select(m => new
-                {
-                    Role = m.Role,
-                    Crate = new
-                    {
-                        m.Crate.Id,
-                        m.Crate.Name,
-                        m.Crate.Color,
-                        m.Crate.CreatedAt,
-                        Members = m.Crate.Members.Select(mem => new
-                        {
-                            mem.UserId,
-                            mem.Role
-                        }).ToList(),
-
-                        MemberCount = m.Crate.Members.Count,
-                        FirstThreeMembers = m.Crate.Members
-                            .OrderBy(mem => mem.UserId)
-                            .Take(3)
-                            .Select(mem => new
-                            {
-                                mem.UserId,
-                                mem.Role
-                            }).ToList(),
-
-                        TotalStorageUsed = m.Crate.Files.Sum(f => (long?)f.SizeInBytes) ?? 0
-                    }
-                })
+            var crates = await _context.Crates
+                .Where(c => c.Members.Any(m => m.UserId == userId))
+                .Include(c => c.Members)
+                .Include(c => c.Files)
                 .ToListAsync();
 
-            var allUserIds = memberships
-                .SelectMany(m => m.Crate.Members)
-                .Select(mem => mem.UserId)
+            var ownerUserIds = crates
+                .Select(c => c.Members.FirstOrDefault(m => m.Role == CrateRole.Owner)?.UserId)
+                .Where(id => !string.IsNullOrEmpty(id))
                 .Distinct()
                 .ToList();
 
-            var emails = await _userService.GetEmailsByUserIdsAsync(allUserIds);
+            var ownerProfiles = await _userService.GetUsersByIdsAsync(ownerUserIds);
 
-            string GetEmail(string id) => emails.TryGetValue(id, out var email) ? email : "unknown";
-
-            var owned = memberships
-                .Where(m => m.Role == CrateRole.Owner)
-                .Select(m =>
-                {
-                    var crate = m.Crate;
-                    var owner = crate.Members.FirstOrDefault(mem => mem.Role == CrateRole.Owner);
-
-                    return new CrateResponse
-                    {
-                        Id = crate.Id,
-                        Name = crate.Name,
-                        Color = crate.Color,
-                        Owner = GetEmail(owner.UserId),
-                        Role = CrateRole.Owner,
-                        TotalStorageUsed = crate.TotalStorageUsed,
-                        MemberCount = crate.MemberCount,
-                        FirstThreeMembers = crate.FirstThreeMembers.Select(mem => new CrateMemberResponse
-                        {
-                            UserId = mem.UserId,
-                            Email = GetEmail(mem.UserId),
-                            Role = mem.Role
-                        }).ToList(),
-                    };
-                })
-                .OrderByDescending(c => c.Id)
-                .ToList();
-
-            var joined = memberships
-                .Where(m => m.Role != CrateRole.Owner)
-                .Select(m =>
-                {
-                    var crate = m.Crate;
-                    var owner = crate.Members.FirstOrDefault(mem => mem.Role == CrateRole.Owner);
-
-                    return new CrateResponse
-                    {
-                        Id = crate.Id,
-                        Name = crate.Name,
-                        Color = crate.Color,
-                        Owner = GetEmail(owner.UserId),
-                        Role = m.Role,
-                        TotalStorageUsed = crate.TotalStorageUsed,
-                        MemberCount = crate.MemberCount,
-                        FirstThreeMembers = crate.FirstThreeMembers.Select(mem => new CrateMemberResponse
-                        {
-                            UserId = mem.UserId,
-                            Email = GetEmail(mem.UserId),
-                            Role = mem.Role
-                        }).ToList(),
-                    };
-                })
-                .OrderByDescending(c => c.Id)
-                .ToList();
-
-            return Result<UserCratesResponse>.Success(new UserCratesResponse
+            var crateResponses = crates.Select(crate =>
             {
-                Owned = owned,
-                Joined = joined
-            });
+                var ownerMember = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
+                var ownerProfile = ownerProfiles.FirstOrDefault(p => p.Id == ownerMember?.UserId);
+                var currentUserMembership = crate.Members.FirstOrDefault(m => m.UserId == userId);
+
+                return new CrateResponse
+                {
+                    Id = crate.Id,
+                    Name = crate.Name,
+                    Color = crate.Color,
+                    TotalStorageUsed = crate.Files.Sum(f => f.SizeInBytes),
+                    JoinedAt = currentUserMembership!.JoinedDate,
+
+                    Owner = new CrateMemberResponse
+                    {
+                        UserId = ownerMember!.UserId,
+                        DisplayName = ownerProfile!.DisplayName,
+                        Email = ownerProfile!.Email,
+                        Role = CrateRole.Owner,
+                        ProfilePicture = ownerProfile!.ProfilePictureUrl
+                    },
+                };
+            }).ToList();
+
+
+            return Result<List<CrateResponse>>.Success(crateResponses);
         }
         catch (Exception ex)
         {
-            return Result<UserCratesResponse>.Failure(Errors.Common.InternalServerError with
+            return Result<List<CrateResponse>>.Failure(Errors.Common.InternalServerError with
             {
-                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
+                Message = $"Internal server error ({ex.Message})"
             });
         }
     }
