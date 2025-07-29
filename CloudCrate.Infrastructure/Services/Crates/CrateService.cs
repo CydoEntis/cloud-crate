@@ -109,9 +109,8 @@ public class CrateService : ICrateService
                     Id = crate.Id,
                     Name = crate.Name,
                     Color = crate.Color,
-                    TotalStorageUsed = crate.Files.Sum(f => f.SizeInBytes),
+                    UsedStorage = crate.Files.Sum(f => f.SizeInBytes),
                     JoinedAt = currentUserMembership!.JoinedDate,
-
                     Owner = new CrateMemberResponse
                     {
                         UserId = ownerMember!.UserId,

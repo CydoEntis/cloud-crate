@@ -9,6 +9,6 @@ public class CrateResponse
     public string Name { get; set; } = null!;
     public string Color { get; set; } = null!;
     public CrateMemberResponse Owner { get; set; } = null!;
-    public long TotalStorageUsed { get; set; }
+    public long UsedStorage { get; set; }
     public DateTime JoinedAt { get; set; }
 }
