@@ -6,6 +6,7 @@ using CloudCrate.Application.Common.Utils;
 using CloudCrate.Application.DTOs.Crate.Request;
 using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
@@ -80,7 +81,7 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<List<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
+    public async Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
         try
         {
@@ -95,7 +96,7 @@ public class CrateService : ICrateService
             }
             else
             {
-                return Result<List<CrateResponse>>.Failure(Errors.User.Unauthorized with
+                return Result<PaginatedResult<CrateResponse>>.Failure(Errors.User.Unauthorized with
                 {
                     Message = "UserId is required"
                 });
@@ -151,9 +152,14 @@ public class CrateService : ICrateService
                 query = query.OrderBy(c => c.Name);
             }
 
-            var crates = await query.ToListAsync();
+            var totalCount = await query.CountAsync();
 
-            var ownerUserIds = crates
+            var pagedCrates = await query
+                .Skip((parameters.Page - 1) * parameters.PageSize)
+                .Take(parameters.PageSize)
+                .ToListAsync();
+
+            var ownerUserIds = pagedCrates
                 .Select(c => c.Members.FirstOrDefault(m => m.Role == CrateRole.Owner)?.UserId)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Distinct()
@@ -161,7 +167,7 @@ public class CrateService : ICrateService
 
             var ownerProfiles = await _userService.GetUsersByIdsAsync(ownerUserIds);
 
-            var crateResponses = crates.Select(crate =>
+            var crateResponses = pagedCrates.Select(crate =>
             {
                 var ownerMember = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
                 var ownerProfile = ownerProfiles.FirstOrDefault(p => p.Id == ownerMember?.UserId);
@@ -185,11 +191,13 @@ public class CrateService : ICrateService
                 };
             }).ToList();
 
-            return Result<List<CrateResponse>>.Success(crateResponses);
+            return Result<PaginatedResult<CrateResponse>>.Success(
+                PaginatedResult<CrateResponse>.Create(crateResponses, totalCount, parameters.Page, parameters.PageSize)
+            );
         }
         catch (Exception ex)
         {
-            return Result<List<CrateResponse>>.Failure(Errors.Common.InternalServerError with
+            return Result<PaginatedResult<CrateResponse>>.Failure(Errors.Common.InternalServerError with
             {
                 Message = $"Internal server error ({ex.Message})"
             });
