@@ -417,7 +417,6 @@ public class CrateService : ICrateService
             foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
                 await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
 
-            // ✅ Delete all members
             _context.CrateMembers.RemoveRange(crate.Members);
 
             _context.Folders.RemoveRange(crate.Folders);
@@ -452,6 +451,22 @@ public class CrateService : ICrateService
         }
     }
 
+    public async Task<Result> LeaveCrateAsync(Guid crateId, string userId)
+    {
+        var member = await _context.CrateMembers
+            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
+
+        if (member is null)
+            return Result.Failure(Errors.User.Unauthorized);
+
+        if (member.Role == CrateRole.Owner)
+            return Result.Failure(Errors.User.OwnerRoleRemovalNotAllowed);
+
+        _context.CrateMembers.Remove(member);
+        await _context.SaveChangesAsync();
+
+        return Result.Success();
+    }
 
     private async Task CollectFolderDeletionsAsync(
         Domain.Entities.Folder folder,

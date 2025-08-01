@@ -105,4 +105,16 @@ public class CrateController : ControllerBase
 
         return result.ToActionResult(this, successMessage: "Crate members retrieved successfully");
     }
+
+    [HttpDelete("{crateId:guid}/leave")]
+    public async Task<IActionResult> LeaveCrate(Guid crateId)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+
+        var result = await _crateService.LeaveCrateAsync(crateId, userId);
+
+        return result.ToActionResult(this, successMessage: "You have left the crate successfully");
+    }
 }

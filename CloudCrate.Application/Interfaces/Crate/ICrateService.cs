@@ -18,4 +18,5 @@ public interface ICrateService
 
     Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor);
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
+    Task<Result> LeaveCrateAsync(Guid crateId, string userId);
 }
