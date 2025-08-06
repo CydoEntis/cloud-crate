@@ -85,16 +85,7 @@ public class CrateService : ICrateService
     {
         try
         {
-            var query = _context.Crates
-                .Include(c => c.Members)
-                .Include(c => c.Files)
-                .AsQueryable();
-
-            if (!string.IsNullOrEmpty(parameters.UserId))
-            {
-                query = query.Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
-            }
-            else
+            if (string.IsNullOrEmpty(parameters.UserId))
             {
                 return Result<PaginatedResult<CrateResponse>>.Failure(Errors.User.Unauthorized with
                 {
@@ -102,49 +93,62 @@ public class CrateService : ICrateService
                 });
             }
 
+            var query = _context.Crates
+                .Include(c => c.Members)
+                .Include(c => c.Files)
+                .AsQueryable();
+
+            // Filter: must be a member
+            query = query.Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
+
+            // Filter: owner only / joined only logic
+            if (parameters.OwnerOnly == true)
+            {
+                query = query.Where(c =>
+                    c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+            }
+            else if (parameters.OwnerOnly == false)
+            {
+                query = query.Where(c =>
+                    c.Members.Any(m => m.UserId == parameters.UserId) &&
+                    !c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+            }
+
+            // Filter: search term
             if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             {
                 var term = parameters.SearchTerm.Trim().ToLower();
                 query = query.Where(c => c.Name.ToLower().Contains(term));
             }
 
+            // Sorting
+            bool descending = parameters.OrderBy == OrderBy.Desc;
+
             if (parameters.SortBy.HasValue)
             {
-                if (parameters.SortBy == CrateSortBy.Owned)
+                switch (parameters.SortBy.Value)
                 {
-                    query = query.Where(c =>
-                        c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
-                }
-                else if (parameters.SortBy == CrateSortBy.Joined)
-                {
-                    query = query.Where(c =>
-                        c.Members.Any(m => m.UserId == parameters.UserId) &&
-                        !c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
-                }
-                else
-                {
-                    bool descending = parameters.OrderBy == OrderBy.Desc;
+                    case CrateSortBy.Name:
+                        query = descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name);
+                        break;
 
-                    switch (parameters.SortBy.Value)
-                    {
-                        case CrateSortBy.Name:
-                            query = descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name);
-                            break;
+                    case CrateSortBy.JoinedAt:
+                        query = descending
+                            ? query.OrderByDescending(c =>
+                                c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate)
+                            : query.OrderBy(c =>
+                                c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate);
+                        break;
 
-                        case CrateSortBy.JoinedAt:
-                            query = descending
-                                ? query.OrderByDescending(c =>
-                                    c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate)
-                                : query.OrderBy(c =>
-                                    c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate);
-                            break;
+                    case CrateSortBy.UsedStorage:
+                        query = descending
+                            ? query.OrderByDescending(c => c.Files.Sum(f => f.SizeInBytes))
+                            : query.OrderBy(c => c.Files.Sum(f => f.SizeInBytes));
+                        break;
 
-                        case CrateSortBy.UsedStorage:
-                            query = descending
-                                ? query.OrderByDescending(c => c.Files.Sum(f => f.SizeInBytes))
-                                : query.OrderBy(c => c.Files.Sum(f => f.SizeInBytes));
-                            break;
-                    }
+                    default:
+                        query = query.OrderBy(c => c.Name);
+                        break;
                 }
             }
             else
@@ -152,6 +156,7 @@ public class CrateService : ICrateService
                 query = query.OrderBy(c => c.Name);
             }
 
+            // Pagination
             var totalCount = await query.CountAsync();
 
             var pagedCrates = await query
@@ -159,6 +164,7 @@ public class CrateService : ICrateService
                 .Take(parameters.PageSize)
                 .ToListAsync();
 
+            // Resolve owner profiles
             var ownerUserIds = pagedCrates
                 .Select(c => c.Members.FirstOrDefault(m => m.Role == CrateRole.Owner)?.UserId)
                 .Where(id => !string.IsNullOrEmpty(id))
@@ -167,6 +173,7 @@ public class CrateService : ICrateService
 
             var ownerProfiles = await _userService.GetUsersByIdsAsync(ownerUserIds);
 
+            // Project to response
             var crateResponses = pagedCrates.Select(crate =>
             {
                 var ownerMember = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
