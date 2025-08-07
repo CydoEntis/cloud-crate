@@ -98,30 +98,31 @@ public class CrateService : ICrateService
                 .Include(c => c.Files)
                 .AsQueryable();
 
-            // Filter: must be a member
             query = query.Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
 
-            // Filter: owner only / joined only logic
-            if (parameters.OwnerOnly == true)
+            switch (parameters.MemberType)
             {
-                query = query.Where(c =>
-                    c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
-            }
-            else if (parameters.OwnerOnly == false)
-            {
-                query = query.Where(c =>
-                    c.Members.Any(m => m.UserId == parameters.UserId) &&
-                    !c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+                case CrateMemberType.Owner:
+                    query = query.Where(c =>
+                        c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner));
+                    break;
+
+                case CrateMemberType.Joined:
+                    query = query.Where(c =>
+                        c.Members.Any(m => m.UserId == parameters.UserId && m.Role != CrateRole.Owner));
+                    break;
+
+                case CrateMemberType.All:
+                default:
+                    break;
             }
 
-            // Filter: search term
             if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             {
                 var term = parameters.SearchTerm.Trim().ToLower();
                 query = query.Where(c => c.Name.ToLower().Contains(term));
             }
 
-            // Sorting
             bool descending = parameters.OrderBy == OrderBy.Desc;
 
             if (parameters.SortBy.HasValue)
@@ -156,7 +157,6 @@ public class CrateService : ICrateService
                 query = query.OrderBy(c => c.Name);
             }
 
-            // Pagination
             var totalCount = await query.CountAsync();
 
             var pagedCrates = await query
@@ -164,7 +164,6 @@ public class CrateService : ICrateService
                 .Take(parameters.PageSize)
                 .ToListAsync();
 
-            // Resolve owner profiles
             var ownerUserIds = pagedCrates
                 .Select(c => c.Members.FirstOrDefault(m => m.Role == CrateRole.Owner)?.UserId)
                 .Where(id => !string.IsNullOrEmpty(id))
@@ -173,7 +172,6 @@ public class CrateService : ICrateService
 
             var ownerProfiles = await _userService.GetUsersByIdsAsync(ownerUserIds);
 
-            // Project to response
             var crateResponses = pagedCrates.Select(crate =>
             {
                 var ownerMember = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
