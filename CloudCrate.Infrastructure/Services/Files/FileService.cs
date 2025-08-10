@@ -138,6 +138,7 @@ public class FileService : IFileService
             Name = request.FileName,
             SizeInBytes = request.SizeInBytes,
             MimeType = request.MimeType,
+            ObjectKey = saveResult.Value,
             CrateId = request.CrateId,
             FolderId = request.FolderId,
         };
