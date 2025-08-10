@@ -214,15 +214,23 @@ public class FileService : IFileService
 
     public async Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId)
     {
-        var file = await _context.FileObjects
-            .FirstOrDefaultAsync(f => f.Id == fileId);
-
+        var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
         if (file == null)
             return Result<FileObjectResponse>.Failure(Errors.Files.NotFound);
 
         var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(file.CrateId, userId);
         if (!permissionCheck.Succeeded)
             return Result<FileObjectResponse>.Failure(permissionCheck.Errors);
+
+        var urlResult = await _storageService.GetFileUrlAsync(
+            userId,
+            file.CrateId,
+            file.FolderId,
+            file.Name
+        );
+        
+        if (!urlResult.Succeeded)
+            return Result<FileObjectResponse>.Failure(urlResult.Errors);
 
         var response = new FileObjectResponse
         {
@@ -232,10 +240,12 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
+            FileUrl = urlResult.Value, // <-- new property for client to fetch file
         };
 
         return Result<FileObjectResponse>.Success(response);
     }
+
 
     public async Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId)
     {
