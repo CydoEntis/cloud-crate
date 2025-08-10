@@ -51,29 +51,35 @@ public class LocalStorageService : IStorageService
         }
     }
 
-    public async Task<Result> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
+    public async Task<Result<string>> SaveFileAsync(
+        string userId,
+        Guid crateId,
+        Guid? folderId,
+        string fileName,
         Stream content)
     {
         try
         {
             var dirResult = EnsureDirectory(userId, crateId, folderId);
             if (!dirResult.Succeeded)
-                return dirResult;
+                return Result<string>.Failure(dirResult.Errors);
 
             var filePath = GetFilePath(userId, crateId, folderId, fileName);
 
             using var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write);
             await content.CopyToAsync(stream);
-            return Result.Success();
+
+            return Result<string>.Success(filePath);
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.Files.SaveFailed with
+            return Result<string>.Failure(Errors.Files.SaveFailed with
             {
                 Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
             });
         }
     }
+
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
     {
@@ -132,7 +138,8 @@ public class LocalStorageService : IStorageService
         throw new NotImplementedException();
     }
 
-    public Task<Result> BatchDeleteFilesAsync(string userId, Guid crateId, List<(Guid? folderId, string fileName)> files)
+    public Task<Result> BatchDeleteFilesAsync(string userId, Guid crateId,
+        List<(Guid? folderId, string fileName)> files)
     {
         throw new NotImplementedException();
     }

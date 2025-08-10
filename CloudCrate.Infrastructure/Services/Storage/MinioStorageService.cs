@@ -40,7 +40,7 @@ public class MinioStorageService : IStorageService
         }
     }
 
-    public async Task<Result> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
+    public async Task<Result<string>> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
         Stream content)
     {
         var bucketName = $"crate-{crateId}".ToLowerInvariant();
@@ -57,17 +57,18 @@ public class MinioStorageService : IStorageService
             };
 
             await _s3Client.PutObjectAsync(request);
-            return Result.Success();
+            return Result<string>.Success(key);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", fileName, bucketName);
-            return Result.Failure(Errors.Files.SaveFailed with
+            return Result<string>.Failure(Errors.Files.SaveFailed with
             {
                 Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
             });
         }
     }
+
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
     {
