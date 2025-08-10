@@ -40,6 +40,38 @@ public class MinioStorageService : IStorageService
         }
     }
 
+    public async Task<Result<string>> GetFileUrlAsync(string userId, Guid crateId, Guid? folderId, string fileName,
+        TimeSpan? expiry = null)
+    {
+        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var key = GetObjectKey(userId, crateId, folderId, fileName);
+
+        try
+        {
+            var urlExpiry = expiry ?? TimeSpan.FromMinutes(15);
+
+            var request = new GetPreSignedUrlRequest
+            {
+                BucketName = bucketName,
+                Key = key,
+                Expires = DateTime.UtcNow.Add(urlExpiry),
+                Verb = HttpVerb.GET
+            };
+
+            var url = _s3Client.GetPreSignedURL(request);
+
+            return Result<string>.Success(url);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to generate presigned URL for file {Key} in bucket {Bucket}", key, bucketName);
+            return Result<string>.Failure(Errors.Files.AccessFailed with
+            {
+                Message = $"Failed to generate access URL for file. ({ex.Message})"
+            });
+        }
+    }
+
     public async Task<Result<string>> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
         Stream content)
     {

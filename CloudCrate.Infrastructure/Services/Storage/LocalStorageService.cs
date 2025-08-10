@@ -51,6 +51,11 @@ public class LocalStorageService : IStorageService
         }
     }
 
+    public Task<Result<string>> GetFileUrlAsync(string userId, Guid crateId, Guid? folderId, string fileName, TimeSpan? expiry = null)
+    {
+        throw new NotImplementedException();
+    }
+
     public async Task<Result<string>> SaveFileAsync(
         string userId,
         Guid crateId,

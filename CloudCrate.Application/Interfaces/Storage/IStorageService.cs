@@ -11,6 +11,9 @@ public interface IStorageService
     Task<Result> EnsureBucketExistsAsync(string bucketName);
     Result EnsureDirectory(string userId, Guid crateId, Guid? folderId);
 
+    Task<Result<string>> GetFileUrlAsync(string userId, Guid crateId, Guid? folderId, string fileName,
+        TimeSpan? expiry = null);
+
     Task<Result<string>> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
         Stream content);
 
