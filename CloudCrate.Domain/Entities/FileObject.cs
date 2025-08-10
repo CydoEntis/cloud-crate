@@ -6,6 +6,8 @@ public class FileObject
     public string Name { get; set; }
     public long SizeInBytes { get; set; }
     public string MimeType { get; set; }
+    
+    public string ObjectKey { get; set; }
 
     public Guid CrateId { get; set; }
     public Crate Crate { get; set; }
