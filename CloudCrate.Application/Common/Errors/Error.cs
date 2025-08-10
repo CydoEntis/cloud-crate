@@ -44,6 +44,9 @@ public static class Errors
 
         public static readonly Error AlreadyExists =
             new("ERR_FILE_EXISTS", "A file with the same name already exists.", 409);
+
+        public static Error AccessFailed =>
+            new Error("Files.AccessFailed", "Failed to generate access URL for the file.", 403);
     }
 
     public static class User
