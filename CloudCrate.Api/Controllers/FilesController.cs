@@ -61,6 +61,20 @@ public class FilesController : ControllerBase
     }
 
     [HttpGet("{fileId}")]
+    public async Task<IActionResult> GetFileMetadata(Guid crateId, Guid fileId)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user == null)
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to view this file."));
+
+        var result = await _fileService.GetFileByIdAsync(fileId, user.Id);
+        if (!result.Succeeded)
+            return result.ToActionResult(this);
+
+        return result.ToActionResult(this, successMessage: "File metadata retrieved successfully");
+    }
+
+    [HttpGet("{fileId}/download")]
     public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
     {
         var user = await GetCurrentUserAsync();

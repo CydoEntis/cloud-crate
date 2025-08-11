@@ -240,7 +240,7 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
-            FileUrl = urlResult.Value, // <-- new property for client to fetch file
+            FileUrl = urlResult.Value, 
         };
 
         return Result<FileObjectResponse>.Success(response);
