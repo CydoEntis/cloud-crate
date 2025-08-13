@@ -90,6 +90,9 @@ public class FilesController : ControllerBase
             return contentResult.ToActionResult(this);
 
         var file = fileResult.Value!;
+
+        Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{file.Name}\"");
+
         return File(contentResult.Value!, file.MimeType, file.Name);
     }
 
