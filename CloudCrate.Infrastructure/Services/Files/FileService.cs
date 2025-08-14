@@ -8,6 +8,7 @@ using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Permissions;
+using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,15 +19,17 @@ public class FileService : IFileService
     private readonly IAppDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ICratePermissionService _cratePermissionService;
+    private readonly IUserService _userService;
 
     public FileService(
         IAppDbContext context,
         IStorageService storageService,
-        ICratePermissionService cratePermissionService)
+        ICratePermissionService cratePermissionService, IUserService userService)
     {
         _context = context;
         _storageService = storageService;
         _cratePermissionService = cratePermissionService;
+        _userService = userService;
     }
 
     public async Task<long> GetTotalStorageUsedAsync(Guid crateId)
@@ -62,9 +65,26 @@ public class FileService : IFileService
         if (!permissionCheck.Succeeded)
             return Result<List<FileObjectResponse>>.Failure(permissionCheck.Errors);
 
+        // Step 1: Get files
         var files = await _context.FileObjects
             .Where(f => f.CrateId == crateId && f.FolderId == null)
-            .Select(f => new FileObjectResponse
+            .ToListAsync();
+
+        // Step 2: Get unique uploader IDs
+        var uploaderIds = files
+            .Select(f => f.UploadedByUserId)
+            .Distinct()
+            .ToList();
+
+        // Step 3: Get uploader profiles from UserService
+        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        // Step 4: Map files to response, merging in user data
+        var result = files.Select(f =>
+        {
+            var uploader = userProfiles.FirstOrDefault(u => u.Id == f.UploadedByUserId);
+
+            return new FileObjectResponse
             {
                 Id = f.Id,
                 Name = f.Name,
@@ -72,11 +92,17 @@ public class FileService : IFileService
                 SizeInBytes = f.SizeInBytes,
                 CrateId = f.CrateId,
                 FolderId = f.FolderId,
-            })
-            .ToListAsync();
+                UploadedByUserId = f.UploadedByUserId,
+                UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
+                UploadedByEmail = uploader?.Email ?? string.Empty,
+                UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
+                CreatedAt = f.CreatedAt
+            };
+        }).ToList();
 
-        return Result<List<FileObjectResponse>>.Success(files);
+        return Result<List<FileObjectResponse>>.Success(result);
     }
+
 
     public async Task<Result<List<FileObjectResponse>>> GetFilesInFolderAsync(Guid crateId, Guid folderId,
         string userId)
@@ -85,13 +111,28 @@ public class FileService : IFileService
         if (!permissionCheck.Succeeded)
             return Result<List<FileObjectResponse>>.Failure(permissionCheck.Errors);
 
-        var folderExists = await _context.Folders.AnyAsync(f => f.Id == folderId && f.CrateId == crateId);
+        var folderExists = await _context.Folders
+            .AnyAsync(f => f.Id == folderId && f.CrateId == crateId);
+
         if (!folderExists)
             return Result<List<FileObjectResponse>>.Failure(Errors.Folders.NotFound);
 
         var files = await _context.FileObjects
             .Where(f => f.FolderId == folderId)
-            .Select(f => new FileObjectResponse
+            .ToListAsync();
+
+        var uploaderIds = files
+            .Select(f => f.UploadedByUserId)
+            .Distinct()
+            .ToList();
+
+        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        var result = files.Select(f =>
+        {
+            var uploader = userProfiles.FirstOrDefault(u => u.Id == f.UploadedByUserId);
+
+            return new FileObjectResponse
             {
                 Id = f.Id,
                 Name = f.Name,
@@ -99,11 +140,17 @@ public class FileService : IFileService
                 SizeInBytes = f.SizeInBytes,
                 CrateId = f.CrateId,
                 FolderId = f.FolderId,
-            })
-            .ToListAsync();
+                UploadedByUserId = f.UploadedByUserId,
+                UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
+                UploadedByEmail = uploader?.Email ?? string.Empty,
+                UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
+                CreatedAt = f.CreatedAt
+            };
+        }).ToList();
 
-        return Result<List<FileObjectResponse>>.Success(files);
+        return Result<List<FileObjectResponse>>.Success(result);
     }
+
 
     public async Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId)
     {
@@ -228,7 +275,7 @@ public class FileService : IFileService
             file.FolderId,
             file.Name
         );
-        
+
         if (!urlResult.Succeeded)
             return Result<FileObjectResponse>.Failure(urlResult.Errors);
 
@@ -240,7 +287,7 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
-            FileUrl = urlResult.Value, 
+            FileUrl = urlResult.Value,
         };
 
         return Result<FileObjectResponse>.Success(response);
@@ -269,7 +316,6 @@ public class FileService : IFileService
 
         file.FolderId = newParentId;
         await _context.SaveChangesAsync();
-
         return Result.Success();
     }
 }
