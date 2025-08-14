@@ -10,4 +10,10 @@ public class FileObjectResponse
     public Guid CrateId { get; set; }
     public Guid? FolderId { get; set; }
     public Guid? CategoryId { get; set; }
+
+    public string UploadedByUserId { get; set; }
+    public string UploadedByDisplayName { get; set; }
+    public string UploadedByEmail { get; set; }
+    public string UploadedByProfilePictureUrl { get; set; }
+    public DateTime CreatedAt { get; set; }
 }

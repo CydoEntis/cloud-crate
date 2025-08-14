@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Domain.Entities;
+﻿using CloudCrate.Domain.Entities;
 
 public class FileObject
 {
@@ -6,7 +6,6 @@ public class FileObject
     public string Name { get; set; }
     public long SizeInBytes { get; set; }
     public string MimeType { get; set; }
-    
     public string ObjectKey { get; set; }
 
     public Guid CrateId { get; set; }
@@ -15,11 +14,17 @@ public class FileObject
     public Guid? FolderId { get; set; }
     public Folder? Folder { get; set; }
 
-
+    public string UploadedByUserId { get; set; } 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
-    public static FileObject Create(string name, long sizeInBytes, string mimeType, Guid crateId, Guid? folderId = null,
+    public static FileObject Create(
+        string name,
+        long sizeInBytes,
+        string mimeType,
+        Guid crateId,
+        string uploadedByUserId,
+        Guid? folderId = null,
         Guid? categoryId = null)
     {
         return new FileObject
@@ -30,6 +35,7 @@ public class FileObject
             MimeType = mimeType,
             CrateId = crateId,
             FolderId = folderId,
+            UploadedByUserId = uploadedByUserId,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
