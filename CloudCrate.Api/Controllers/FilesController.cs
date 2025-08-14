@@ -96,20 +96,6 @@ public class FilesController : ControllerBase
         return File(contentResult.Value!, file.MimeType, file.Name);
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetFiles(Guid crateId, [FromQuery] Guid? folderId)
-    {
-        var user = await GetCurrentUserAsync();
-        if (user == null)
-            return Unauthorized(
-                ApiResponse<string>.Unauthorized("You do not have permission to access this resource."));
-
-        var result = folderId is null
-            ? await _fileService.GetFilesInCrateRootAsync(crateId, user.Id)
-            : await _fileService.GetFilesInFolderAsync(crateId, folderId.Value, user.Id);
-
-        return result.ToActionResult(this, successMessage: "Files retrieved successfully");
-    }
 
     [HttpDelete("{fileId}")]
     public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)

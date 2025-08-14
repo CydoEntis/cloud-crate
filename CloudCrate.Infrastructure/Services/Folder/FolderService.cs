@@ -5,6 +5,7 @@ using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Persistence;
+using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,13 +15,15 @@ public class FolderService : IFolderService
 {
     private readonly IAppDbContext _context;
     private readonly ICratePermissionService _cratePermissionService;
+    private readonly IUserService _userService;
 
     public FolderService(
         IAppDbContext context,
-        ICratePermissionService cratePermissionService)
+        ICratePermissionService cratePermissionService, IUserService userService)
     {
         _context = context;
         _cratePermissionService = cratePermissionService;
+        _userService = userService;
     }
 
     public async Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId)
@@ -155,11 +158,11 @@ public class FolderService : IFolderService
         if (!viewPermission.Succeeded)
             return Result<FolderContentsResponse>.Failure(viewPermission.Errors);
 
-        // The rest stays the same...
-
+        // Folders query
         var foldersQuery = _context.Folders
             .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId);
 
+        // Files query
         var filesQuery = _context.FileObjects
             .Where(f => f.CrateId == crateId && f.FolderId == parentFolderId);
 
@@ -169,6 +172,7 @@ public class FolderService : IFolderService
             filesQuery = filesQuery.Where(f => EF.Functions.ILike(f.Name, $"%{search}%"));
         }
 
+        // Get folders
         var folders = await foldersQuery
             .Select(f => new FolderOrFileItem
             {
@@ -181,8 +185,15 @@ public class FolderService : IFolderService
             })
             .ToListAsync();
 
-        var files = await filesQuery
-            .Select(f => new FolderOrFileItem
+        // Get files + uploadedBy info
+        var filesList = await filesQuery.ToListAsync();
+        var uploaderIds = filesList.Select(f => f.UploadedByUserId).Distinct().ToList();
+        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        var files = filesList.Select(f =>
+        {
+            var uploader = userProfiles.FirstOrDefault(u => u.Id == f.UploadedByUserId);
+            return new FolderOrFileItem
             {
                 Id = f.Id,
                 Name = f.Name,
@@ -191,25 +202,25 @@ public class FolderService : IFolderService
                 SizeInBytes = f.SizeInBytes,
                 CrateId = f.CrateId,
                 ParentFolderId = f.FolderId,
-                Color = null
-            })
-            .ToListAsync();
+                Color = null,
+                UploadedByUserId = f.UploadedByUserId,
+                UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
+                UploadedByEmail = uploader?.Email ?? string.Empty,
+                UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
+                CreatedAt = f.CreatedAt
+            };
+        }).ToList();
 
-        var combined = folders
-            .Concat(files)
+        var combined = folders.Concat(files)
             .OrderBy(i => i.Type)
             .ThenBy(i => i.Name)
             .ToList();
 
         var totalCount = combined.Count;
-        var pagedItems = combined
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToList();
+        var pagedItems = combined.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         Guid? parentOfCurrentFolderId = null;
         string currentFolderName = "Root";
-
         if (parentFolderId.HasValue)
         {
             var folderInfo = await _context.Folders
