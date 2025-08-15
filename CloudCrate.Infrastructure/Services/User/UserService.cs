@@ -24,6 +24,21 @@ public class UserService : IUserService
         _userManager = userManager;
     }
 
+    public async Task<UserResponse?> GetUserByIdAsync(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+            return null;
+
+        return new UserResponse
+        {
+            Id = user.Id,
+            Email = user.Email ?? string.Empty,
+            DisplayName = user.DisplayName ?? "Unknown",
+            ProfilePictureUrl = user.ProfilePictureUrl
+        };
+    }
+
     public async Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId)
     {
         var user = await _userManager.FindByIdAsync(userId);
