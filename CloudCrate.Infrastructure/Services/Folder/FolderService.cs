@@ -40,11 +40,17 @@ public class FolderService : IFolderService
                 return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
         }
 
+        var user = await _userService.GetUserByIdAsync(userId);
+
         var folder = Domain.Entities.Folder.Create(
             request.Name,
             request.CrateId,
             request.ParentFolderId,
-            request.Color
+            request.Color,
+            userId,
+            user?.DisplayName ?? "Unknown",
+            user?.Email ?? string.Empty,
+            user?.ProfilePictureUrl ?? string.Empty
         );
 
         _context.Folders.Add(folder);
@@ -55,9 +61,16 @@ public class FolderService : IFolderService
             Id = folder.Id,
             Name = folder.Name,
             CrateId = folder.CrateId,
-            ParentFolderId = folder.ParentFolderId
+            ParentFolderId = folder.ParentFolderId,
+            Color = folder.Color,
+            UploadedByUserId = folder.UploadedByUserId,
+            UploadedByDisplayName = folder.UploadedByDisplayName,
+            UploadedByEmail = folder.UploadedByEmail,
+            UploadedByProfilePictureUrl = folder.UploadedByProfilePictureUrl,
+            CreatedAt = folder.CreatedAt
         });
     }
+
 
     public async Task<Result> RenameFolderAsync(Guid folderId, string newName, string userId)
     {
@@ -158,11 +171,9 @@ public class FolderService : IFolderService
         if (!viewPermission.Succeeded)
             return Result<FolderContentsResponse>.Failure(viewPermission.Errors);
 
-        // Folders query
         var foldersQuery = _context.Folders
             .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId);
 
-        // Files query
         var filesQuery = _context.FileObjects
             .Where(f => f.CrateId == crateId && f.FolderId == parentFolderId);
 
@@ -172,24 +183,51 @@ public class FolderService : IFolderService
             filesQuery = filesQuery.Where(f => EF.Functions.ILike(f.Name, $"%{search}%"));
         }
 
-        // Get folders
-        var folders = await foldersQuery
-            .Select(f => new FolderOrFileItem
+        // Load entities first so we can enrich consistently
+        var foldersList = await foldersQuery.ToListAsync();
+        var filesList = await filesQuery.ToListAsync();
+
+        // Collect uploader ids from BOTH folders and files
+        var uploaderIds = foldersList
+            .Select(f => f.UploadedByUserId)
+            .Concat(filesList.Select(f => f.UploadedByUserId))
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        // Map folders with non-null uploader fields
+        var folders = foldersList.Select(f =>
+        {
+            var uploader = !string.IsNullOrWhiteSpace(f.UploadedByUserId)
+                ? userProfiles.FirstOrDefault(u => u.Id == f.UploadedByUserId)
+                : null;
+
+            return new FolderOrFileItem
             {
                 Id = f.Id,
                 Name = f.Name,
                 Type = FolderItemType.Folder,
                 CrateId = f.CrateId,
                 ParentFolderId = f.ParentFolderId,
-                Color = f.Color
-            })
-            .ToListAsync();
+                Color = f.Color,
 
-        // Get files + uploadedBy info
-        var filesList = await filesQuery.ToListAsync();
-        var uploaderIds = filesList.Select(f => f.UploadedByUserId).Distinct().ToList();
-        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+                UploadedByUserId = f.UploadedByUserId ?? string.Empty,
+                UploadedByDisplayName = !string.IsNullOrWhiteSpace(f.UploadedByDisplayName)
+                    ? f.UploadedByDisplayName!
+                    : uploader?.DisplayName ?? "Unknown",
+                UploadedByEmail = !string.IsNullOrWhiteSpace(f.UploadedByEmail)
+                    ? f.UploadedByEmail!
+                    : uploader?.Email ?? string.Empty,
+                UploadedByProfilePictureUrl = !string.IsNullOrWhiteSpace(f.UploadedByProfilePictureUrl)
+                    ? f.UploadedByProfilePictureUrl!
+                    : uploader?.ProfilePictureUrl ?? string.Empty,
+                CreatedAt = f.CreatedAt
+            };
+        }).ToList();
 
+        // Map files (you already had this; kept as-is with safe fallbacks)
         var files = filesList.Select(f =>
         {
             var uploader = userProfiles.FirstOrDefault(u => u.Id == f.UploadedByUserId);
@@ -203,7 +241,8 @@ public class FolderService : IFolderService
                 CrateId = f.CrateId,
                 ParentFolderId = f.FolderId,
                 Color = null,
-                UploadedByUserId = f.UploadedByUserId,
+
+                UploadedByUserId = f.UploadedByUserId ?? string.Empty,
                 UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
                 UploadedByEmail = uploader?.Email ?? string.Empty,
                 UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
