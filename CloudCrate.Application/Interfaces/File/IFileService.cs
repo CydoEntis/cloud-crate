@@ -7,9 +7,6 @@ namespace CloudCrate.Application.Interfaces.File;
 
 public interface IFileService
 {
-    Task<long> GetTotalStorageUsedAsync(Guid crateId);
-    Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId);
-
     Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId);
 
     Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);

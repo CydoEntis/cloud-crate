@@ -32,34 +32,6 @@ public class FileService : IFileService
         _userService = userService;
     }
 
-    public async Task<long> GetTotalStorageUsedAsync(Guid crateId)
-    {
-        return await _context.FileObjects
-            .Where(f => f.CrateId == crateId)
-            .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
-    }
-
-    public async Task<Result<List<FolderResponse>>> GetFoldersAsync(Guid crateId, string userId)
-    {
-        var permissionCheck = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
-        if (!permissionCheck.Succeeded)
-            return Result<List<FolderResponse>>.Failure(permissionCheck.Errors);
-
-        var folders = await _context.Folders
-            .Where(f => f.CrateId == crateId)
-            .Select(f => new FolderResponse
-            {
-                Id = f.Id,
-                Name = f.Name,
-                CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId
-            })
-            .ToListAsync();
-
-        return Result<List<FolderResponse>>.Success(folders);
-    }
-
-
     public async Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId)
     {
         var uploadPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
