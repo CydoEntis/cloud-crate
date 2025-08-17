@@ -172,6 +172,10 @@ public class FileService : IFileService
         if (!urlResult.Succeeded)
             return Result<FileObjectResponse>.Failure(urlResult.Errors);
 
+        var uploader = !string.IsNullOrWhiteSpace(file.UploadedByUserId)
+            ? await _userService.GetUserByIdAsync(file.UploadedByUserId)
+            : null;
+
         var response = new FileObjectResponse
         {
             Id = file.Id,
@@ -180,6 +184,13 @@ public class FileService : IFileService
             SizeInBytes = file.SizeInBytes,
             CrateId = file.CrateId,
             FolderId = file.FolderId,
+
+            UploadedByUserId = file.UploadedByUserId ?? string.Empty,
+            UploadedByDisplayName = uploader?.DisplayName ?? string.Empty,
+            UploadedByEmail = uploader?.Email ?? string.Empty,
+            UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
+
+            CreatedAt = file.CreatedAt,
             FileUrl = urlResult.Value,
         };
 

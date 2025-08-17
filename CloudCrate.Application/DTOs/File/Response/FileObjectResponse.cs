@@ -9,7 +9,6 @@ public class FileObjectResponse
     public string FileUrl { get; set; }
     public Guid CrateId { get; set; }
     public Guid? FolderId { get; set; }
-    public Guid? CategoryId { get; set; }
 
     public string UploadedByUserId { get; set; }
     public string UploadedByDisplayName { get; set; }
