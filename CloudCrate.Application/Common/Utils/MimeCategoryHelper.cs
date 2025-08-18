@@ -10,19 +10,35 @@ public static class MimeCategoryHelper
         if (mimeType.StartsWith("image/")) return "Images";
         if (mimeType.StartsWith("video/")) return "Videos";
         if (mimeType.StartsWith("audio/")) return "Audio";
+
+        // PDFs
         if (mimeType == "application/pdf") return "PDF";
-        if (mimeType == "text/plain" || mimeType == "application/msword" || mimeType == "application/rtf")
-            return "Text";
+
+        // Text & Document
+        if (mimeType == "text/plain" ||
+            mimeType == "application/msword" ||
+            mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+            mimeType == "application/rtf" ||
+            mimeType == "text/markdown" ||
+            mimeType == "text/x-r-markdown" ||
+            mimeType == "text/adoc") return "Text";
+
+        // Spreadsheets
         if (mimeType == "application/vnd.ms-excel" ||
-            mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" || mimeType == "text/csv")
-            return "Spreadsheets";
-        if (mimeType == "application/javascript" || mimeType == "text/javascript" ||
-            mimeType == "text/css" || mimeType == "application/json" ||
-            mimeType == "text/html" || mimeType == "application/xml")
-            return "Code";
-        if (mimeType == "application/zip" || mimeType == "application/x-rar-compressed" ||
-            mimeType == "application/x-7z-compressed" || mimeType == "application/x-tar")
-            return "Archives";
+            mimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+            mimeType == "text/csv" ||
+            mimeType == "application/vnd.oasis.opendocument.spreadsheet") return "Spreadsheets";
+
+        // Code / Markup
+        if (mimeType.StartsWith("text/") || mimeType == "application/javascript" ||
+            mimeType == "application/json" || mimeType == "application/xml") return "Code";
+
+        // Archives
+        if (mimeType == "application/zip" ||
+            mimeType == "application/x-rar-compressed" ||
+            mimeType == "application/x-7z-compressed" ||
+            mimeType == "application/x-tar" ||
+            mimeType == "application/gzip") return "Archives";
 
         return "Other";
     }
