@@ -33,12 +33,6 @@ public static class MimeCategoryHelper
         if (mimeType.StartsWith("text/") || mimeType == "application/javascript" ||
             mimeType == "application/json" || mimeType == "application/xml") return "Code";
 
-        // Archives
-        if (mimeType == "application/zip" ||
-            mimeType == "application/x-rar-compressed" ||
-            mimeType == "application/x-7z-compressed" ||
-            mimeType == "application/x-tar" ||
-            mimeType == "application/gzip") return "Archives";
 
         return "Other";
     }
