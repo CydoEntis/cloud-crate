@@ -19,9 +19,7 @@ public class FolderService : IFolderService
     private readonly ICratePermissionService _cratePermissionService;
     private readonly IUserService _userService;
 
-    public FolderService(
-        IAppDbContext context,
-        ICratePermissionService cratePermissionService,
+    public FolderService(IAppDbContext context, ICratePermissionService cratePermissionService,
         IUserService userService)
     {
         _context = context;
@@ -31,17 +29,14 @@ public class FolderService : IFolderService
 
     public async Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId)
     {
-        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
-        if (!editPermission.Succeeded)
-            return Result<FolderResponse>.Failure(editPermission.Errors);
+        var permission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
+        if (!permission.Succeeded) return Result<FolderResponse>.Failure(permission.Errors);
 
         if (request.ParentFolderId.HasValue)
         {
-            var parentExists = await _context.Folders
+            bool parentExists = await _context.Folders
                 .AnyAsync(f => f.Id == request.ParentFolderId && f.CrateId == request.CrateId);
-
-            if (!parentExists)
-                return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
+            if (!parentExists) return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
         }
 
         var user = await _userService.GetUserByIdAsync(userId);
@@ -77,16 +72,11 @@ public class FolderService : IFolderService
 
     public async Task<Result> RenameFolderAsync(Guid folderId, string newName, string userId)
     {
-        var folder = await _context.Folders
-            .Include(f => f.Crate)
-            .FirstOrDefaultAsync(f => f.Id == folderId);
+        var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId);
+        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
 
-        if (folder == null)
-            return Result.Failure(Errors.Folders.NotFound);
-
-        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
-        if (!editPermission.Succeeded)
-            return Result.Failure(editPermission.Errors);
+        var permission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
 
         folder.Name = newName;
         await _context.SaveChangesAsync();
@@ -96,20 +86,16 @@ public class FolderService : IFolderService
     public async Task<Result> DeleteFolderAsync(Guid folderId, string userId)
     {
         var folder = await _context.Folders
-            .Include(f => f.Crate)
             .Include(f => f.Subfolders)
             .Include(f => f.Files)
             .FirstOrDefaultAsync(f => f.Id == folderId);
 
-        if (folder == null)
-            return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
 
-        var ownerPermission = await _cratePermissionService.CheckOwnerPermissionAsync(folder.CrateId, userId);
-        if (!ownerPermission.Succeeded)
-            return Result.Failure(ownerPermission.Errors);
+        var permission = await _cratePermissionService.CheckOwnerPermissionAsync(folder.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
 
-        if (folder.Subfolders.Any() || folder.Files.Any())
-            return Result.Failure(Errors.Folders.NotEmpty);
+        if (folder.Subfolders.Any() || folder.Files.Any()) return Result.Failure(Errors.Folders.NotEmpty);
 
         _context.Folders.Remove(folder);
         await _context.SaveChangesAsync();
@@ -118,37 +104,26 @@ public class FolderService : IFolderService
 
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
-        var folder = await _context.Folders
-            .Include(f => f.Crate)
-            .FirstOrDefaultAsync(f => f.Id == folderId);
+        var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId);
+        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
 
-        if (folder == null)
-            return Result.Failure(Errors.Folders.NotFound);
-
-        var editPermission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
-        if (!editPermission.Succeeded)
-            return Result.Failure(editPermission.Errors);
+        var permission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
 
         if (newParentId.HasValue)
         {
-            var newParent = await _context.Folders
-                .Include(f => f.Crate)
-                .FirstOrDefaultAsync(f => f.Id == newParentId.Value);
-
+            var newParent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == newParentId.Value);
             if (newParent == null || newParent.CrateId != folder.CrateId)
                 return Result.Failure(Errors.Folders.NotFound);
 
-            if (newParentId == folder.Id)
-                return Result.Failure(Errors.Folders.InvalidMove);
+            if (newParentId == folder.Id) return Result.Failure(Errors.Folders.InvalidMove);
 
-            Guid? currentParentId = newParentId;
-            while (currentParentId != null)
+            Guid? current = newParentId;
+            while (current != null)
             {
-                if (currentParentId == folder.Id)
-                    return Result.Failure(Errors.Folders.InvalidMove);
-
-                currentParentId = await _context.Folders
-                    .Where(f => f.Id == currentParentId)
+                if (current == folder.Id) return Result.Failure(Errors.Folders.InvalidMove);
+                current = await _context.Folders
+                    .Where(f => f.Id == current)
                     .Select(f => f.ParentFolderId)
                     .FirstOrDefaultAsync();
             }
@@ -160,16 +135,10 @@ public class FolderService : IFolderService
     }
 
     public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(
-        Guid crateId,
-        Guid? parentFolderId,
-        string userId,
-        string? search,
-        int page = 1,
-        int pageSize = 20)
+        Guid crateId, Guid? parentFolderId, string userId, string? search, int page = 1, int pageSize = 20)
     {
-        var viewPermission = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
-        if (!viewPermission.Succeeded)
-            return Result<FolderContentsResponse>.Failure(viewPermission.Errors);
+        var permission = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
+        if (!permission.Succeeded) return Result<FolderContentsResponse>.Failure(permission.Errors);
 
         var (foldersList, filesList) = await LoadFoldersAndFilesAsync(crateId, parentFolderId, search);
 
@@ -179,23 +148,21 @@ public class FolderService : IFolderService
             .Distinct()
             .ToList();
 
-        var userProfiles = await _userService.GetUsersByIdsAsync(uploaderIds);
+        var users = await _userService.GetUsersByIdsAsync(uploaderIds);
 
-        var folders = new List<FolderOrFileItem>();
-        foreach (var folder in foldersList)
-        {
-            folders.Add(await MapFolderToItemRecursiveAsync(folder, userProfiles));
-        }
+        var folderItems = new List<FolderOrFileItem>();
+        foreach (var f in foldersList)
+            folderItems.Add(await MapFolderToItemRecursiveAsync(f, users));
 
-        var files = filesList.Select(f => MapFileToItem(f, userProfiles)).ToList();
+        var fileItems = filesList.Select(f => MapFileToItem(f, users)).ToList();
 
-        var combined = folders.Concat(files)
+        var allItems = folderItems.Concat(fileItems)
             .OrderBy(i => i.Type)
             .ThenBy(i => i.Name)
             .ToList();
 
-        var totalCount = combined.Count;
-        var pagedItems = combined.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        int totalCount = allItems.Count;
+        var pagedItems = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
 
         var (currentFolderName, parentOfCurrentFolderId) = await GetParentFolderInfoAsync(parentFolderId);
 
@@ -211,9 +178,10 @@ public class FolderService : IFolderService
         });
     }
 
+    #region Helpers
+
     private async Task<(List<FolderEntity>, List<FileObject>)> LoadFoldersAndFilesAsync(Guid crateId,
-        Guid? parentFolderId,
-        string? search)
+        Guid? parentFolderId, string? search)
     {
         var foldersQuery = _context.Folders.Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId);
         var filesQuery = _context.FileObjects.Where(f => f.CrateId == crateId && f.FolderId == parentFolderId);
@@ -224,9 +192,7 @@ public class FolderService : IFolderService
             filesQuery = filesQuery.Where(f => EF.Functions.ILike(f.Name, $"%{search}%"));
         }
 
-        var foldersList = await foldersQuery.ToListAsync();
-        var filesList = await filesQuery.ToListAsync();
-        return (foldersList, filesList);
+        return (await foldersQuery.ToListAsync(), await filesQuery.ToListAsync());
     }
 
     private async Task<FolderOrFileItem> MapFolderToItemRecursiveAsync(FolderEntity folder, List<UserResponse> users)
@@ -235,8 +201,7 @@ public class FolderService : IFolderService
             ? users.FirstOrDefault(u => u.Id == folder.UploadedByUserId)
             : null;
 
-        // Calculate total size recursively
-        long totalSize = await GetFolderSizeRecursiveAsync(folder.Id);
+        long size = await GetFolderSizeRecursiveAsync(folder.Id);
 
         return new FolderOrFileItem
         {
@@ -246,17 +211,12 @@ public class FolderService : IFolderService
             CrateId = folder.CrateId,
             ParentFolderId = folder.ParentFolderId,
             Color = folder.Color,
-            SizeInBytes = totalSize,
+            SizeInBytes = size,
             UploadedByUserId = folder.UploadedByUserId ?? string.Empty,
-            UploadedByDisplayName = !string.IsNullOrWhiteSpace(folder.UploadedByDisplayName)
-                ? folder.UploadedByDisplayName
-                : uploader?.DisplayName ?? "Unknown",
-            UploadedByEmail = !string.IsNullOrWhiteSpace(folder.UploadedByEmail)
-                ? folder.UploadedByEmail
-                : uploader?.Email ?? string.Empty,
-            UploadedByProfilePictureUrl = !string.IsNullOrWhiteSpace(folder.UploadedByProfilePictureUrl)
-                ? folder.UploadedByProfilePictureUrl
-                : uploader?.ProfilePictureUrl ?? string.Empty,
+            UploadedByDisplayName = folder.UploadedByDisplayName ?? uploader?.DisplayName ?? "Unknown",
+            UploadedByEmail = folder.UploadedByEmail ?? uploader?.Email ?? string.Empty,
+            UploadedByProfilePictureUrl =
+                folder.UploadedByProfilePictureUrl ?? uploader?.ProfilePictureUrl ?? string.Empty,
             CreatedAt = folder.CreatedAt
         };
     }
@@ -267,38 +227,31 @@ public class FolderService : IFolderService
             .Where(f => f.FolderId == folderId)
             .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
 
-        var subfolderIds = await _context.Folders
-            .Where(f => f.ParentFolderId == folderId)
-            .Select(f => f.Id)
-            .ToListAsync();
-
-        foreach (var subId in subfolderIds)
-        {
-            size += await GetFolderSizeRecursiveAsync(subId);
-        }
+        var subIds = await _context.Folders.Where(f => f.ParentFolderId == folderId).Select(f => f.Id).ToListAsync();
+        foreach (var id in subIds) size += await GetFolderSizeRecursiveAsync(id);
 
         return size;
     }
 
-    private FolderOrFileItem MapFileToItem(FileObject f, List<UserResponse> users)
+    private FolderOrFileItem MapFileToItem(FileObject file, List<UserResponse> users)
     {
-        var uploader = users.FirstOrDefault(u => u.Id == f.UploadedByUserId);
+        var uploader = users.FirstOrDefault(u => u.Id == file.UploadedByUserId);
 
         return new FolderOrFileItem
         {
-            Id = f.Id,
-            Name = f.Name,
+            Id = file.Id,
+            Name = file.Name,
             Type = FolderItemType.File,
-            MimeType = f.MimeType,
-            SizeInBytes = f.SizeInBytes,
-            CrateId = f.CrateId,
-            ParentFolderId = f.FolderId,
+            MimeType = file.MimeType,
+            SizeInBytes = file.SizeInBytes,
+            CrateId = file.CrateId,
+            ParentFolderId = file.FolderId,
             Color = null,
-            UploadedByUserId = f.UploadedByUserId ?? string.Empty,
+            UploadedByUserId = file.UploadedByUserId ?? string.Empty,
             UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
             UploadedByEmail = uploader?.Email ?? string.Empty,
             UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
-            CreatedAt = f.CreatedAt
+            CreatedAt = file.CreatedAt
         };
     }
 
@@ -306,12 +259,13 @@ public class FolderService : IFolderService
     {
         if (!parentFolderId.HasValue) return ("Root", null);
 
-        var folderInfo = await _context.Folders
+        var folder = await _context.Folders
             .Where(f => f.Id == parentFolderId)
             .Select(f => new { f.Name, f.ParentFolderId })
             .FirstOrDefaultAsync();
 
-        if (folderInfo == null) return ("Root", null);
-        return (folderInfo.Name, folderInfo.ParentFolderId);
+        return folder == null ? ("Root", null) : (folder.Name, folder.ParentFolderId);
     }
+
+    #endregion
 }
