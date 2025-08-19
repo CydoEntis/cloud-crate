@@ -16,12 +16,6 @@ public static class AllowedFileExtensions
         // 🎧 Audio
         ".mp3", ".wav", ".flac", ".ogg", ".m4a",
 
-        // 🎥 Video
-        ".mp4", ".mov", ".avi", ".mkv", ".webm",
-
-        // 🗜️ Archives
-        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2",
-
         // ⚙️ Config / Build / Markup / Code / Scripts
         ".json", ".xml", ".yaml", ".yml", ".toml", ".ini", ".env", ".dockerfile", ".makefile", ".tsconfig",
         ".prettierrc", ".eslintignore", ".gitignore", ".mdx", ".njk", ".hbs", ".html", ".css", ".scss", ".sass",

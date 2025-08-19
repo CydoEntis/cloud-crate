@@ -8,7 +8,6 @@ public static class MimeCategoryHelper
             return "Other";
 
         if (mimeType.StartsWith("image/")) return "Images";
-        if (mimeType.StartsWith("video/")) return "Videos";
         if (mimeType.StartsWith("audio/")) return "Audio";
 
         // PDFs

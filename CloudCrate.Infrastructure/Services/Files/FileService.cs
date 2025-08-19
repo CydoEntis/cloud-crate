@@ -33,70 +33,77 @@ public class FileService : IFileService
     }
 
     public async Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId)
+{
+    var uploadPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
+    if (!uploadPermission.Succeeded)
+        return Result<FileObjectResponse>.Failure(uploadPermission.Errors);
+
+    if (request.FolderId.HasValue)
     {
-        var uploadPermission = await _cratePermissionService.CheckUploadPermissionAsync(request.CrateId, userId);
-        if (!uploadPermission.Succeeded)
-            return Result<FileObjectResponse>.Failure(uploadPermission.Errors);
-
-        if (request.FolderId.HasValue)
-        {
-            var folderExists =
-                await _context.Folders.AnyAsync(f => f.Id == request.FolderId && f.CrateId == request.CrateId);
-            if (!folderExists)
-                return Result<FileObjectResponse>.Failure(Errors.Folders.NotFound);
-        }
-
-        var fileId = Guid.NewGuid();
-
-        var saveResult = await _storageService.SaveFileAsync(
-            userId,
-            request.CrateId,
-            request.FolderId,
-            request.FileName,
-            request.Content
-        );
-
-        if (!saveResult.Succeeded)
-            return Result<FileObjectResponse>.Failure(saveResult.Errors.First());
-
-        var now = DateTime.UtcNow;
-
-        var file = new FileObject
-        {
-            Id = fileId,
-            Name = request.FileName,
-            SizeInBytes = request.SizeInBytes,
-            MimeType = request.MimeType,
-            ObjectKey = saveResult.Value,
-            CrateId = request.CrateId,
-            FolderId = request.FolderId,
-            UploadedByUserId = userId,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-
-        _context.FileObjects.Add(file);
-        await _context.SaveChangesAsync();
-
-        var uploader = (await _userService.GetUsersByIdsAsync(new[] { userId })).FirstOrDefault();
-
-        var response = new FileObjectResponse
-        {
-            Id = file.Id,
-            Name = file.Name,
-            MimeType = file.MimeType,
-            SizeInBytes = file.SizeInBytes,
-            CrateId = file.CrateId,
-            FolderId = file.FolderId,
-            UploadedByUserId = file.UploadedByUserId,
-            UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
-            UploadedByEmail = uploader?.Email ?? string.Empty,
-            UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
-            CreatedAt = file.CreatedAt
-        };
-
-        return Result<FileObjectResponse>.Success(response);
+        var folderExists =
+            await _context.Folders.AnyAsync(f => f.Id == request.FolderId && f.CrateId == request.CrateId);
+        if (!folderExists)
+            return Result<FileObjectResponse>.Failure(Errors.Folders.NotFound);
     }
+
+    const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+    if (request.SizeInBytes > MaxFileSize)
+        return Result<FileObjectResponse>.Failure(Errors.Files.FileTooLarge);
+
+    if (request.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+        return Result<FileObjectResponse>.Failure(Errors.Files.VideoNotAllowed);
+
+    var fileId = Guid.NewGuid();
+
+    var saveResult = await _storageService.SaveFileAsync(
+        userId,
+        request.CrateId,
+        request.FolderId,
+        request.FileName,
+        request.Content
+    );
+
+    if (!saveResult.Succeeded)
+        return Result<FileObjectResponse>.Failure(saveResult.Errors.First());
+
+    var now = DateTime.UtcNow;
+
+    var file = new FileObject
+    {
+        Id = fileId,
+        Name = request.FileName,
+        SizeInBytes = request.SizeInBytes,
+        MimeType = request.MimeType,
+        ObjectKey = saveResult.Value,
+        CrateId = request.CrateId,
+        FolderId = request.FolderId,
+        UploadedByUserId = userId,
+        CreatedAt = now,
+        UpdatedAt = now
+    };
+
+    _context.FileObjects.Add(file);
+    await _context.SaveChangesAsync();
+
+    var uploader = (await _userService.GetUsersByIdsAsync(new[] { userId })).FirstOrDefault();
+
+    var response = new FileObjectResponse
+    {
+        Id = file.Id,
+        Name = file.Name,
+        MimeType = file.MimeType,
+        SizeInBytes = file.SizeInBytes,
+        CrateId = file.CrateId,
+        FolderId = file.FolderId,
+        UploadedByUserId = file.UploadedByUserId,
+        UploadedByDisplayName = uploader?.DisplayName ?? "Unknown",
+        UploadedByEmail = uploader?.Email ?? string.Empty,
+        UploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty,
+        CreatedAt = file.CreatedAt
+    };
+
+    return Result<FileObjectResponse>.Success(response);
+}
 
 
     public async Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId)

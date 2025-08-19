@@ -47,6 +47,12 @@ public static class Errors
 
         public static Error AccessFailed =>
             new Error("Files.AccessFailed", "Failed to generate access URL for the file.", 403);
+
+        public static readonly Error FileTooLarge =
+            new("ERR_FILE_TOO_LARGE", "The uploaded file exceeds the maximum allowed size of 10MB.", 413);
+
+        public static readonly Error VideoNotAllowed =
+            new("ERR_FILE_VIDEO_NOT_ALLOWED", "Video files are not allowed.", 415);
     }
 
     public static class User
