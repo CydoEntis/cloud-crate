@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
@@ -14,4 +15,5 @@ public interface IFolderService
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
 
     Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters);
+    
 }

@@ -1,20 +1,21 @@
-﻿namespace CloudCrate.Application.DTOs.Pagination;
-
-public class PaginatedResult<T>
+﻿namespace CloudCrate.Application.DTOs.Pagination
 {
-    public List<T> Items { get; set; } = [];
-    public int TotalCount { get; set; }
-    public int Page { get; set; }
-    public int PageSize { get; set; }
-
-    public static PaginatedResult<T> Create(List<T> items, int totalCount, int page, int pageSize)
+    public class PaginatedResult<T>
     {
-        return new PaginatedResult<T>
+        public List<T> Items { get; set; } = new List<T>();
+        public int TotalCount { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+
+        public static PaginatedResult<T> Create(List<T> items, int totalCount, int page, int pageSize)
         {
-            Items = items,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize
-        };
+            return new PaginatedResult<T>
+            {
+                Items = items,
+                TotalCount = totalCount,
+                Page = page,
+                PageSize = pageSize
+            };
+        }
     }
 }
