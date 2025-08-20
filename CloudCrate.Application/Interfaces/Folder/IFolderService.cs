@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.DTOs.Pagination;
@@ -12,6 +13,5 @@ public interface IFolderService
     Task<Result> DeleteFolderAsync(Guid folderId, string userId);
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
 
-    Task<Result<PaginatedResult<FolderOrFileItem>>> GetFolderContentsAsync(
-        FolderQueryParameters parameters);
+    Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters);
 }

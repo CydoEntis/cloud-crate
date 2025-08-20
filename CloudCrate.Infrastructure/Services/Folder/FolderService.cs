@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.DTOs.Pagination;
@@ -135,21 +136,20 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    public async Task<Result<PaginatedResult<FolderOrFileItem>>> GetFolderContentsAsync(
-        FolderQueryParameters parameters)
+    public async Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters)
     {
         try
         {
             if (string.IsNullOrWhiteSpace(parameters.UserId))
             {
-                return Result<PaginatedResult<FolderOrFileItem>>.Failure(
+                return Result<FolderContentsResult>.Failure(
                     Errors.User.Unauthorized with { Message = "UserId is required" });
             }
 
             var permission =
                 await _cratePermissionService.CheckViewPermissionAsync(parameters.CrateId, parameters.UserId);
             if (!permission.Succeeded)
-                return Result<PaginatedResult<FolderOrFileItem>>.Failure(permission.Errors);
+                return Result<FolderContentsResult>.Failure(permission.Errors);
 
             var allFolderIds = await GetAllDescendantFolderIds(parameters.CrateId, parameters.ParentFolderId);
 
@@ -164,32 +164,20 @@ public class FolderService : IFolderService
             if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             {
                 var search = $"%{parameters.SearchTerm}%";
-                foldersQuery = foldersQuery.Where((FolderEntity f) => EF.Functions.ILike(f.Name, search));
-                filesQuery = filesQuery.Where((FileObject f) => EF.Functions.ILike(f.Name, search));
+                foldersQuery = foldersQuery.Where(f => EF.Functions.ILike(f.Name, search));
+                filesQuery = filesQuery.Where(f => EF.Functions.ILike(f.Name, search));
             }
 
             bool descending = parameters.OrderBy == OrderBy.Desc;
-
-            if (parameters.SortBy == FolderSortBy.CreatedAt)
-            {
-                foldersQuery = descending
+            foldersQuery = parameters.SortBy == FolderSortBy.CreatedAt
+                ? (descending
                     ? foldersQuery.OrderByDescending(f => f.CreatedAt)
-                    : foldersQuery.OrderBy(f => f.CreatedAt);
+                    : foldersQuery.OrderBy(f => f.CreatedAt))
+                : (descending ? foldersQuery.OrderByDescending(f => f.Name) : foldersQuery.OrderBy(f => f.Name));
 
-                filesQuery = descending
-                    ? filesQuery.OrderByDescending(f => f.CreatedAt)
-                    : filesQuery.OrderBy(f => f.CreatedAt);
-            }
-            else
-            {
-                foldersQuery = descending
-                    ? foldersQuery.OrderByDescending(f => f.Name)
-                    : foldersQuery.OrderBy(f => f.Name);
-
-                filesQuery = descending
-                    ? filesQuery.OrderByDescending(f => f.Name)
-                    : filesQuery.OrderBy(f => f.Name);
-            }
+            filesQuery = parameters.SortBy == FolderSortBy.CreatedAt
+                ? (descending ? filesQuery.OrderByDescending(f => f.CreatedAt) : filesQuery.OrderBy(f => f.CreatedAt))
+                : (descending ? filesQuery.OrderByDescending(f => f.Name) : filesQuery.OrderBy(f => f.Name));
 
             var totalCount = await foldersQuery.CountAsync() + await filesQuery.CountAsync();
 
@@ -217,12 +205,24 @@ public class FolderService : IFolderService
 
             items.AddRange(files.Select(f => MapFileToItem(f, users)));
 
-            return Result<PaginatedResult<FolderOrFileItem>>.Success(
-                PaginatedResult<FolderOrFileItem>.Create(items, totalCount, parameters.Page, parameters.PageSize));
+            // Fetch parent folder info
+            string folderName = "Root";
+            if (parameters.ParentFolderId.HasValue)
+            {
+                var parentFolder = await _context.Folders
+                    .FirstOrDefaultAsync(f => f.Id == parameters.ParentFolderId.Value);
+                folderName = parentFolder?.Name ?? "Unknown";
+            }
+
+            var result = FolderContentsResult.Create(items, totalCount, parameters.Page, parameters.PageSize);
+            result.FolderName = folderName;
+            result.ParentFolderId = parameters.ParentFolderId;
+
+            return Result<FolderContentsResult>.Success(result);
         }
         catch (Exception ex)
         {
-            return Result<PaginatedResult<FolderOrFileItem>>.Failure(
+            return Result<FolderContentsResult>.Failure(
                 Errors.Common.InternalServerError with { Message = $"Internal server error ({ex.Message})" });
         }
     }
@@ -246,11 +246,10 @@ public class FolderService : IFolderService
             foreach (var id in children)
             {
                 result.Add(id);
-                stack.Push(id); // recurse into children
+                stack.Push(id);
             }
         }
 
-        // If parentFolderId is not null, include it in search
         if (parentFolderId.HasValue)
             result.Add(parentFolderId.Value);
 
