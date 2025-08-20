@@ -77,15 +77,20 @@ public class FolderController : ControllerBase
     }
 
     [HttpGet("contents/{parentFolderId:guid?}")]
-    public async Task<IActionResult> GetFolderContents(Guid crateId, Guid? parentFolderId, [FromQuery] string? search,
-        [FromQuery] int page = 1, [FromQuery] int pageSize = 20)
+    public async Task<IActionResult> GetFolderContents(
+        Guid crateId,
+        Guid? parentFolderId,
+        [FromQuery] FolderQueryParameters queryParameters)
     {
         var userId = GetUserId();
-        if (userId == null)
+        if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result =
-            await _folderService.GetFolderContentsAsync(crateId, parentFolderId, userId, search, page, pageSize);
+        queryParameters.CrateId = crateId;
+        queryParameters.ParentFolderId = parentFolderId;
+        queryParameters.UserId = userId;
+
+        var result = await _folderService.GetFolderContentsAsync(queryParameters);
 
         return result.ToActionResult(this, successMessage: "Folder contents retrieved successfully");
     }

@@ -2,6 +2,7 @@
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
+using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Permissions;
@@ -134,49 +135,128 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(
-        Guid crateId, Guid? parentFolderId, string userId, string? search, int page = 1, int pageSize = 20)
+    public async Task<Result<PaginatedResult<FolderOrFileItem>>> GetFolderContentsAsync(
+        FolderQueryParameters parameters)
     {
-        var permission = await _cratePermissionService.CheckViewPermissionAsync(crateId, userId);
-        if (!permission.Succeeded) return Result<FolderContentsResponse>.Failure(permission.Errors);
-
-        var (foldersList, filesList) = await LoadFoldersAndFilesAsync(crateId, parentFolderId, search);
-
-        var uploaderIds = foldersList.Select(f => f.UploadedByUserId)
-            .Concat(filesList.Select(f => f.UploadedByUserId))
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct()
-            .ToList();
-
-        var users = await _userService.GetUsersByIdsAsync(uploaderIds);
-
-        var folderItems = new List<FolderOrFileItem>();
-        foreach (var f in foldersList)
-            folderItems.Add(await MapFolderToItemRecursiveAsync(f, users));
-
-        var fileItems = filesList.Select(f => MapFileToItem(f, users)).ToList();
-
-        var allItems = folderItems.Concat(fileItems)
-            .OrderBy(i => i.Type)
-            .ThenBy(i => i.Name)
-            .ToList();
-
-        int totalCount = allItems.Count;
-        var pagedItems = allItems.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-
-        var (currentFolderName, parentOfCurrentFolderId) = await GetParentFolderInfoAsync(parentFolderId);
-
-        return Result<FolderContentsResponse>.Success(new FolderContentsResponse
+        try
         {
-            Items = pagedItems,
-            TotalCount = totalCount,
-            Page = page,
-            PageSize = pageSize,
-            ParentFolderId = parentFolderId,
-            ParentOfCurrentFolderId = parentOfCurrentFolderId,
-            FolderName = currentFolderName
-        });
+            if (string.IsNullOrWhiteSpace(parameters.UserId))
+            {
+                return Result<PaginatedResult<FolderOrFileItem>>.Failure(
+                    Errors.User.Unauthorized with { Message = "UserId is required" });
+            }
+
+            var permission =
+                await _cratePermissionService.CheckViewPermissionAsync(parameters.CrateId, parameters.UserId);
+            if (!permission.Succeeded)
+                return Result<PaginatedResult<FolderOrFileItem>>.Failure(permission.Errors);
+
+            var allFolderIds = await GetAllDescendantFolderIds(parameters.CrateId, parameters.ParentFolderId);
+
+            var foldersQuery = _context.Folders
+                .Where(f => allFolderIds.Contains(f.Id))
+                .AsQueryable();
+
+            var filesQuery = _context.FileObjects
+                .Where(f => f.FolderId.HasValue && allFolderIds.Contains(f.FolderId.Value))
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
+            {
+                var search = $"%{parameters.SearchTerm}%";
+                foldersQuery = foldersQuery.Where((FolderEntity f) => EF.Functions.ILike(f.Name, search));
+                filesQuery = filesQuery.Where((FileObject f) => EF.Functions.ILike(f.Name, search));
+            }
+
+            bool descending = parameters.OrderBy == OrderBy.Desc;
+
+            if (parameters.SortBy == FolderSortBy.CreatedAt)
+            {
+                foldersQuery = descending
+                    ? foldersQuery.OrderByDescending(f => f.CreatedAt)
+                    : foldersQuery.OrderBy(f => f.CreatedAt);
+
+                filesQuery = descending
+                    ? filesQuery.OrderByDescending(f => f.CreatedAt)
+                    : filesQuery.OrderBy(f => f.CreatedAt);
+            }
+            else
+            {
+                foldersQuery = descending
+                    ? foldersQuery.OrderByDescending(f => f.Name)
+                    : foldersQuery.OrderBy(f => f.Name);
+
+                filesQuery = descending
+                    ? filesQuery.OrderByDescending(f => f.Name)
+                    : filesQuery.OrderBy(f => f.Name);
+            }
+
+            var totalCount = await foldersQuery.CountAsync() + await filesQuery.CountAsync();
+
+            var folders = await foldersQuery
+                .Skip((parameters.Page - 1) * parameters.PageSize)
+                .Take(parameters.PageSize)
+                .ToListAsync();
+
+            var files = await filesQuery
+                .Skip((parameters.Page - 1) * parameters.PageSize)
+                .Take(parameters.PageSize)
+                .ToListAsync();
+
+            var uploaderIds = folders.Select(f => f.UploadedByUserId)
+                .Concat(files.Select(f => f.UploadedByUserId))
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct()
+                .ToList();
+
+            var users = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+            var items = new List<FolderOrFileItem>();
+            foreach (var f in folders)
+                items.Add(await MapFolderToItemRecursiveAsync(f, users));
+
+            items.AddRange(files.Select(f => MapFileToItem(f, users)));
+
+            return Result<PaginatedResult<FolderOrFileItem>>.Success(
+                PaginatedResult<FolderOrFileItem>.Create(items, totalCount, parameters.Page, parameters.PageSize));
+        }
+        catch (Exception ex)
+        {
+            return Result<PaginatedResult<FolderOrFileItem>>.Failure(
+                Errors.Common.InternalServerError with { Message = $"Internal server error ({ex.Message})" });
+        }
     }
+
+
+    private async Task<List<Guid>> GetAllDescendantFolderIds(Guid crateId, Guid? parentFolderId)
+    {
+        var result = new List<Guid>();
+        var stack = new Stack<Guid?>();
+
+        stack.Push(parentFolderId);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            var children = await _context.Folders
+                .Where(f => f.CrateId == crateId && f.ParentFolderId == current)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            foreach (var id in children)
+            {
+                result.Add(id);
+                stack.Push(id); // recurse into children
+            }
+        }
+
+        // If parentFolderId is not null, include it in search
+        if (parentFolderId.HasValue)
+            result.Add(parentFolderId.Value);
+
+        return result;
+    }
+
 
     #region Helpers
 
