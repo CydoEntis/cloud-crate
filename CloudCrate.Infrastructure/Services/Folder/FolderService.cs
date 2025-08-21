@@ -6,8 +6,6 @@ using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
-using CloudCrate.Application.DTOs.Pagination;
-using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Permissions;
@@ -68,19 +66,7 @@ public class FolderService : IFolderService
         _context.Folders.Add(folder);
         await _context.SaveChangesAsync();
 
-        return Result<FolderResponse>.Success(new FolderResponse
-        {
-            Id = folder.Id,
-            Name = folder.Name,
-            CrateId = folder.CrateId,
-            ParentFolderId = folder.ParentFolderId,
-            Color = folder.Color,
-            UploadedByUserId = folder.UploadedByUserId,
-            UploadedByDisplayName = folder.UploadedByDisplayName,
-            UploadedByEmail = folder.UploadedByEmail,
-            UploadedByProfilePictureUrl = folder.UploadedByProfilePictureUrl,
-            CreatedAt = folder.CreatedAt
-        });
+        return Result<FolderResponse>.Success(FolderItemMapper.MapFolderResponse(folder));
     }
 
     public async Task<Result> RenameFolderAsync(Guid folderId, string newName, string userId)
@@ -148,7 +134,6 @@ public class FolderService : IFolderService
 
     #endregion
 
-
     #region Folder Contents
 
     public async Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters)
@@ -161,58 +146,19 @@ public class FolderService : IFolderService
         if (!permission.Succeeded)
             return Result<FolderContentsResult>.Failure(permission.Errors);
 
-        var (rootUserId, rootDisplayName, rootEmail, rootProfilePicture) =
-            await GetRootOwnerInfoAsync(parameters.CrateId);
-
         bool searchMode = !string.IsNullOrWhiteSpace(parameters.SearchTerm);
 
         var folderItems = searchMode
             ? new List<FolderOrFileItem>()
             : await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId);
 
-        var fileItems = (await GetFileItemsAsync(parameters, searchMode))
-            .Select(f => new FolderOrFileItem
-            {
-                Id = f.Id,
-                Name = f.Name,
-                Type = FolderItemType.File,
-                CrateId = f.CrateId,
-                ParentFolderId = f.ParentFolderId,
-                ParentFolderName = f.ParentFolderName,
-                MimeType = f.MimeType,
-                SizeInBytes = f.SizeInBytes,
-                UploadedByUserId = f.UploadedByUserId ?? rootUserId,
-                UploadedByDisplayName = f.UploadedByDisplayName ?? rootDisplayName,
-                UploadedByEmail = f.UploadedByEmail ?? rootEmail,
-                UploadedByProfilePictureUrl = f.UploadedByProfilePictureUrl ?? rootProfilePicture,
-                CreatedAt = f.CreatedAt,
-                FileUrl = f.FileUrl ?? string.Empty
-            }).ToList();
+        var fileItems = await GetFileItemsAsFolderItemsAsync(parameters, searchMode);
 
-        var allItems = folderItems.Concat(fileItems);
-        allItems = parameters.SortBy switch
-        {
-            FolderSortBy.Name => parameters.OrderBy == OrderBy.Asc
-                ? allItems.OrderBy(i => i.Name)
-                : allItems.OrderByDescending(i => i.Name),
-            FolderSortBy.CreatedAt => parameters.OrderBy == OrderBy.Asc
-                ? allItems.OrderBy(i => i.CreatedAt)
-                : allItems.OrderByDescending(i => i.CreatedAt),
-            FolderSortBy.Size => parameters.OrderBy == OrderBy.Asc
-                ? allItems.OrderBy(i => i.SizeInBytes)
-                : allItems.OrderByDescending(i => i.SizeInBytes),
-            _ => allItems.OrderBy(i => i.Name)
-        };
+        var allItems = SortAndCombineItems(folderItems, fileItems, parameters.SortBy, parameters.OrderBy);
 
         var paginated = allItems.Paginate(parameters.Page, parameters.PageSize);
 
-        string folderName = "Root";
-        if (parameters.ParentFolderId.HasValue)
-        {
-            var parentFolder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == parameters.ParentFolderId.Value);
-            folderName = parentFolder?.Name ?? "Unknown";
-        }
-
+        string folderName = await GetFolderNameAsync(parameters.ParentFolderId);
         var breadcrumbs = await GetFolderBreadcrumbs(parameters.ParentFolderId);
 
         var result = FolderContentsResult.Create(
@@ -230,8 +176,89 @@ public class FolderService : IFolderService
 
     #endregion
 
-
     #region Helpers
+
+    private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(Guid crateId, Guid? parentFolderId)
+    {
+        var folders = await _context.Folders
+            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId)
+            .OrderBy(f => f.Name)
+            .ToListAsync();
+
+        var uploaderIds = folders
+            .Select(f => f.UploadedByUserId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        var result = new List<FolderOrFileItem>();
+        foreach (var folder in folders)
+        {
+            result.Add(await FolderItemMapper.MapFolderAsync(folder, uploaders, GetFolderSizeRecursiveAsync));
+        }
+
+        return result;
+    }
+
+    private async Task<List<FolderOrFileItem>> GetFileItemsAsFolderItemsAsync(FolderQueryParameters parameters,
+        bool searchMode)
+    {
+        var fileDtos = await _fileService.GetFilesAsync(new()
+        {
+            CrateId = parameters.CrateId,
+            FolderId = searchMode ? null : parameters.ParentFolderId,
+            SearchTerm = searchMode ? parameters.SearchTerm : null,
+            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
+            Ascending = parameters.OrderBy != OrderBy.Desc,
+            Page = parameters.Page,
+            PageSize = parameters.PageSize,
+            UserId = parameters.UserId
+        });
+
+        return (fileDtos.Items ?? new List<FileItemDto>())
+            .Select(FolderItemMapper.MapFile)
+            .ToList();
+    }
+
+    private static IEnumerable<FolderOrFileItem> SortAndCombineItems(
+        IEnumerable<FolderOrFileItem> folders,
+        IEnumerable<FolderOrFileItem> files,
+        FolderSortBy sortBy,
+        OrderBy orderBy)
+    {
+        folders = SortItems(folders, sortBy, orderBy);
+        files = SortItems(files, sortBy, orderBy);
+        return folders.Concat(files);
+    }
+
+    private static IOrderedEnumerable<FolderOrFileItem> SortItems(
+        IEnumerable<FolderOrFileItem> items,
+        FolderSortBy sortBy,
+        OrderBy orderBy)
+    {
+        return sortBy switch
+        {
+            FolderSortBy.Name => orderBy == OrderBy.Asc
+                ? items.OrderBy(i => i.Name)
+                : items.OrderByDescending(i => i.Name),
+            FolderSortBy.CreatedAt => orderBy == OrderBy.Asc
+                ? items.OrderBy(i => i.CreatedAt)
+                : items.OrderByDescending(i => i.CreatedAt),
+            FolderSortBy.Size => orderBy == OrderBy.Asc
+                ? items.OrderBy(i => i.SizeInBytes)
+                : items.OrderByDescending(i => i.SizeInBytes),
+            _ => items.OrderBy(i => i.Name)
+        };
+    }
+
+    private async Task<string> GetFolderNameAsync(Guid? folderId)
+    {
+        if (!folderId.HasValue) return "Root";
+        var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId.Value);
+        return folder?.Name ?? "Unknown";
+    }
 
     private async Task<long> GetFolderSizeRecursiveAsync(Guid folderId)
     {
@@ -250,70 +277,9 @@ public class FolderService : IFolderService
         return size;
     }
 
-    private async Task<(string Id, string DisplayName, string Email, string Picture)>
-        GetRootOwnerInfoAsync(Guid crateId)
-    {
-        var ownerMember = await _context.CrateMembers
-            .Where(cm => cm.CrateId == crateId && cm.Role == CrateRole.Owner)
-            .FirstOrDefaultAsync();
-
-        if (ownerMember == null) return (string.Empty, "Unknown", string.Empty, string.Empty);
-
-        var ownerUser = await _userService.GetUserByIdAsync(ownerMember.UserId);
-        return (
-            ownerUser?.Id ?? string.Empty,
-            ownerUser?.DisplayName ?? "Unknown",
-            ownerUser?.Email ?? string.Empty,
-            ownerUser?.ProfilePictureUrl ?? string.Empty
-        );
-    }
-
-    private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(
-        Guid crateId, Guid? parentFolderId)
-    {
-        var folders = await _context.Folders
-            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId)
-            .OrderBy(f => f.Name)
-            .ToListAsync();
-
-        var uploaderIds = folders
-            .Select(f => f.UploadedByUserId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct()
-            .ToList();
-
-        var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
-
-        var result = new List<FolderOrFileItem>();
-        foreach (var f in folders)
-        {
-            result.Add(await f.ToFolderOrFileItemAsync(uploaders, GetFolderSizeRecursiveAsync));
-        }
-
-        return result;
-    }
-
-    private async Task<List<FileItemDto>> GetFileItemsAsync(FolderQueryParameters parameters, bool searchMode)
-    {
-        var fileResult = await _fileService.GetFilesAsync(new()
-        {
-            CrateId = parameters.CrateId,
-            FolderId = searchMode ? null : parameters.ParentFolderId,
-            SearchTerm = searchMode ? parameters.SearchTerm : null,
-            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
-            Ascending = parameters.OrderBy != OrderBy.Desc,
-            Page = parameters.Page,
-            PageSize = parameters.PageSize,
-            UserId = parameters.UserId
-        });
-
-        return fileResult.Items ?? new List<FileItemDto>();
-    }
-
     private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
     {
         var breadcrumbs = new List<FolderBreadcrumb>();
-
         while (folderId.HasValue)
         {
             var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId.Value);
