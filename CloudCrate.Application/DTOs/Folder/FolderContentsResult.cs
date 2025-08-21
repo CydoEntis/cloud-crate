@@ -1,16 +1,27 @@
 ﻿using CloudCrate.Application.DTOs.Folder.Response;
-using CloudCrate.Application.DTOs.Pagination;
 
 namespace CloudCrate.Application.DTOs.Folder;
 
-public class FolderContentsResult : PaginatedResult<FolderOrFileItem>
+public class FolderContentsResult
 {
-    public string FolderName { get; set; } = string.Empty;
+    public string FolderName { get; set; } = "Root";
     public Guid? ParentFolderId { get; set; }
 
+    public List<FolderOrFileItem> Items { get; set; } = new();
+    public int TotalCount { get; set; } = 0;
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+
+    public List<FolderBreadcrumb> Breadcrumbs { get; set; } = new();
+
     public static FolderContentsResult Create(
-        List<FolderOrFileItem> items, int totalCount, int page, int pageSize,
-        string folderName = "Root", Guid? parentFolderId = null)
+        List<FolderOrFileItem> items,
+        int totalCount = 0,
+        int page = 1,
+        int pageSize = 20,
+        string folderName = "Root",
+        Guid? parentFolderId = null,
+        List<FolderBreadcrumb>? breadcrumbs = null)
     {
         return new FolderContentsResult
         {
@@ -19,7 +30,8 @@ public class FolderContentsResult : PaginatedResult<FolderOrFileItem>
             Page = page,
             PageSize = pageSize,
             FolderName = folderName,
-            ParentFolderId = parentFolderId
+            ParentFolderId = parentFolderId,
+            Breadcrumbs = breadcrumbs ?? new List<FolderBreadcrumb>()
         };
     }
 }

@@ -9,7 +9,7 @@ public class FolderOrFileItem
     public FolderItemType Type { get; set; }
     public Guid CrateId { get; set; }
     public Guid? ParentFolderId { get; set; }
-    public string? ParentFolderName { get; set; } // <-- added
+    public string? ParentFolderName { get; set; } 
     public string? Color { get; set; }
     public long SizeInBytes { get; set; }
     public string UploadedByUserId { get; set; } = string.Empty;
