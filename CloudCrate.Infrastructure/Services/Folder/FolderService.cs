@@ -280,12 +280,19 @@ public class FolderService : IFolderService
     private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
     {
         var breadcrumbs = new List<FolderBreadcrumb>();
+
         while (folderId.HasValue)
         {
             var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId.Value);
             if (folder == null) break;
 
-            breadcrumbs.Insert(0, new FolderBreadcrumb { Id = folder.Id, Name = folder.Name });
+            breadcrumbs.Insert(0, new FolderBreadcrumb
+            {
+                Id = folder.Id,
+                Name = folder.Name,
+                Color = folder.Color ?? "#9CA3AF" 
+            });
+
             folderId = folder.ParentFolderId;
         }
 
