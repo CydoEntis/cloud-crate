@@ -147,12 +147,13 @@ public class FolderService : IFolderService
             return Result<FolderContentsResult>.Failure(permission.Errors);
 
         bool searchMode = !string.IsNullOrWhiteSpace(parameters.SearchTerm);
+        var searchTerm = parameters.SearchTerm?.Trim().ToLower() ?? "";
 
         var folderItems = searchMode
-            ? new List<FolderOrFileItem>()
+            ? await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId, searchTerm)
             : await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId);
 
-        var fileItems = await GetFileItemsAsFolderItemsAsync(parameters, searchMode);
+        var fileItems = await GetFileItemsAsFolderItemsAsync(parameters, searchMode, searchTerm);
 
         var allItems = SortAndCombineItems(folderItems, fileItems, parameters.SortBy, parameters.OrderBy);
 
@@ -172,6 +173,52 @@ public class FolderService : IFolderService
         );
 
         return Result<FolderContentsResult>.Success(result);
+    }
+
+    private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(Guid crateId, Guid? parentFolderId,
+        string searchTerm = null)
+    {
+        var query = _context.Folders
+            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId);
+
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+            query = query.Where(f => f.Name.ToLower().Contains(searchTerm));
+
+        var folders = await query.OrderBy(f => f.Name).ToListAsync();
+
+        var uploaderIds = folders
+            .Select(f => f.UploadedByUserId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        var result = new List<FolderOrFileItem>();
+        foreach (var folder in folders)
+            result.Add(await FolderItemMapper.MapFolderAsync(folder, uploaders, GetFolderSizeRecursiveAsync));
+
+        return result;
+    }
+
+    private async Task<List<FolderOrFileItem>> GetFileItemsAsFolderItemsAsync(FolderQueryParameters parameters,
+        bool searchMode, string searchTerm = null)
+    {
+        var fileDtos = await _fileService.GetFilesAsync(new()
+        {
+            CrateId = parameters.CrateId,
+            FolderId = searchMode ? null : parameters.ParentFolderId,
+            SearchTerm = searchMode ? searchTerm : null,
+            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
+            Ascending = parameters.OrderBy != OrderBy.Desc,
+            Page = parameters.Page,
+            PageSize = parameters.PageSize,
+            UserId = parameters.UserId
+        });
+
+        return (fileDtos.Items ?? new List<FileItemDto>())
+            .Select(FolderItemMapper.MapFile)
+            .ToList();
     }
 
     #endregion
@@ -290,7 +337,7 @@ public class FolderService : IFolderService
             {
                 Id = folder.Id,
                 Name = folder.Name,
-                Color = folder.Color ?? "#9CA3AF" 
+                Color = folder.Color ?? "#9CA3AF"
             });
 
             folderId = folder.ParentFolderId;
