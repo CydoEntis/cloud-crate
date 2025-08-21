@@ -14,6 +14,6 @@ public interface IFolderService
     Task<Result> DeleteFolderAsync(Guid folderId, string userId);
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
 
-    Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters);
-    
+    Task<Result<FolderContentsResult>> GetFolderContentsAsync(
+        FolderQueryParameters parameters);
 }

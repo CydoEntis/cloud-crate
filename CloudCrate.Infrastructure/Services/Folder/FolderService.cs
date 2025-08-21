@@ -1,10 +1,12 @@
 ﻿using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Mappings;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
+using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Folder;
@@ -146,6 +148,7 @@ public class FolderService : IFolderService
 
     #endregion
 
+
     #region Folder Contents
 
     public async Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters)
@@ -167,28 +170,41 @@ public class FolderService : IFolderService
             ? new List<FolderOrFileItem>()
             : await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId);
 
-        // Files always
-        var fileItemsList = await GetFileItemsAsync(parameters, searchMode);
+        var fileItems = (await GetFileItemsAsync(parameters, searchMode))
+            .Select(f => new FolderOrFileItem
+            {
+                Id = f.Id,
+                Name = f.Name,
+                Type = FolderItemType.File,
+                CrateId = f.CrateId,
+                ParentFolderId = f.ParentFolderId,
+                ParentFolderName = f.ParentFolderName,
+                MimeType = f.MimeType,
+                SizeInBytes = f.SizeInBytes,
+                UploadedByUserId = f.UploadedByUserId ?? rootUserId,
+                UploadedByDisplayName = f.UploadedByDisplayName ?? rootDisplayName,
+                UploadedByEmail = f.UploadedByEmail ?? rootEmail,
+                UploadedByProfilePictureUrl = f.UploadedByProfilePictureUrl ?? rootProfilePicture,
+                CreatedAt = f.CreatedAt,
+                FileUrl = f.FileUrl ?? string.Empty
+            }).ToList();
 
-        var fileItems = fileItemsList.Select(f => new FolderOrFileItem
+        var allItems = folderItems.Concat(fileItems);
+        allItems = parameters.SortBy switch
         {
-            Id = f.Id,
-            Name = f.Name,
-            Type = FolderItemType.File,
-            CrateId = f.CrateId,
-            ParentFolderId = f.ParentFolderId,
-            ParentFolderName = f.ParentFolderName,
-            MimeType = f.MimeType,
-            SizeInBytes = f.SizeInBytes,
-            UploadedByUserId = f.UploadedByUserId ?? rootUserId,
-            UploadedByDisplayName = f.UploadedByDisplayName ?? rootDisplayName,
-            UploadedByEmail = f.UploadedByEmail ?? rootEmail,
-            UploadedByProfilePictureUrl = f.UploadedByProfilePictureUrl ?? rootProfilePicture,
-            CreatedAt = f.CreatedAt,
-            FileUrl = f.FileUrl ?? string.Empty
-        }).ToList();
+            FolderSortBy.Name => parameters.OrderBy == OrderBy.Asc
+                ? allItems.OrderBy(i => i.Name)
+                : allItems.OrderByDescending(i => i.Name),
+            FolderSortBy.CreatedAt => parameters.OrderBy == OrderBy.Asc
+                ? allItems.OrderBy(i => i.CreatedAt)
+                : allItems.OrderByDescending(i => i.CreatedAt),
+            FolderSortBy.Size => parameters.OrderBy == OrderBy.Asc
+                ? allItems.OrderBy(i => i.SizeInBytes)
+                : allItems.OrderByDescending(i => i.SizeInBytes),
+            _ => allItems.OrderBy(i => i.Name)
+        };
 
-        var items = folderItems.Concat(fileItems).ToList();
+        var paginated = allItems.Paginate(parameters.Page, parameters.PageSize);
 
         string folderName = "Root";
         if (parameters.ParentFolderId.HasValue)
@@ -197,14 +213,23 @@ public class FolderService : IFolderService
             folderName = parentFolder?.Name ?? "Unknown";
         }
 
-        var result = FolderContentsResult.Create(items, items.Count, parameters.Page, parameters.PageSize);
-        result.FolderName = folderName;
-        result.ParentFolderId = parameters.ParentFolderId;
+        var breadcrumbs = await GetFolderBreadcrumbs(parameters.ParentFolderId);
+
+        var result = FolderContentsResult.Create(
+            items: paginated.Items.ToList(),
+            totalCount: paginated.TotalCount,
+            page: paginated.Page,
+            pageSize: paginated.PageSize,
+            folderName: folderName,
+            parentFolderId: parameters.ParentFolderId,
+            breadcrumbs: breadcrumbs
+        );
 
         return Result<FolderContentsResult>.Success(result);
     }
 
     #endregion
+
 
     #region Helpers
 
@@ -283,6 +308,22 @@ public class FolderService : IFolderService
         });
 
         return fileResult.Items ?? new List<FileItemDto>();
+    }
+
+    private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
+    {
+        var breadcrumbs = new List<FolderBreadcrumb>();
+
+        while (folderId.HasValue)
+        {
+            var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId.Value);
+            if (folder == null) break;
+
+            breadcrumbs.Insert(0, new FolderBreadcrumb { Id = folder.Id, Name = folder.Name });
+            folderId = folder.ParentFolderId;
+        }
+
+        return breadcrumbs;
     }
 
     #endregion
