@@ -242,13 +242,11 @@ public class FileService : IFileService
 
     public async Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters)
     {
-        // Include the folder (immediate parent only)
         var query = _context.FileObjects
             .Include(f => f.Folder)
             .Where(f => f.CrateId == parameters.CrateId)
             .AsQueryable();
 
-        // Apply search/filtering
         query = ApplyFilters(
             query,
             parameters.SearchTerm,
@@ -258,7 +256,6 @@ public class FileService : IFileService
             parameters.MaxSize
         );
 
-        // Apply folder filter if not searching
         if (string.IsNullOrWhiteSpace(parameters.SearchTerm))
         {
             query = parameters.FolderId.HasValue
@@ -266,13 +263,10 @@ public class FileService : IFileService
                 : query.Where(f => f.FolderId == null); // root
         }
 
-        // Apply ordering
         query = ApplyOrdering(query, parameters.OrderBy, parameters.Ascending);
 
-        // Paginate
         var pagedFiles = await query.PaginateAsync(parameters.Page, parameters.PageSize);
 
-        // Fetch uploaders in bulk
         var uploaderIds = pagedFiles.Items
             .Where(f => !string.IsNullOrEmpty(f.UploadedByUserId))
             .Select(f => f.UploadedByUserId!)
@@ -282,7 +276,6 @@ public class FileService : IFileService
         var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
         var uploaderDict = uploaders.ToDictionary(u => u.Id, u => u);
 
-        // Map to DTO
         var fileDtos = pagedFiles.Items.Select(f =>
         {
             uploaderDict.TryGetValue(f.UploadedByUserId ?? string.Empty, out var uploader);
@@ -321,32 +314,6 @@ public class FileService : IFileService
         };
     }
 
-
-    private async Task<List<Guid>> GetFolderAndSubfolderIdsFlattenedAsync(Guid folderId)
-    {
-        var allFolders = await _context.Folders
-            .Select(f => new { f.Id, f.ParentFolderId })
-            .ToListAsync();
-
-        var result = new List<Guid>();
-        var stack = new Stack<Guid>();
-        stack.Push(folderId);
-
-        while (stack.Count > 0)
-        {
-            var currentId = stack.Pop();
-            result.Add(currentId);
-
-            var children = allFolders
-                .Where(f => f.ParentFolderId == currentId)
-                .Select(f => f.Id);
-
-            foreach (var childId in children)
-                stack.Push(childId);
-        }
-
-        return result;
-    }
 
     private IQueryable<FileObject> ApplyFilters(
         IQueryable<FileObject> query,
