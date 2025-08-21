@@ -158,147 +158,18 @@ public class FolderService : IFolderService
         if (!permission.Succeeded)
             return Result<FolderContentsResult>.Failure(permission.Errors);
 
-        // Fetch crate owner once for root
-        var ownerMember = await _context.CrateMembers
-            .Where(cm => cm.CrateId == parameters.CrateId && cm.Role == CrateRole.Owner)
-            .FirstOrDefaultAsync();
+        var (rootUserId, rootDisplayName, rootEmail, rootProfilePicture) =
+            await GetRootOwnerInfoAsync(parameters.CrateId);
 
-        var ownerUser = ownerMember != null
-            ? await _userService.GetUserByIdAsync(ownerMember.UserId)
-            : null;
+        bool searchMode = !string.IsNullOrWhiteSpace(parameters.SearchTerm);
 
-        string rootUserId = ownerUser?.Id ?? string.Empty;
-        string rootDisplayName = ownerUser?.DisplayName ?? "Unknown";
-        string rootEmail = ownerUser?.Email ?? string.Empty;
-        string rootProfilePicture = ownerUser?.ProfilePictureUrl ?? string.Empty;
+        var folderItems = searchMode
+            ? new List<FolderOrFileItem>()
+            : await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId);
 
-        List<FolderOrFileItem> folderItems = new();
-        List<FileItemDto> fileItemsList;
+        // Files always
+        var fileItemsList = await GetFileItemsAsync(parameters, searchMode);
 
-        if (string.IsNullOrWhiteSpace(parameters.SearchTerm))
-        {
-            // --- NORMAL FOLDER VIEW ---
-            var folders = await _context.Folders
-                .Where(f => f.CrateId == parameters.CrateId && f.ParentFolderId == parameters.ParentFolderId)
-                .OrderBy(f => f.Name)
-                .ToListAsync();
-
-            var folderUploaderIds = folders
-                .Select(f => f.UploadedByUserId)
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Distinct()
-                .ToList();
-
-            var folderUploaders = await _userService.GetUsersByIdsAsync(folderUploaderIds);
-
-            foreach (var f in folders)
-            {
-                folderItems.Add(await f.ToFolderOrFileItemAsync(folderUploaders, GetFolderSizeRecursiveAsync));
-            }
-
-            var fileResult = await _fileService.GetFilesAsync(new()
-            {
-                CrateId = parameters.CrateId,
-                FolderId = parameters.ParentFolderId,
-                SearchTerm = null,
-                OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
-                Ascending = parameters.OrderBy != OrderBy.Desc,
-                Page = parameters.Page,
-                PageSize = parameters.PageSize,
-                UserId = parameters.UserId
-            });
-
-            fileItemsList = fileResult.Items ?? new List<FileItemDto>();
-        }
-        else
-        {
-            // --- SEARCH MODE ---
-            var fileResult = await _fileService.GetFilesAsync(new()
-            {
-                CrateId = parameters.CrateId,
-                FolderId = null,
-                SearchTerm = parameters.SearchTerm,
-                OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
-                Ascending = parameters.OrderBy != OrderBy.Desc,
-                Page = parameters.Page,
-                PageSize = parameters.PageSize,
-                UserId = parameters.UserId
-            });
-
-            fileItemsList = fileResult.Items ?? new List<FileItemDto>();
-
-            // Map grandparent folders or root
-            var grandParentFolders = new Dictionary<Guid, FolderOrFileItem>();
-
-            foreach (var f in fileItemsList)
-            {
-                Guid grandParentId = Guid.Empty; // Default to root
-                string grandParentName = "Root";
-                string uploadedByUserId = rootUserId;
-                string uploadedByDisplayName = rootDisplayName;
-                string uploadedByEmail = rootEmail;
-                string uploadedByProfilePictureUrl = rootProfilePicture;
-
-                if (f.ParentFolderId.HasValue)
-                {
-                    var parentFolder = await _context.Folders.FirstOrDefaultAsync(x => x.Id == f.ParentFolderId.Value);
-                    if (parentFolder != null)
-                    {
-                        if (parentFolder.ParentFolderId.HasValue)
-                        {
-                            var grandParent =
-                                await _context.Folders.FirstOrDefaultAsync(x =>
-                                    x.Id == parentFolder.ParentFolderId.Value);
-                            if (grandParent != null)
-                            {
-                                grandParentId = grandParent.Id;
-                                grandParentName = grandParent.Name;
-                                uploadedByUserId = grandParent.UploadedByUserId ?? rootUserId;
-                                var uploader = !string.IsNullOrWhiteSpace(grandParent.UploadedByUserId)
-                                    ? await _userService.GetUserByIdAsync(grandParent.UploadedByUserId)
-                                    : null;
-                                uploadedByDisplayName = uploader?.DisplayName ?? rootDisplayName;
-                                uploadedByEmail = uploader?.Email ?? rootEmail;
-                                uploadedByProfilePictureUrl = uploader?.ProfilePictureUrl ?? rootProfilePicture;
-                            }
-                        }
-                        else
-                        {
-                            // Parent has no grandparent -> root
-                            grandParentId = Guid.Empty;
-                            grandParentName = "Root";
-                        }
-                    }
-                }
-
-                if (!grandParentFolders.ContainsKey(grandParentId))
-                {
-                    grandParentFolders.Add(grandParentId, new FolderOrFileItem
-                    {
-                        Id = grandParentId,
-                        Name = grandParentName,
-                        Type = FolderItemType.Folder,
-                        CrateId = f.CrateId,
-                        ParentFolderId = null,
-                        ParentFolderName = null,
-                        UploadedByUserId = uploadedByUserId,
-                        UploadedByDisplayName = uploadedByDisplayName,
-                        UploadedByEmail = uploadedByEmail,
-                        UploadedByProfilePictureUrl = uploadedByProfilePictureUrl,
-                        CreatedAt = DateTime.UtcNow,
-                        SizeInBytes =
-                            grandParentId == Guid.Empty ? 0 : await GetFolderSizeRecursiveAsync(grandParentId),
-                        MimeType = null,
-                        FileUrl = null,
-                        Color = null
-                    });
-                }
-            }
-
-            folderItems.AddRange(grandParentFolders.Values);
-        }
-
-        // Map file items
         var fileItems = fileItemsList.Select(f => new FolderOrFileItem
         {
             Id = f.Id,
@@ -317,10 +188,8 @@ public class FolderService : IFolderService
             FileUrl = f.FileUrl ?? string.Empty
         }).ToList();
 
-        // Combine folders and files
         var items = folderItems.Concat(fileItems).ToList();
 
-        // Determine current folder name
         string folderName = "Root";
         if (parameters.ParentFolderId.HasValue)
         {
@@ -336,7 +205,6 @@ public class FolderService : IFolderService
     }
 
     #endregion
-
 
     #region Helpers
 
@@ -355,6 +223,66 @@ public class FolderService : IFolderService
             size += await GetFolderSizeRecursiveAsync(id);
 
         return size;
+    }
+
+    private async Task<(string Id, string DisplayName, string Email, string Picture)>
+        GetRootOwnerInfoAsync(Guid crateId)
+    {
+        var ownerMember = await _context.CrateMembers
+            .Where(cm => cm.CrateId == crateId && cm.Role == CrateRole.Owner)
+            .FirstOrDefaultAsync();
+
+        if (ownerMember == null) return (string.Empty, "Unknown", string.Empty, string.Empty);
+
+        var ownerUser = await _userService.GetUserByIdAsync(ownerMember.UserId);
+        return (
+            ownerUser?.Id ?? string.Empty,
+            ownerUser?.DisplayName ?? "Unknown",
+            ownerUser?.Email ?? string.Empty,
+            ownerUser?.ProfilePictureUrl ?? string.Empty
+        );
+    }
+
+    private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(
+        Guid crateId, Guid? parentFolderId)
+    {
+        var folders = await _context.Folders
+            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId)
+            .OrderBy(f => f.Name)
+            .ToListAsync();
+
+        var uploaderIds = folders
+            .Select(f => f.UploadedByUserId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct()
+            .ToList();
+
+        var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
+
+        var result = new List<FolderOrFileItem>();
+        foreach (var f in folders)
+        {
+            result.Add(await f.ToFolderOrFileItemAsync(uploaders, GetFolderSizeRecursiveAsync));
+        }
+
+        return result;
+    }
+
+    private async Task<List<FileItemDto>> GetFileItemsAsync(FolderQueryParameters parameters, bool searchMode)
+    {
+        var fileResult = await _fileService.GetFilesAsync(new()
+        {
+            CrateId = parameters.CrateId,
+            FolderId = searchMode ? null : parameters.ParentFolderId,
+            SearchTerm = searchMode ? parameters.SearchTerm : null,
+            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
+            Ascending = parameters.OrderBy != OrderBy.Desc,
+            Page = parameters.Page,
+            PageSize = parameters.PageSize,
+            UserId = parameters.UserId
+        });
+
+        return fileResult.Items ?? new List<FileItemDto>();
     }
 
     #endregion

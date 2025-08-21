@@ -221,18 +221,24 @@ public class FileService : IFileService
         if (!deletePermission.Succeeded)
             return Result.Failure(deletePermission.Errors);
 
+        if (newParentId.HasValue && newParentId.Value == Guid.Empty)
+            newParentId = null;
+
         if (newParentId.HasValue)
         {
-            var folderExists =
-                await _context.Folders.AnyAsync(f => f.Id == newParentId.Value && f.CrateId == file.CrateId);
+            var folderExists = await _context.Folders
+                .AnyAsync(f => f.Id == newParentId.Value && f.CrateId == file.CrateId);
+
             if (!folderExists)
                 return Result.Failure(Errors.Folders.NotFound);
         }
 
         file.FolderId = newParentId;
         await _context.SaveChangesAsync();
+
         return Result.Success();
     }
+
 
     public async Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters)
     {
