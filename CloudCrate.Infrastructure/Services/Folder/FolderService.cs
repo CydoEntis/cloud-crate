@@ -14,6 +14,7 @@ using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using FolderEntity = CloudCrate.Domain.Entities.Folder;
 using System.IO.Compression;
+using CloudCrate.Application.DTOs;
 
 namespace CloudCrate.Infrastructure.Services.Folder;
 
@@ -125,7 +126,44 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    private async Task SoftDeleteFolderRecursiveAsync(FolderEntity folder, string userId)
+    public async Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId)
+    {
+        foreach (var fileId in request.FileIds)
+        {
+            Result fileResult;
+            if (request.Permanent)
+                fileResult = await _fileService.DeleteFileAsync(fileId, userId);
+            else
+                fileResult = await _fileService.SoftDeleteFileAsync(fileId, userId);
+
+            if (!fileResult.Succeeded) return fileResult;
+        }
+
+        foreach (var folderId in request.FolderIds)
+        {
+            Result folderResult;
+            if (request.Permanent)
+            {
+                folderResult = await PermanentlyDeleteFolderAsync(folderId);
+            }
+            else
+            {
+                var folder = await _context.Folders
+                    .Include(f => f.Subfolders)
+                    .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
+                if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+
+                folderResult = await SoftDeleteFolderRecursiveAsync(folder, userId);
+            }
+
+            if (!folderResult.Succeeded) return folderResult;
+        }
+
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
+
+    private async Task<Result> SoftDeleteFolderRecursiveAsync(FolderEntity folder, string userId)
     {
         folder.IsDeleted = true;
         folder.UpdatedAt = DateTime.UtcNow;
@@ -133,14 +171,19 @@ public class FolderService : IFolderService
         var files = await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id);
         foreach (var file in files)
         {
-            await _fileService.SoftDeleteFileAsync(file.Id, userId);
+            var fileResult = await _fileService.SoftDeleteFileAsync(file.Id, userId);
+            if (!fileResult.Succeeded) return fileResult;
         }
 
         foreach (var sub in folder.Subfolders)
         {
-            await SoftDeleteFolderRecursiveAsync(sub, userId);
+            var subResult = await SoftDeleteFolderRecursiveAsync(sub, userId);
+            if (!subResult.Succeeded) return subResult;
         }
+
+        return Result.Success();
     }
+
 
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
