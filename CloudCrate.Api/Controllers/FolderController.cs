@@ -59,8 +59,8 @@ public class FolderController : ControllerBase
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder created successfully");
     }
 
-    [HttpPut("{folderId:guid}/rename")]
-    public async Task<IActionResult> RenameFolder(Guid crateId, Guid folderId, [FromBody] RenameFolderRequest request)
+    [HttpPut("{folderId:guid}")]
+    public async Task<IActionResult> UpdateFolder(Guid crateId, Guid folderId, [FromBody] UpdateFolderRequest request)
     {
         var validationResult = ValidateUser(out var userId);
         if (validationResult != null) return validationResult;
@@ -68,8 +68,8 @@ public class FolderController : ControllerBase
         validationResult = ValidateRouteId(folderId, request.FolderId, "Folder");
         if (validationResult != null) return validationResult;
 
-        var result = await _folderService.RenameFolderAsync(folderId, request.NewName, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder renamed successfully");
+        var result = await _folderService.UpdateFolderAsync(request.FolderId, request, userId);
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder updated successfully");
     }
 
     [HttpDelete("{folderId:guid}")]
@@ -79,7 +79,19 @@ public class FolderController : ControllerBase
         if (validationResult != null) return validationResult;
 
         var result = await _folderService.DeleteFolderAsync(folderId, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder deleted successfully");
+        return result.ToActionResult(this, successStatusCode: 200,
+            successMessage: "Folder deleted successfully (soft delete)");
+    }
+
+    [HttpDelete("{folderId:guid}/permanent")]
+    public async Task<IActionResult> PermanentlyDeleteFolder(Guid folderId)
+    {
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
+
+        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId);
+        return result.ToActionResult(this, successStatusCode: 200,
+            successMessage: "Folder permanently deleted successfully");
     }
 
     [HttpPut("{folderId:guid}/move")]
