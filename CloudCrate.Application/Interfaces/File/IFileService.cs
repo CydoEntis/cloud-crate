@@ -2,6 +2,7 @@
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.DTOs.File.Response;
+using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.DTOs.Pagination;
 
@@ -9,6 +10,7 @@ namespace CloudCrate.Application.Interfaces.File;
 
 public interface IFileService
 {
+    // Existing methods
     Task<Result<FileObjectResponse>> UploadFileAsync(FileUploadRequest request, string userId);
 
     Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);
@@ -20,4 +22,16 @@ public interface IFileService
     Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);
 
     Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters);
+
+    Task<List<FileObject>> GetFilesInFolderRecursivelyAsync(Guid folderId);
+
+    Task<Result<byte[]>> GetFileBytesAsync(Guid fileId, string userId);
+
+    Task<long> GetFolderFilesSizeAsync(Guid folderId);
+
+    Task<List<FolderOrFileItem>> GetFilesForFolderContentsAsync(
+        FolderQueryParameters parameters,
+        bool searchMode,
+        string? searchTerm = null
+    );
 }

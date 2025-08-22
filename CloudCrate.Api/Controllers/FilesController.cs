@@ -26,15 +26,32 @@ public class FilesController : ControllerBase
         _userManager = userManager;
     }
 
+    #region Helpers
+
     private async Task<ApplicationUser?> GetCurrentUserAsync() =>
         await _userManager.GetUserAsync(User);
+
+    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    private ActionResult? ValidateUser(out string userId)
+    {
+        userId = GetUserId() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            userId = null!;
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        }
+
+        return null;
+    }
+
+    #endregion
 
     [HttpPost]
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to upload files."));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
         if (request.File == null || request.File.Length == 0)
         {
@@ -55,7 +72,7 @@ public class FilesController : ControllerBase
             Content = stream
         };
 
-        var result = await _fileService.UploadFileAsync(uploadRequest, user.Id);
+        var result = await _fileService.UploadFileAsync(uploadRequest, userId);
 
         return result.ToActionResult(this, 200, "File uploaded successfully");
     }
@@ -63,31 +80,24 @@ public class FilesController : ControllerBase
     [HttpGet("{fileId}")]
     public async Task<IActionResult> GetFileMetadata(Guid crateId, Guid fileId)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to view this file."));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
-        var result = await _fileService.GetFileByIdAsync(fileId, user.Id);
-        if (!result.Succeeded)
-            return result.ToActionResult(this);
-
+        var result = await _fileService.GetFileByIdAsync(fileId, userId);
         return result.ToActionResult(this, successMessage: "File metadata retrieved successfully");
     }
 
     [HttpGet("{fileId}/download")]
     public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to download files."));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
-        var fileResult = await _fileService.GetFileByIdAsync(fileId, user.Id);
-        if (!fileResult.Succeeded)
-            return fileResult.ToActionResult(this);
+        var fileResult = await _fileService.GetFileByIdAsync(fileId, userId);
+        if (!fileResult.Succeeded) return fileResult.ToActionResult(this);
 
-        var contentResult = await _fileService.DownloadFileAsync(fileId, user.Id);
-        if (!contentResult.Succeeded)
-            return contentResult.ToActionResult(this);
+        var contentResult = await _fileService.DownloadFileAsync(fileId, userId);
+        if (!contentResult.Succeeded) return contentResult.ToActionResult(this);
 
         var file = fileResult.Value!;
 
@@ -96,29 +106,23 @@ public class FilesController : ControllerBase
         return File(contentResult.Value!, file.MimeType, file.Name);
     }
 
-
     [HttpDelete("{fileId}")]
     public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
     {
-        var user = await GetCurrentUserAsync();
-        if (user == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to delete this file."));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
-        var result = await _fileService.DeleteFileAsync(fileId, user.Id);
-
+        var result = await _fileService.DeleteFileAsync(fileId, userId);
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "File deleted successfully");
     }
 
     [HttpPut("{fileId:guid}/move")]
     public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(
-                ApiResponse<string>.Unauthorized("You do not have permission to access this resource."));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
         var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, userId);
-
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "File moved successfully");
     }
 }
