@@ -323,9 +323,72 @@ public class FileService : IFileService
             UserId = parameters.UserId
         });
 
-        return (fileDtos.Items ?? new List<FileItemDto>())
+        var items = (fileDtos.Items ?? new List<FileItemDto>())
             .Select(FolderItemMapper.MapFile)
             .ToList();
+
+        foreach (var item in items.Where(i => i.Type == FolderItemType.Folder))
+        {
+            item.SizeInBytes = await GetFolderFilesSizeRecursiveAsync(item.Id);
+        }
+
+        return items;
+    }
+
+    #endregion
+
+    #region Soft Delete & Folder Operations
+
+    public async Task<Result> SoftDeleteFileAsync(Guid fileId, string userId)
+    {
+        var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
+        if (file == null) return Result.Failure(Errors.Files.NotFound);
+
+        var permission = await _cratePermissionService.CheckDeletePermissionAsync(file.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+
+        file.IsDeleted = true;
+        file.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
+
+    public async Task<long> GetFolderFilesSizeRecursiveAsync(Guid folderId)
+    {
+        long totalSize = await _context.FileObjects
+            .Where(f => f.FolderId == folderId && !f.IsDeleted)
+            .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+
+        var subfolders = await _context.Folders
+            .Where(f => f.ParentFolderId == folderId && !f.IsDeleted)
+            .ToListAsync();
+
+        foreach (var sub in subfolders)
+        {
+            totalSize += await GetFolderFilesSizeRecursiveAsync(sub.Id);
+        }
+
+        return totalSize;
+    }
+
+    public async Task<Result> DeleteFilesInFolderRecursivelyAsync(Guid folderId, string userId)
+    {
+        var files = await _context.FileObjects.Where(f => f.FolderId == folderId).ToListAsync();
+        foreach (var file in files)
+        {
+            var result = await DeleteFileAsync(file.Id, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        var subfolders = await _context.Folders.Where(f => f.ParentFolderId == folderId).ToListAsync();
+        foreach (var sub in subfolders)
+        {
+            var result = await DeleteFilesInFolderRecursivelyAsync(sub.Id, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        return Result.Success();
     }
 
     #endregion
