@@ -186,6 +186,43 @@ public class FileService : IFileService
 
     #endregion
 
+    #region Bulk File Operations
+
+    public async Task<Result> SoftDeleteFilesAsync(List<Guid> fileIds, string userId)
+    {
+        foreach (var fileId in fileIds)
+        {
+            var result = await SoftDeleteFileAsync(fileId, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        return Result.Success();
+    }
+
+    public async Task<Result> PermanentlyDeleteFilesAsync(List<Guid> fileIds, string userId)
+    {
+        foreach (var fileId in fileIds)
+        {
+            var result = await DeleteFileAsync(fileId, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        return Result.Success();
+    }
+
+    public async Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId)
+    {
+        foreach (var fileId in fileIds)
+        {
+            var result = await MoveFileAsync(fileId, newParentId, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        return Result.Success();
+    }
+
+    #endregion
+
     #region File Queries & Folder Helpers
 
     public async Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters)

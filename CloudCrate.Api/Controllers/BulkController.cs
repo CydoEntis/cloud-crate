@@ -4,6 +4,8 @@ using CloudCrate.Application.Interfaces.Folder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
+namespace CloudCrate.Api.Controllers;
+
 [ApiController]
 [Route("api/crates/{crateId:guid}/bulk")]
 [Authorize]

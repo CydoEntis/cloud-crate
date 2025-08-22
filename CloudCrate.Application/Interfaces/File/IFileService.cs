@@ -20,7 +20,6 @@ public interface IFileService
 
     Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);
 
-
     Task<List<FileObject>> GetFilesInFolderRecursivelyAsync(Guid folderId);
 
     Task<Result<byte[]>> GetFileBytesAsync(Guid fileId, string userId);
@@ -34,6 +33,11 @@ public interface IFileService
     );
 
     Task<Result> SoftDeleteFileAsync(Guid fileId, string userId);
+
+    Task<Result> SoftDeleteFilesAsync(List<Guid> fileIds, string userId);
+
+    Task<Result> PermanentlyDeleteFilesAsync(List<Guid> fileIds, string userId);
+
     Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters);
 
     Task<long> GetFolderFilesSizeRecursiveAsync(Guid folderId);

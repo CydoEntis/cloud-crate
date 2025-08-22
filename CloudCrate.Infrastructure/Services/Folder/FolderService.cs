@@ -111,8 +111,15 @@ public class FolderService : IFolderService
 
         if (folder == null) return Result.Failure(Errors.Folders.NotFound);
 
-        var result = await _fileService.DeleteFilesInFolderRecursivelyAsync(folderId, "");
-        if (!result.Succeeded) return result;
+        // Bulk delete all files in this folder recursively
+        var fileIds = (await _fileService.GetFilesInFolderRecursivelyAsync(folderId))
+            .Select(f => f.Id).ToList();
+
+        if (fileIds.Any())
+        {
+            var fileResult = await _fileService.PermanentlyDeleteFilesAsync(fileIds, "");
+            if (!fileResult.Succeeded) return fileResult;
+        }
 
         foreach (var subfolder in folder.Subfolders)
         {
@@ -128,17 +135,17 @@ public class FolderService : IFolderService
 
     public async Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId)
     {
-        foreach (var fileId in request.FileIds)
+        // Bulk delete or soft delete files
+        if (request.FileIds.Any())
         {
-            Result fileResult;
-            if (request.Permanent)
-                fileResult = await _fileService.DeleteFileAsync(fileId, userId);
-            else
-                fileResult = await _fileService.SoftDeleteFileAsync(fileId, userId);
+            Result fileResult = request.Permanent
+                ? await _fileService.PermanentlyDeleteFilesAsync(request.FileIds, userId)
+                : await _fileService.SoftDeleteFilesAsync(request.FileIds, userId);
 
             if (!fileResult.Succeeded) return fileResult;
         }
 
+        // Process folders
         foreach (var folderId in request.FolderIds)
         {
             Result folderResult;
@@ -169,9 +176,9 @@ public class FolderService : IFolderService
         folder.UpdatedAt = DateTime.UtcNow;
 
         var files = await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id);
-        foreach (var file in files)
+        if (files.Any())
         {
-            var fileResult = await _fileService.SoftDeleteFileAsync(file.Id, userId);
+            var fileResult = await _fileService.SoftDeleteFilesAsync(files.Select(f => f.Id).ToList(), userId);
             if (!fileResult.Succeeded) return fileResult;
         }
 
@@ -183,7 +190,6 @@ public class FolderService : IFolderService
 
         return Result.Success();
     }
-
 
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
