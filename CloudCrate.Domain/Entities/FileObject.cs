@@ -14,9 +14,11 @@ public class FileObject
     public Guid? FolderId { get; set; }
     public Folder? Folder { get; set; }
 
-    public string UploadedByUserId { get; set; } 
+    public string UploadedByUserId { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    public bool IsDeleted { get; set; } = false;
 
     public static FileObject Create(
         string name,

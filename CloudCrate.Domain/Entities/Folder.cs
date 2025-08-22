@@ -23,6 +23,8 @@
         public string? UploadedByEmail { get; set; }
         public string? UploadedByProfilePictureUrl { get; set; }
 
+        public bool IsDeleted { get; set; } = false;
+
         public static Folder Create(
             string name,
             Guid crateId,
