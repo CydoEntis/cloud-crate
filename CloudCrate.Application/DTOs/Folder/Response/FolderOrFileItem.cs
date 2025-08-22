@@ -20,4 +20,6 @@ public class FolderOrFileItem
 
     public string? MimeType { get; set; }
     public string? FileUrl { get; set; }
+    
+    public bool IsDeleted { get; set; }
 }
