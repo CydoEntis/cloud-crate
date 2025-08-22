@@ -2,7 +2,6 @@
 using CloudCrate.Application.Common.Extensions;
 using CloudCrate.Application.Common.Mappings;
 using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
@@ -14,6 +13,7 @@ using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using FolderEntity = CloudCrate.Domain.Entities.Folder;
+using System.IO.Compression;
 
 namespace CloudCrate.Infrastructure.Services.Folder;
 
@@ -134,6 +134,64 @@ public class FolderService : IFolderService
 
     #endregion
 
+    #region Folder Downloads
+
+    public async Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId)
+    {
+        var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId);
+        if (folder == null)
+            return Result<FolderDownloadResult>.Failure(Errors.Folders.NotFound);
+
+        var permission = await _cratePermissionService.CheckViewPermissionAsync(folder.CrateId, userId);
+        if (!permission.Succeeded)
+            return Result<FolderDownloadResult>.Failure(permission.Errors);
+
+        using var memoryStream = new MemoryStream();
+        using (var zip = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+        {
+            await AddFolderToZipAsync(folder, zip, userId, string.Empty);
+        }
+
+        memoryStream.Position = 0;
+
+        return Result<FolderDownloadResult>.Success(new FolderDownloadResult
+        {
+            FileBytes = memoryStream.ToArray(),
+            FileName = folder.Name
+        });
+    }
+
+    private async Task AddFolderToZipAsync(FolderEntity folder, ZipArchive zip, string userId, string currentPath)
+    {
+        string folderPath = string.IsNullOrEmpty(currentPath) ? folder.Name : Path.Combine(currentPath, folder.Name);
+
+        var files = await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id);
+
+        var tasks = files.Select(async file =>
+        {
+            var fileBytesResult = await _fileService.GetFileBytesAsync(file.Id, userId);
+            if (!fileBytesResult.Succeeded) return;
+
+            string filePathInZip = Path.Combine(folderPath, file.Name).Replace("\\", "/");
+            var zipEntry = zip.CreateEntry(filePathInZip, CompressionLevel.Fastest);
+
+            using var entryStream = zipEntry.Open();
+            using var fileStream = new MemoryStream(fileBytesResult.Value);
+            await fileStream.CopyToAsync(entryStream);
+        });
+
+        await Task.WhenAll(tasks);
+
+        var subfolders = await _context.Folders
+            .Where(f => f.ParentFolderId == folder.Id)
+            .ToListAsync();
+
+        foreach (var sub in subfolders)
+            await AddFolderToZipAsync(sub, zip, userId, folderPath);
+    }
+
+    #endregion
+
     #region Folder Contents
 
     public async Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters)
@@ -153,7 +211,7 @@ public class FolderService : IFolderService
             ? await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId, searchTerm)
             : await GetFolderItemsAsync(parameters.CrateId, parameters.ParentFolderId);
 
-        var fileItems = await GetFileItemsAsFolderItemsAsync(parameters, searchMode, searchTerm);
+        var fileItems = await _fileService.GetFilesForFolderContentsAsync(parameters, searchMode, searchTerm);
 
         var allItems = SortAndCombineItems(folderItems, fileItems, parameters.SortBy, parameters.OrderBy);
 
@@ -174,6 +232,10 @@ public class FolderService : IFolderService
 
         return Result<FolderContentsResult>.Success(result);
     }
+
+    #endregion
+
+    #region Helpers
 
     private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(Guid crateId, Guid? parentFolderId,
         string searchTerm = null)
@@ -199,74 +261,6 @@ public class FolderService : IFolderService
             result.Add(await FolderItemMapper.MapFolderAsync(folder, uploaders, GetFolderSizeRecursiveAsync));
 
         return result;
-    }
-
-    private async Task<List<FolderOrFileItem>> GetFileItemsAsFolderItemsAsync(FolderQueryParameters parameters,
-        bool searchMode, string searchTerm = null)
-    {
-        var fileDtos = await _fileService.GetFilesAsync(new()
-        {
-            CrateId = parameters.CrateId,
-            FolderId = searchMode ? null : parameters.ParentFolderId,
-            SearchTerm = searchMode ? searchTerm : null,
-            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
-            Ascending = parameters.OrderBy != OrderBy.Desc,
-            Page = parameters.Page,
-            PageSize = parameters.PageSize,
-            UserId = parameters.UserId
-        });
-
-        return (fileDtos.Items ?? new List<FileItemDto>())
-            .Select(FolderItemMapper.MapFile)
-            .ToList();
-    }
-
-    #endregion
-
-    #region Helpers
-
-    private async Task<List<FolderOrFileItem>> GetFolderItemsAsync(Guid crateId, Guid? parentFolderId)
-    {
-        var folders = await _context.Folders
-            .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId)
-            .OrderBy(f => f.Name)
-            .ToListAsync();
-
-        var uploaderIds = folders
-            .Select(f => f.UploadedByUserId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct()
-            .ToList();
-
-        var uploaders = await _userService.GetUsersByIdsAsync(uploaderIds);
-
-        var result = new List<FolderOrFileItem>();
-        foreach (var folder in folders)
-        {
-            result.Add(await FolderItemMapper.MapFolderAsync(folder, uploaders, GetFolderSizeRecursiveAsync));
-        }
-
-        return result;
-    }
-
-    private async Task<List<FolderOrFileItem>> GetFileItemsAsFolderItemsAsync(FolderQueryParameters parameters,
-        bool searchMode)
-    {
-        var fileDtos = await _fileService.GetFilesAsync(new()
-        {
-            CrateId = parameters.CrateId,
-            FolderId = searchMode ? null : parameters.ParentFolderId,
-            SearchTerm = searchMode ? parameters.SearchTerm : null,
-            OrderBy = parameters.SortBy == FolderSortBy.CreatedAt ? FileOrderBy.CreatedAt : FileOrderBy.Name,
-            Ascending = parameters.OrderBy != OrderBy.Desc,
-            Page = parameters.Page,
-            PageSize = parameters.PageSize,
-            UserId = parameters.UserId
-        });
-
-        return (fileDtos.Items ?? new List<FileItemDto>())
-            .Select(FolderItemMapper.MapFile)
-            .ToList();
     }
 
     private static IEnumerable<FolderOrFileItem> SortAndCombineItems(
@@ -309,28 +303,32 @@ public class FolderService : IFolderService
 
     private async Task<long> GetFolderSizeRecursiveAsync(Guid folderId)
     {
-        long size = await _context.FileObjects
-            .Where(f => f.FolderId == folderId)
-            .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+        var allFolders = await _context.Folders.ToListAsync();
+        var folderLookup = allFolders.ToDictionary(f => f.Id, f => f);
 
-        var subIds = await _context.Folders
-            .Where(f => f.ParentFolderId == folderId)
-            .Select(f => f.Id)
-            .ToListAsync();
+        long CalculateSize(Guid currentId)
+        {
+            long size = _fileService.GetFolderFilesSizeAsync(currentId).Result;
+            var children = allFolders.Where(f => f.ParentFolderId == currentId).Select(f => f.Id);
+            foreach (var child in children)
+                size += CalculateSize(child);
+            return size;
+        }
 
-        foreach (var id in subIds)
-            size += await GetFolderSizeRecursiveAsync(id);
-
-        return size;
+        return CalculateSize(folderId);
     }
 
     private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
     {
-        var breadcrumbs = new List<FolderBreadcrumb>();
+        if (!folderId.HasValue) return new List<FolderBreadcrumb>();
 
-        while (folderId.HasValue)
+        var allFolders = await _context.Folders.ToListAsync();
+        var breadcrumbs = new List<FolderBreadcrumb>();
+        var currentId = folderId;
+
+        while (currentId.HasValue)
         {
-            var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId.Value);
+            var folder = allFolders.FirstOrDefault(f => f.Id == currentId.Value);
             if (folder == null) break;
 
             breadcrumbs.Insert(0, new FolderBreadcrumb
@@ -340,7 +338,7 @@ public class FolderService : IFolderService
                 Color = folder.Color ?? "#9CA3AF"
             });
 
-            folderId = folder.ParentFolderId;
+            currentId = folder.ParentFolderId;
         }
 
         return breadcrumbs;

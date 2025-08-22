@@ -16,4 +16,6 @@ public interface IFolderService
 
     Task<Result<FolderContentsResult>> GetFolderContentsAsync(
         FolderQueryParameters parameters);
+
+    Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId);
 }

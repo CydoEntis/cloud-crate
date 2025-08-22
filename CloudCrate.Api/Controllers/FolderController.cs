@@ -3,6 +3,7 @@ using CloudCrate.Api.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
+using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.Interfaces.Folder;
 
@@ -20,59 +21,74 @@ public class FolderController : ControllerBase
         _folderService = folderService;
     }
 
+    #region Helpers
+
     private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    private ActionResult? ValidateUser(out string userId)
+    {
+        userId = GetUserId() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            userId = null!;
+            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        }
+
+        return null;
+    }
+
+    private ActionResult? ValidateRouteId(Guid routeId, Guid bodyId, string name)
+    {
+        if (routeId != bodyId)
+            return BadRequest(ApiResponse<string>.Error($"{name} ID in route and request body do not match"));
+        return null;
+    }
+
+    #endregion
 
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
-        if (crateId != request.CrateId)
-            return BadRequest(ApiResponse<string>.Error("Crate ID in route and request body do not match"));
+        validationResult = ValidateRouteId(crateId, request.CrateId, "Crate");
+        if (validationResult != null) return validationResult;
 
         var result = await _folderService.CreateFolderAsync(request, userId);
-
-        return result.ToActionResult(this, 200, "Folder created successfully");
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder created successfully");
     }
 
     [HttpPut("{folderId:guid}/rename")]
     public async Task<IActionResult> RenameFolder(Guid crateId, Guid folderId, [FromBody] RenameFolderRequest request)
     {
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
-        if (folderId != request.FolderId)
-            return BadRequest(ApiResponse<string>.Error("Folder ID in route and request body do not match"));
+        validationResult = ValidateRouteId(folderId, request.FolderId, "Folder");
+        if (validationResult != null) return validationResult;
 
         var result = await _folderService.RenameFolderAsync(folderId, request.NewName, userId);
-
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder renamed successfully");
     }
 
     [HttpDelete("{folderId:guid}")]
     public async Task<IActionResult> DeleteFolder(Guid crateId, Guid folderId)
     {
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
         var result = await _folderService.DeleteFolderAsync(folderId, userId);
-
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder deleted successfully");
     }
 
     [HttpPut("{folderId:guid}/move")]
     public async Task<IActionResult> MoveFolder(Guid crateId, Guid folderId, [FromBody] MoveFolderRequest request)
     {
-        var userId = GetUserId();
-        if (userId == null)
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
         var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
-
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder moved successfully");
     }
 
@@ -82,16 +98,24 @@ public class FolderController : ControllerBase
         Guid? parentFolderId,
         [FromQuery] FolderQueryParameters queryParameters)
     {
-        var userId = GetUserId();
-        if (string.IsNullOrWhiteSpace(userId))
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
 
         queryParameters.CrateId = crateId;
         queryParameters.ParentFolderId = parentFolderId;
         queryParameters.UserId = userId;
 
         var result = await _folderService.GetFolderContentsAsync(queryParameters);
-
         return result.ToActionResult(this, successMessage: "Folder contents retrieved successfully");
+    }
+
+    [HttpGet("folders/{folderId}/download")]
+    public async Task<IActionResult> DownloadFolder(Guid folderId)
+    {
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
+
+        var result = await _folderService.DownloadFolderAsync(folderId, userId);
+        return result.ToActionResult(this, successMessage: "Folder downloaded successfully");
     }
 }
