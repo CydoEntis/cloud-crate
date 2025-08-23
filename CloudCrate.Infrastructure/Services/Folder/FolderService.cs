@@ -276,6 +276,36 @@ public class FolderService : IFolderService
         foreach (var sub in subfolders)
             await AddFolderToZipAsync(sub, zip, userId, folderPath);
     }
+    
+    public async Task<Result> RestoreFolderAsync(Guid folderId, string userId)
+    {
+        var folder = await _context.Folders
+            .Include(f => f.Subfolders)
+            .FirstOrDefaultAsync(f => f.Id == folderId);
+        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+
+        var perm = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!perm.Succeeded) return Result.Failure(perm.Errors);
+
+        if (folder.ParentFolderId.HasValue)
+        {
+            var current = folder.ParentFolderId;
+            while (current.HasValue)
+            {
+                var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == current.Value);
+                if (parent == null) return Result.Failure(Errors.Folders.NotFound);
+                if (parent.IsDeleted)
+                    return Result.Failure(Errors.Folders.InvalidMove with { Message = "A parent folder is deleted. Restore parent(s) first or move to root." });
+                current = parent.ParentFolderId;
+            }
+        }
+
+        folder.IsDeleted = false;
+        folder.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
 
     #endregion
 
