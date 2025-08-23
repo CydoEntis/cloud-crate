@@ -221,6 +221,32 @@ public class FileService : IFileService
         return Result.Success();
     }
 
+
+    public async Task<Result> RestoreFileAsync(Guid fileId, string userId)
+    {
+        var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
+        if (file == null) return Result.Failure(Errors.Files.NotFound);
+
+        var perm = await _cratePermissionService.CheckUploadPermissionAsync(file.CrateId, userId);
+        if (!perm.Succeeded) return Result.Failure(perm.Errors);
+
+        if (file.FolderId.HasValue)
+        {
+            var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == file.FolderId.Value);
+            if (parent == null) return Result.Failure(Errors.Folders.NotFound);
+            if (parent.IsDeleted)
+                return Result.Failure(Errors.Folders.InvalidMove with
+                {
+                    Message = "Parent folder is deleted. Restore the parent first or move to root."
+                });
+        }
+
+        file.IsDeleted = false;
+        file.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
+
     #endregion
 
     #region File Queries & Folder Helpers
