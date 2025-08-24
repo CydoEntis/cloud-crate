@@ -129,6 +129,7 @@ public class FileService : IFileService
         return Result.Success();
     }
 
+
     public async Task<Result<FileObjectResponse>> GetFileByIdAsync(Guid fileId, string userId)
     {
         var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
@@ -218,32 +219,6 @@ public class FileService : IFileService
             if (!result.Succeeded) return result;
         }
 
-        return Result.Success();
-    }
-
-
-    public async Task<Result> RestoreFileAsync(Guid fileId, string userId)
-    {
-        var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
-        if (file == null) return Result.Failure(Errors.Files.NotFound);
-
-        var perm = await _cratePermissionService.CheckUploadPermissionAsync(file.CrateId, userId);
-        if (!perm.Succeeded) return Result.Failure(perm.Errors);
-
-        if (file.FolderId.HasValue)
-        {
-            var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == file.FolderId.Value);
-            if (parent == null) return Result.Failure(Errors.Folders.NotFound);
-            if (parent.IsDeleted)
-                return Result.Failure(Errors.Folders.InvalidMove with
-                {
-                    Message = "Parent folder is deleted. Restore the parent first or move to root."
-                });
-        }
-
-        file.IsDeleted = false;
-        file.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
         return Result.Success();
     }
 
@@ -448,6 +423,47 @@ public class FileService : IFileService
         foreach (var sub in subfolders)
         {
             var result = await DeleteFilesInFolderRecursivelyAsync(sub.Id, userId);
+            if (!result.Succeeded) return result;
+        }
+
+        return Result.Success();
+    }
+
+    #endregion
+
+    #region Restore File
+
+    public async Task<Result> RestoreFileAsync(Guid fileId, string userId)
+    {
+        var file = await _context.FileObjects.FirstOrDefaultAsync(f => f.Id == fileId);
+        if (file == null) return Result.Failure(Errors.Files.NotFound);
+
+        var permission = await _cratePermissionService.CheckDeletePermissionAsync(file.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+
+        // Ensure parent folder (if any) is not deleted
+        if (file.FolderId.HasValue)
+        {
+            var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == file.FolderId.Value);
+            if (parent == null) return Result.Failure(Errors.Folders.NotFound);
+            if (parent.IsDeleted)
+                return Result.Failure(Errors.Folders.InvalidMove with
+                {
+                    Message = "Parent folder is deleted. Restore the parent first or move to root."
+                });
+        }
+
+        file.IsDeleted = false;
+        file.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Result.Success();
+    }
+
+    public async Task<Result> RestoreFilesAsync(List<Guid> fileIds, string userId)
+    {
+        foreach (var fileId in fileIds)
+        {
+            var result = await RestoreFileAsync(fileId, userId);
             if (!result.Succeeded) return result;
         }
 

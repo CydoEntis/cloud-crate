@@ -20,6 +20,8 @@ public interface IFileService
 
     Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);
 
+    Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId);
+
     Task<List<FileObject>> GetFilesInFolderRecursivelyAsync(Guid folderId);
 
     Task<Result<byte[]>> GetFileBytesAsync(Guid fileId, string userId);
@@ -43,4 +45,8 @@ public interface IFileService
     Task<long> GetFolderFilesSizeRecursiveAsync(Guid folderId);
 
     Task<Result> DeleteFilesInFolderRecursivelyAsync(Guid folderId, string userId);
+
+    Task<Result> RestoreFileAsync(Guid fileId, string userId);
+    
+    Task<Result> RestoreFilesAsync(List<Guid> fileIds, string userId);
 }
