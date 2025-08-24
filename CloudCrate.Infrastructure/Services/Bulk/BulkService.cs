@@ -25,14 +25,12 @@ namespace CloudCrate.Infrastructure.Services.Bulk
 
             using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
 
-            // Move folders first (recursively moves files inside)
             foreach (var folderId in request.FolderIds)
             {
                 var folderResult = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
                 if (!folderResult.Succeeded) return folderResult;
             }
 
-            // Move files that are NOT in the folders being moved
             var fileResult = await _fileService.MoveFilesAsync(request.FileIds, request.NewParentId, userId);
             if (!fileResult.Succeeded) return fileResult;
 
@@ -44,7 +42,6 @@ namespace CloudCrate.Infrastructure.Services.Bulk
         {
             using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
 
-            // Delete folders and files recursively
             var result = await _folderService.DeleteMultipleAsync(request, userId);
             if (!result.Succeeded) return result;
 
@@ -56,14 +53,12 @@ namespace CloudCrate.Infrastructure.Services.Bulk
         {
             using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
 
-            // Restore folders first (recursively restores files)
             foreach (var folderId in request.FolderIds)
             {
                 var folderResult = await _folderService.RestoreFolderAsync(folderId, userId);
                 if (!folderResult.Succeeded) return folderResult;
             }
 
-            // Restore files that are NOT inside restored folders
             var fileResult = await _fileService.RestoreFilesAsync(request.FileIds, userId);
             if (!fileResult.Succeeded) return fileResult;
 
