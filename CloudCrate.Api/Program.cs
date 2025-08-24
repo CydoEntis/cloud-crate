@@ -15,6 +15,7 @@ using System.Security.Claims;
 using Amazon.S3;
 using CloudCrate.Api.Validators.Crate;
 using CloudCrate.Application.Interfaces.Auth;
+using CloudCrate.Application.Interfaces.Bulk;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Email;
 using CloudCrate.Application.Interfaces.File;
@@ -24,6 +25,7 @@ using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Infrastructure.Services.Auth;
+using CloudCrate.Infrastructure.Services.Bulk;
 using CloudCrate.Infrastructure.Services.Crates;
 using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
@@ -133,6 +135,7 @@ builder.Services.AddScoped<ICrateInviteService, CrateInviteService>();
 builder.Services.AddScoped<ICratePermissionService, CratePermissionService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
+builder.Services.AddScoped<IBulkService, BulkService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
 
 
