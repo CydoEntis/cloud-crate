@@ -1,10 +1,8 @@
 ﻿using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs;
-using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
-using CloudCrate.Application.DTOs.Pagination;
 
 namespace CloudCrate.Application.Interfaces.Folder;
 
@@ -24,4 +22,7 @@ public interface IFolderService
     Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId);
 
     Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId);
+
+    // NEW: Restore folder
+    Task<Result> RestoreFolderAsync(Guid folderId, string userId);
 }

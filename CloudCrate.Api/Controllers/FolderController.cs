@@ -130,4 +130,15 @@ public class FolderController : ControllerBase
         var result = await _folderService.DownloadFolderAsync(folderId, userId);
         return result.ToActionResult(this, successMessage: "Folder downloaded successfully");
     }
+    
+    [HttpPut("{folderId:guid}/restore")]
+    public async Task<IActionResult> RestoreFolder(Guid crateId, Guid folderId)
+    {
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
+
+        var result = await _folderService.RestoreFolderAsync(folderId, userId);
+        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder restored successfully");
+    }
+
 }

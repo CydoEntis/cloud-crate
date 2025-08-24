@@ -111,7 +111,6 @@ public class FolderService : IFolderService
 
         if (folder == null) return Result.Failure(Errors.Folders.NotFound);
 
-        // Bulk delete all files in this folder recursively
         var fileIds = (await _fileService.GetFilesInFolderRecursivelyAsync(folderId))
             .Select(f => f.Id).ToList();
 
@@ -135,7 +134,6 @@ public class FolderService : IFolderService
 
     public async Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId)
     {
-        // Bulk delete or soft delete files
         if (request.FileIds.Any())
         {
             Result fileResult = request.Permanent
@@ -145,7 +143,6 @@ public class FolderService : IFolderService
             if (!fileResult.Succeeded) return fileResult;
         }
 
-        // Process folders
         foreach (var folderId in request.FolderIds)
         {
             Result folderResult;
@@ -276,36 +273,6 @@ public class FolderService : IFolderService
         foreach (var sub in subfolders)
             await AddFolderToZipAsync(sub, zip, userId, folderPath);
     }
-    
-    public async Task<Result> RestoreFolderAsync(Guid folderId, string userId)
-    {
-        var folder = await _context.Folders
-            .Include(f => f.Subfolders)
-            .FirstOrDefaultAsync(f => f.Id == folderId);
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
-
-        var perm = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
-        if (!perm.Succeeded) return Result.Failure(perm.Errors);
-
-        if (folder.ParentFolderId.HasValue)
-        {
-            var current = folder.ParentFolderId;
-            while (current.HasValue)
-            {
-                var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == current.Value);
-                if (parent == null) return Result.Failure(Errors.Folders.NotFound);
-                if (parent.IsDeleted)
-                    return Result.Failure(Errors.Folders.InvalidMove with { Message = "A parent folder is deleted. Restore parent(s) first or move to root." });
-                current = parent.ParentFolderId;
-            }
-        }
-
-        folder.IsDeleted = false;
-        folder.UpdatedAt = DateTime.UtcNow;
-
-        await _context.SaveChangesAsync();
-        return Result.Success();
-    }
 
     #endregion
 
@@ -348,6 +315,51 @@ public class FolderService : IFolderService
         );
 
         return Result<FolderContentsResult>.Success(result);
+    }
+
+    #endregion
+
+    #region Restore Folder
+
+    public async Task<Result> RestoreFolderAsync(Guid folderId, string userId)
+    {
+        var folder = await _context.Folders
+            .Include(f => f.Subfolders)
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.IsDeleted);
+
+        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+
+        var permission = await _cratePermissionService.CheckUploadPermissionAsync(folder.CrateId, userId);
+        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+
+        if (folder.ParentFolderId.HasValue)
+        {
+            var current = folder.ParentFolderId;
+            while (current != null)
+            {
+                var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == current);
+                if (parent == null) return Result.Failure(Errors.Folders.NotFound);
+                if (parent.IsDeleted)
+                    return Result.Failure(Errors.Folders.InvalidMove with
+                    {
+                        Message = "A parent folder is deleted. Restore parent(s) first or move to root."
+                    });
+                current = parent.ParentFolderId;
+            }
+        }
+
+        folder.IsDeleted = false;
+        folder.UpdatedAt = DateTime.UtcNow;
+
+        var files = await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id);
+        if (files.Any())
+            await _fileService.RestoreFilesAsync(files.Select(f => f.Id).ToList(), userId);
+
+        foreach (var sub in folder.Subfolders)
+            await RestoreFolderAsync(sub.Id, userId);
+
+        await _context.SaveChangesAsync();
+        return Result.Success();
     }
 
     #endregion
