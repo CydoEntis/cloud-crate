@@ -103,6 +103,19 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
+    public async Task<Result> SoftDeleteFolderAsync(Guid folderId, string userId)
+    {
+        var folder = await _context.Folders
+            .Include(f => f.Subfolders)
+            .Include(f => f.Files)
+            .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
+
+        if (folder == null)
+            return Result.Failure(Errors.Folders.NotFound);
+
+        return await SoftDeleteFolderRecursiveAsync(folder, userId);
+    }
+
     public async Task<Result> PermanentlyDeleteFolderAsync(Guid folderId)
     {
         var folder = await _context.Folders
