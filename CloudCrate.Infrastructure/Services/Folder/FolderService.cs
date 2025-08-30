@@ -234,6 +234,60 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
+    public async Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(
+        Guid crateId,
+        Guid? excludeFolderId
+    )
+    {
+        var allFolders = await _context.Folders
+            .Where(f => f.CrateId == crateId && !f.IsDeleted)
+            .ToListAsync();
+
+        if (excludeFolderId.HasValue)
+        {
+            var excludedIds = GetDescendantFolderIds(allFolders, excludeFolderId.Value);
+            excludedIds.Add(excludeFolderId.Value);
+
+            allFolders = allFolders
+                .Where(f => !excludedIds.Contains(f.Id))
+                .ToList();
+        }
+
+        var response = allFolders.Select(f => new FolderResponse
+        {
+            Id = f.Id,
+            Name = f.Name,
+            CrateId = f.CrateId,
+            ParentFolderId = f.ParentFolderId,
+            Color = f.Color,
+            UploadedByUserId = f.UploadedByUserId ?? string.Empty,
+            UploadedByDisplayName = f.UploadedByDisplayName ?? string.Empty,
+            UploadedByEmail = f.UploadedByEmail ?? string.Empty,
+            UploadedByProfilePictureUrl = f.UploadedByProfilePictureUrl ?? string.Empty,
+            CreatedAt = f.CreatedAt
+        }).ToList();
+
+        return Result<List<FolderResponse>>.Success(response);
+    }
+
+
+    private HashSet<Guid> GetDescendantFolderIds(List<FolderEntity> allFolders, Guid parentId)
+    {
+        var result = new HashSet<Guid>();
+        var children = allFolders.Where(f => f.ParentFolderId == parentId).ToList();
+
+        foreach (var child in children)
+        {
+            result.Add(child.Id);
+            foreach (var descendant in GetDescendantFolderIds(allFolders, child.Id))
+            {
+                result.Add(descendant);
+            }
+        }
+
+        return result;
+    }
+
     #endregion
 
     #region Folder Downloads
@@ -265,7 +319,8 @@ public class FolderService : IFolderService
     {
         string folderPath = string.IsNullOrEmpty(currentPath) ? folder.Name : Path.Combine(currentPath, folder.Name);
 
-        var files = await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id);
+        var files = (await _fileService.GetFilesInFolderRecursivelyAsync(folder.Id))
+            .Where(f => !f.IsDeleted);
         foreach (var file in files)
         {
             var fileBytesResult = await _fileService.GetFileBytesAsync(file.Id, userId);
@@ -386,7 +441,8 @@ public class FolderService : IFolderService
             .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId && !f.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
-            query = query.Where(f => f.Name.ToLower().Contains(searchTerm));
+            query = query.Where(f => EF.Functions.ILike(f.Name, $"%{searchTerm}%"));
+
 
         var folders = await query.OrderBy(f => f.Name).ToListAsync();
 

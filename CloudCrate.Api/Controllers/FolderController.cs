@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
+using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
 
 namespace CloudCrate.Api.Controllers;
@@ -121,6 +122,20 @@ public class FolderController : ControllerBase
         return result.ToActionResult(this, successMessage: "Folder contents retrieved successfully");
     }
 
+    [HttpGet("available-move-targets")]
+    public async Task<IActionResult> GetAvailableMoveTargets(Guid crateId, Guid? excludeFolderId = null)
+    {
+        var validationResult = ValidateUser(out var userId);
+        if (validationResult != null) return validationResult;
+
+        var result = await _folderService.GetAvailableMoveFoldersAsync(crateId, excludeFolderId);
+        if (!result.Succeeded)
+            return BadRequest(ApiResponse<string>.Error("Could not retrieve folders"));
+
+        return Ok(ApiResponse<List<FolderResponse>>.Success(result.Value));
+    }
+
+
     [HttpGet("folders/{folderId}/download")]
     public async Task<IActionResult> DownloadFolder(Guid folderId)
     {
@@ -130,7 +145,7 @@ public class FolderController : ControllerBase
         var result = await _folderService.DownloadFolderAsync(folderId, userId);
         return result.ToActionResult(this, successMessage: "Folder downloaded successfully");
     }
-    
+
     [HttpPut("{folderId:guid}/restore")]
     public async Task<IActionResult> RestoreFolder(Guid crateId, Guid folderId)
     {
@@ -140,5 +155,4 @@ public class FolderController : ControllerBase
         var result = await _folderService.RestoreFolderAsync(folderId, userId);
         return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder restored successfully");
     }
-
 }

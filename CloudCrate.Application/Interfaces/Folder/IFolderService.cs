@@ -22,8 +22,13 @@ public interface IFolderService
     Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId);
 
     Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId);
-    
+
     Task<Result> SoftDeleteFolderAsync(Guid folderId, string userId);
-    
+
+    Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(
+        Guid crateId,
+        Guid? excludeFolderId
+    );
+
     Task<Result> RestoreFolderAsync(Guid folderId, string userId);
 }

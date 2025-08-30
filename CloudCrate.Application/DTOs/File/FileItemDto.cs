@@ -15,4 +15,5 @@ public class FileItemDto
     public string UploadedByProfilePictureUrl { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? FileUrl { get; set; }
+    public bool IsDeleted { get; set; }
 }

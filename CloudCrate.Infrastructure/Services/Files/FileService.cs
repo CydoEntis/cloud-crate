@@ -228,7 +228,9 @@ public class FileService : IFileService
 
     public async Task<PaginatedResult<FileItemDto>> GetFilesAsync(GetFilesParameters parameters)
     {
-        var query = _context.FileObjects.Include(f => f.Folder).Where(f => f.CrateId == parameters.CrateId);
+        var query = _context.FileObjects
+            .Include(f => f.Folder)
+            .Where(f => f.CrateId == parameters.CrateId && !f.IsDeleted);
 
         query = ApplyFilters(query, parameters.SearchTerm, parameters.CreatedAfter, parameters.CreatedBefore,
             parameters.MinSize, parameters.MaxSize);
@@ -313,8 +315,14 @@ public class FileService : IFileService
 
     public async Task<List<FileObject>> GetFilesInFolderRecursivelyAsync(Guid folderId)
     {
-        var files = await _context.FileObjects.Where(f => f.FolderId == folderId).ToListAsync();
-        var subfolders = await _context.Folders.Where(f => f.ParentFolderId == folderId).ToListAsync();
+        var files = await _context.FileObjects
+            .Where(f => f.FolderId == folderId && !f.IsDeleted)
+            .ToListAsync();
+
+        var subfolders = await _context.Folders
+            .Where(f => f.ParentFolderId == folderId && !f.IsDeleted)
+            .ToListAsync();
+
 
         foreach (var sub in subfolders)
         {
@@ -362,6 +370,7 @@ public class FileService : IFileService
         });
 
         var items = (fileDtos.Items ?? new List<FileItemDto>())
+            .Where(f => !f.IsDeleted)
             .Select(FolderItemMapper.MapFile)
             .ToList();
 
@@ -369,6 +378,7 @@ public class FileService : IFileService
         {
             item.SizeInBytes = await GetFolderFilesSizeRecursiveAsync(item.Id);
         }
+
 
         return items;
     }
@@ -399,7 +409,7 @@ public class FileService : IFileService
             .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
 
         var subfolders = await _context.Folders
-            .Where(f => f.ParentFolderId == folderId && !f.IsDeleted)
+            .Where(f => f.ParentFolderId == folderId && !f.IsDeleted) // <-- exclude deleted
             .ToListAsync();
 
         foreach (var sub in subfolders)
@@ -409,6 +419,7 @@ public class FileService : IFileService
 
         return totalSize;
     }
+
 
     public async Task<Result> DeleteFilesInFolderRecursivelyAsync(Guid folderId, string userId)
     {
