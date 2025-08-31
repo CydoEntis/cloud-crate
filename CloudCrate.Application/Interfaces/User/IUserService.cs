@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Storage.Response;
+using CloudCrate.Application.DTOs.User;
 using CloudCrate.Application.DTOs.User.Response;
 
 namespace CloudCrate.Application.Interfaces.User;

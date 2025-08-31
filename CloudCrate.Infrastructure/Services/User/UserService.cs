@@ -1,7 +1,10 @@
 ﻿using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Mappings;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Storage.Response;
+using CloudCrate.Application.DTOs.User;
+using CloudCrate.Application.DTOs.User.Mappers;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.User;
@@ -30,13 +33,9 @@ public class UserService : IUserService
         if (user is null)
             return null;
 
-        return new UserResponse
-        {
-            Id = user.Id,
-            Email = user.Email ?? string.Empty,
-            DisplayName = user.DisplayName ?? "Unknown",
-            ProfilePictureUrl = user.ProfilePictureUrl
-        };
+        var crateUser = user.ToDomainUser();
+        
+        return UserMapper.ToUserResponse(crateUser);
     }
 
     public async Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId)
