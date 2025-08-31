@@ -239,12 +239,14 @@ public class FolderService : IFolderService
         Guid? excludeFolderId
     )
     {
+        // Get all non-deleted folders for the crate
         var allFolders = await _context.Folders
             .Where(f => f.CrateId == crateId && !f.IsDeleted)
             .ToListAsync();
 
         if (excludeFolderId.HasValue)
         {
+            // Get the folder and all its descendants to exclude them from move options
             var excludedIds = GetDescendantFolderIds(allFolders, excludeFolderId.Value);
             excludedIds.Add(excludeFolderId.Value);
 
@@ -253,6 +255,7 @@ public class FolderService : IFolderService
                 .ToList();
         }
 
+        // Map to response DTOs
         var response = allFolders.Select(f => new FolderResponse
         {
             Id = f.Id,
@@ -270,19 +273,15 @@ public class FolderService : IFolderService
         return Result<List<FolderResponse>>.Success(response);
     }
 
-
-    private HashSet<Guid> GetDescendantFolderIds(List<FolderEntity> allFolders, Guid parentId)
+    private List<Guid> GetDescendantFolderIds(List<FolderEntity> allFolders, Guid parentId)
     {
-        var result = new HashSet<Guid>();
         var children = allFolders.Where(f => f.ParentFolderId == parentId).ToList();
+        var result = new List<Guid>();
 
         foreach (var child in children)
         {
             result.Add(child.Id);
-            foreach (var descendant in GetDescendantFolderIds(allFolders, child.Id))
-            {
-                result.Add(descendant);
-            }
+            result.AddRange(GetDescendantFolderIds(allFolders, child.Id));
         }
 
         return result;
