@@ -13,16 +13,15 @@ public interface IFolderService
     Task<Result> UpdateFolderAsync(Guid folderId, UpdateFolderRequest request, string userId);
 
     Task<Result> DeleteFolderAsync(Guid folderId, string userId);
-    Task<Result> PermanentlyDeleteFolderAsync(Guid folderId);
+    Task<Result> PermanentlyDeleteFolderAsync(Guid folderId, string userId);
 
     Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId);
 
-    Task<Result<FolderContentsResult>> GetFolderContentsAsync(FolderQueryParameters parameters);
+    Task<Result<FolderContentsResponse>> GetFolderContentsAsync(FolderContentsParameters parameters);
 
     Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId);
 
     Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId);
-
     Task<Result> SoftDeleteFolderAsync(Guid folderId, string userId);
 
     Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(

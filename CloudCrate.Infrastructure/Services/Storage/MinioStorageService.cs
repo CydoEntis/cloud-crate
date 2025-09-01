@@ -3,6 +3,7 @@ using Amazon.S3.Model;
 using Amazon.S3.Util;
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.Interfaces.Storage;
 using Microsoft.Extensions.Logging;
 
@@ -72,34 +73,34 @@ public class MinioStorageService : IStorageService
         }
     }
 
-    public async Task<Result<string>> SaveFileAsync(string userId, Guid crateId, Guid? folderId, string fileName,
-        Stream content)
+    public async Task<Result<string>> SaveFileAsync(string userId, FileUploadRequest request)
     {
-        var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var bucketName = $"crate-{request.CrateId}".ToLowerInvariant();
         try
         {
             await EnsureBucketExistsAsync(bucketName);
-            var key = GetObjectKey(userId, crateId, folderId, fileName);
+            var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
 
-            var request = new PutObjectRequest
+            var putRequest = new PutObjectRequest
             {
                 BucketName = bucketName,
                 Key = key,
-                InputStream = content
+                InputStream = request.Content
             };
 
-            await _s3Client.PutObjectAsync(request);
+            await _s3Client.PutObjectAsync(putRequest);
             return Result<string>.Success(key);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", fileName, bucketName);
+            _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", request.FileName, bucketName);
             return Result<string>.Failure(Errors.Files.SaveFailed with
             {
                 Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
             });
         }
     }
+
 
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)

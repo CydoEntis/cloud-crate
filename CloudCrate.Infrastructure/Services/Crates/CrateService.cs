@@ -11,6 +11,7 @@ using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
@@ -26,19 +27,22 @@ public class CrateService : ICrateService
     private readonly IUserService _userService;
     private readonly IStorageService _storageService;
     private readonly ICrateMemberService _crateMemberService;
+    private readonly ICrateRoleService _crateRoleService;
 
     public CrateService(
         IAppDbContext context,
         UserManager<ApplicationUser> userManager,
         IUserService userService,
         IStorageService storageService,
-        ICrateMemberService crateMemberService)
+        ICrateMemberService crateMemberService,
+        ICrateRoleService crateRoleService)
     {
         _context = context;
         _userManager = userManager;
         _userService = userService;
         _storageService = storageService;
         _crateMemberService = crateMemberService;
+        _crateRoleService = crateRoleService;
     }
 
     public async Task<Result<CrateResponse>> CreateCrateAsync(string userId, string name, string color)
@@ -123,38 +127,42 @@ public class CrateService : ICrateService
                 query = query.Where(c => c.Name.ToLower().Contains(term));
             }
 
-            bool descending = parameters.OrderBy == OrderBy.Desc;
-
             if (parameters.SortBy.HasValue)
             {
                 switch (parameters.SortBy.Value)
                 {
                     case CrateSortBy.Name:
-                        query = descending ? query.OrderByDescending(c => c.Name) : query.OrderBy(c => c.Name);
+                        query = parameters.Ascending
+                            ? query.OrderBy(c => c.Name)
+                            : query.OrderByDescending(c => c.Name);
                         break;
 
                     case CrateSortBy.JoinedAt:
-                        query = descending
-                            ? query.OrderByDescending(c =>
+                        query = parameters.Ascending
+                            ? query.OrderBy(c =>
                                 c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate)
-                            : query.OrderBy(c =>
+                            : query.OrderByDescending(c =>
                                 c.Members.FirstOrDefault(m => m.UserId == parameters.UserId)!.JoinedDate);
                         break;
 
                     case CrateSortBy.UsedStorage:
-                        query = descending
-                            ? query.OrderByDescending(c => c.Files.Sum(f => f.SizeInBytes))
-                            : query.OrderBy(c => c.Files.Sum(f => f.SizeInBytes));
+                        query = parameters.Ascending
+                            ? query.OrderBy(c => c.Files.Sum(f => f.SizeInBytes))
+                            : query.OrderByDescending(c => c.Files.Sum(f => f.SizeInBytes));
                         break;
 
                     default:
-                        query = query.OrderBy(c => c.Name);
+                        query = parameters.Ascending
+                            ? query.OrderBy(c => c.Name)
+                            : query.OrderByDescending(c => c.Name);
                         break;
                 }
             }
             else
             {
-                query = query.OrderBy(c => c.Name);
+                query = parameters.Ascending
+                    ? query.OrderBy(c => c.Name)
+                    : query.OrderByDescending(c => c.Name);
             }
 
             var totalCount = await query.CountAsync();
@@ -209,18 +217,20 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
         try
         {
+            var permissionResult = await _crateRoleService.CanView(crateId, userId);
+            if (!permissionResult.Succeeded || !permissionResult.Value)
+                return Result<CrateDetailsResponse>.Failure(Errors.User.Unauthorized);
+
             var member = await _context.CrateMembers
                 .AsNoTracking()
                 .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
 
             if (member is null)
                 return Result<CrateDetailsResponse>.Failure(Errors.Crates.NotFound);
-
 
             var crate = await _context.Crates
                 .AsNoTracking()
@@ -232,7 +242,6 @@ public class CrateService : ICrateService
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
                 return Result<CrateDetailsResponse>.Failure(Errors.User.NotFound);
-
 
             var groupedByMimeType = await _context.FileObjects
                 .Where(f => f.CrateId == crateId)
@@ -286,13 +295,16 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(
         Guid crateId,
         CrateMemberRequest request)
     {
         try
         {
+            var canView = await _crateRoleService.CanView(crateId, request.UserId);
+            if (!canView.Succeeded || !canView.Value)
+                return Result<List<CrateMemberResponse>>.Failure(Errors.User.Unauthorized);
+
             var memberUserIds = await _context.CrateMembers
                 .Where(r => r.CrateId == crateId)
                 .Select(r => r.UserId)
@@ -346,18 +358,14 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result<CrateResponse>> UpdateCrateAsync(
         Guid crateId,
         string userId,
         string? newName,
         string? newColor)
     {
-        var isOwnerResult = await _crateMemberService.IsOwnerAsync(crateId, userId);
-        if (!isOwnerResult.Succeeded)
-            return Result<CrateResponse>.Failure(isOwnerResult.Errors);
-
-        if (!isOwnerResult.Value)
+        var canManage = await _crateRoleService.CanManageCrate(crateId, userId);
+        if (!canManage.Succeeded || !canManage.Value)
             return Result<CrateResponse>.Failure(Errors.User.Unauthorized);
 
         try
@@ -392,13 +400,10 @@ public class CrateService : ICrateService
         }
     }
 
-
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
-        var isOwnerResult = await _crateMemberService.IsOwnerAsync(crateId, userId);
-        if (!isOwnerResult.Succeeded)
-            return Result.Failure(isOwnerResult.Errors);
-        if (!isOwnerResult.Value)
+        var canManage = await _crateRoleService.CanManageCrate(crateId, userId);
+        if (!canManage.Succeeded || !canManage.Value)
             return Result.Failure(Errors.User.Unauthorized);
 
         using var transaction = await _context.Database.BeginTransactionAsync();
@@ -408,7 +413,7 @@ public class CrateService : ICrateService
                 .Include(c => c.Files)
                 .Include(c => c.Folders).ThenInclude(f => f.Files)
                 .Include(c => c.Folders).ThenInclude(f => f.Subfolders)
-                .Include(c => c.Members) // ✅ Include members to delete them
+                .Include(c => c.Members)
                 .FirstOrDefaultAsync(c => c.Id == crateId);
 
             if (crate == null)

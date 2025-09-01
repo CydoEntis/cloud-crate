@@ -6,7 +6,7 @@ public class FolderOrFileItem
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public FolderItemType Type { get; set; }
+    public bool IsFolder { get; set; }
     public Guid CrateId { get; set; }
     public Guid? ParentFolderId { get; set; }
     public string? ParentFolderName { get; set; } 

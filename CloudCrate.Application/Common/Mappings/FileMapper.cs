@@ -21,7 +21,7 @@ public static class FileMapper
         };
     }
 
-    public static CrateFileResponse ToCrateFileResponse(CrateFile file, string fileUrl)
+    public static CrateFileResponse ToCrateFileResponse(CrateFile file, Uploader uploader, string fileUrl)
     {
         return new CrateFileResponse
         {
@@ -34,7 +34,7 @@ public static class FileMapper
             CrateId = file.CrateId,
             FolderId = file.CrateFolderId ?? null,
             FolderName = file.CrateFolder?.Name,
-            Uploader = UserMapper.ToUploader(file.Uploader),
+            Uploader = uploader,
             CreatedAt = file.CreatedAt,
         };
     }

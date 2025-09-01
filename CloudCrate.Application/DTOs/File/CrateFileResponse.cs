@@ -17,4 +17,6 @@ public class CrateFileResponse
     public string? FolderName { get; set; } = null;
     public required Uploader Uploader { get; set; }
     public DateTime CreatedAt { get; set; }
+
+    public bool IsFolder { get; set; } = false;
 }

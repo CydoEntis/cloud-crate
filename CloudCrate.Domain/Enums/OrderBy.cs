@@ -2,6 +2,7 @@
 
 public enum OrderBy
 {
-    Asc,
-    Desc
+    Name,
+    CreatedAt,
+    SizeInBytes
 }

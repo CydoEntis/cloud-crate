@@ -19,8 +19,6 @@ public class CrateFolder
     public DateTime UpdatedAt { get; set; }
 
     public string UserId { get; set; }
-    public CrateUser User { get; set; }
-
     public bool IsDeleted { get; set; } = false;
 
     public static CrateFolder Create(

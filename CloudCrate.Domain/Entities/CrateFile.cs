@@ -1,10 +1,10 @@
-﻿namespace CloudCrate.Domain.Entities;
+﻿using CloudCrate.Domain.Entities;
 
 public class CrateFile
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public long SizeInBytes { get; set; } = 0;
+    public long SizeInBytes { get; set; }
     public string MimeType { get; set; } = string.Empty;
     public string ObjectKey { get; set; } = string.Empty;
 
@@ -14,8 +14,7 @@ public class CrateFile
     public Guid? CrateFolderId { get; set; }
     public CrateFolder? CrateFolder { get; set; }
 
-    public required string UploaderId { get; set; }
-    public CrateUser Uploader { get; set; } = null!; // navigation property
+    public string UploaderId { get; set; } = string.Empty; 
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;

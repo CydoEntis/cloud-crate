@@ -1,10 +1,8 @@
 using System.Text;
 using CloudCrate.Api.Middleware;
-using CloudCrate.Api.Validators;
 using CloudCrate.Application.Common.Settings;
 using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
-using CloudCrate.Infrastructure.Services;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -24,12 +22,11 @@ using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Application.Services;
 using CloudCrate.Infrastructure.Services.Auth;
 using CloudCrate.Infrastructure.Services.Bulk;
 using CloudCrate.Infrastructure.Services.Crates;
-using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
-using CloudCrate.Infrastructure.Services.Permissions;
 using CloudCrate.Infrastructure.Services.Storage;
 using CloudCrate.Infrastructure.Services.User;
 using RazorLight;
@@ -132,11 +129,12 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<ICrateService, CrateService>();
 builder.Services.AddScoped<ICrateMemberService, CrateMemberService>();
 builder.Services.AddScoped<ICrateInviteService, CrateInviteService>();
-builder.Services.AddScoped<ICratePermissionService, CratePermissionService>();
+builder.Services.AddScoped<ICrateRoleService, CrateRoleService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IBulkService, BulkService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
+builder.Services.AddTransient<IFileValidatorService, FileValidatorService>();
 
 
 // Registering Minio Storage

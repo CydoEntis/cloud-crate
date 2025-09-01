@@ -6,7 +6,7 @@ public class CrateQueryParameters
 {
     public string? UserId { get; set; } = null!;
     public CrateSortBy? SortBy { get; set; } = null;
-    public OrderBy OrderBy { get; set; } = OrderBy.Desc;
+    public bool Ascending { get; set; } = false;
     public string? SearchTerm { get; set; } = null;
     public CrateMemberType MemberType { get; set; } = CrateMemberType.All;
     public int Page { get; set; } = 1;

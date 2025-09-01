@@ -13,6 +13,7 @@ using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using UserMapper = CloudCrate.Infrastructure.Services.User.Mappers.UserMapper;
 
 namespace CloudCrate.Infrastructure.Services.User;
 
@@ -33,9 +34,7 @@ public class UserService : IUserService
         if (user is null)
             return null;
 
-        var crateUser = user.ToDomainUser();
-        
-        return UserMapper.ToUserResponse(crateUser);
+        return UserMapper.ToUserResponse(user);
     }
 
     public async Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId)

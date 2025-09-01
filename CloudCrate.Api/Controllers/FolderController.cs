@@ -90,7 +90,7 @@ public class FolderController : ControllerBase
         var validationResult = ValidateUser(out var userId);
         if (validationResult != null) return validationResult;
 
-        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId);
+        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId, userId);
         return result.ToActionResult(this, successStatusCode: 200,
             successMessage: "Folder permanently deleted successfully");
     }
@@ -109,13 +109,13 @@ public class FolderController : ControllerBase
     public async Task<IActionResult> GetFolderContents(
         Guid crateId,
         Guid? parentFolderId,
-        [FromQuery] FolderQueryParameters queryParameters)
+        [FromQuery] FolderContentsParameters queryParameters)
     {
         var validationResult = ValidateUser(out var userId);
         if (validationResult != null) return validationResult;
 
         queryParameters.CrateId = crateId;
-        queryParameters.ParentFolderId = parentFolderId;
+        queryParameters.FolderId = parentFolderId;
         queryParameters.UserId = userId;
 
         var result = await _folderService.GetFolderContentsAsync(queryParameters);

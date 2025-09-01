@@ -83,7 +83,7 @@ public class FilesController : ControllerBase
         var validationResult = ValidateUser(out var userId);
         if (validationResult != null) return validationResult;
 
-        var result = await _fileService.GetFileByIdAsync(fileId, userId);
+        var result = await _fileService.FetchFileResponseAsync(fileId, userId);
         return result.ToActionResult(this, successMessage: "File metadata retrieved successfully");
     }
 
@@ -93,7 +93,7 @@ public class FilesController : ControllerBase
         var validationResult = ValidateUser(out var userId);
         if (validationResult != null) return validationResult;
 
-        var fileResult = await _fileService.GetFileByIdAsync(fileId, userId);
+        var fileResult = await _fileService.FetchFileResponseAsync(fileId, userId);
         if (!fileResult.Succeeded) return fileResult.ToActionResult(this);
 
         var contentResult = await _fileService.DownloadFileAsync(fileId, userId);

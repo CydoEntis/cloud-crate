@@ -8,6 +8,10 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="DTOs\User\Request\" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>

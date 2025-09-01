@@ -9,6 +9,7 @@ using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.DTOs.Roles.Request;
 using CloudCrate.Application.Interfaces.Crate;
+using CloudCrate.Application.Interfaces.Permissions;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -17,11 +18,16 @@ namespace CloudCrate.Api.Controllers;
 [Route("api/crates/{crateId:guid}/roles")]
 public class CrateMemberController : ControllerBase
 {
-    private readonly ICrateMemberService _roleService;
+    private readonly ICrateMemberService _crateMemberService;
+    private readonly ICrateRoleService _roleService;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public CrateMemberController(ICrateMemberService roleService, UserManager<ApplicationUser> userManager)
+    public CrateMemberController(
+        ICrateMemberService crateMemberService,
+        ICrateRoleService roleService,
+        UserManager<ApplicationUser> userManager)
     {
+        _crateMemberService = crateMemberService;
         _roleService = roleService;
         _userManager = userManager;
     }
@@ -33,14 +39,18 @@ public class CrateMemberController : ControllerBase
         if (string.IsNullOrWhiteSpace(currentUserId))
             return Unauthorized(ApiResponse<object>.Unauthorized("You are not authorized"));
 
-        var isOwnerResult = await _roleService.IsOwnerAsync(crateId, currentUserId);
-        if (!isOwnerResult.Succeeded || !isOwnerResult.Value)
+        // ✅ Use permission service to check if current user is owner
+        var canManageResult = await _roleService.CanManageCrate(crateId, currentUserId);
+        if (!canManageResult.Succeeded || !canManageResult.Value)
             return StatusCode(403, ApiResponse<object>.Forbidden("Only the owner can assign roles"));
 
+        // Prevent self-demotion
         if (request.UserId == currentUserId && request.Role != CrateRole.Owner)
         {
-            var error = Errors.Roles.Validation("CrateRole.SelfDemotion",
-                "You cannot demote yourself from the owner role.");
+            var error = Errors.Roles.Validation(
+                "CrateRole.SelfDemotion",
+                "You cannot demote yourself from the owner role."
+            );
             return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error> { error }));
         }
 
@@ -48,8 +58,7 @@ public class CrateMemberController : ControllerBase
         if (user == null)
             return NotFound(ApiResponse<string>.NotFound("Target user not found"));
 
-        var result = await _roleService.AssignRoleAsync(crateId, request.UserId, request.Role);
-
+        var result = await _crateMemberService.AssignRoleAsync(crateId, request.UserId, request.Role);
         return result.ToActionResult(this, 204, "Role assigned successfully");
     }
 }

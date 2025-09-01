@@ -18,7 +18,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public new DatabaseFacade Database => base.Database;
     public DbSet<Crate> Crates { get; set; }
     public DbSet<CrateFile> CrateFiles { get; set; }
-    
+
     public DbSet<CrateFolder> CrateFolders { get; }
     public DbSet<CrateMember> CrateMembers { get; set; }
     public DbSet<CrateInvite> CrateInvites { get; set; }
@@ -32,6 +32,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        base.OnModelCreating(builder);
+
         foreach (var entityType in builder.Model.GetEntityTypes())
         {
             foreach (var property in entityType.ClrType.GetProperties())
@@ -45,7 +47,5 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
                 }
             }
         }
-
-        base.OnModelCreating(builder);
     }
 }

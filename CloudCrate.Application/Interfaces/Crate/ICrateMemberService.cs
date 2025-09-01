@@ -9,12 +9,10 @@ public interface ICrateMemberService
     Task<List<Domain.Entities.Crate>> GetCratesForUserAsync(string userId);
     Task<DateTime?> GetUsersJoinDateAsync(Guid crateId, string userId);
     Task<CrateMember?> GetCrateOwnerAsync(Guid crateId);
-    Task<Result<CrateMember?>> GetUserRoleAsync(Guid crateId, string userId);
-    Task<Result<bool>> CanUserUploadAsync(Guid crateId, string userId);
-    Task<Result<bool>> CanUserDownloadAsync(Guid crateId, string userId);
-    Task<Result<bool>> CanUserDeleteFileAsync(Guid crateId, string userId);
-    Task<Result<bool>> CanUserManagePermissionsAsync(Guid crateId, string userId);
-    Task<Result<bool>> IsOwnerAsync(Guid crateId, string userId);
+
+    // Returns the CrateRole of the user
+    Task<Result<CrateRole>> GetUserRoleAsync(Guid crateId, string userId);
+
 
     Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role);
 
