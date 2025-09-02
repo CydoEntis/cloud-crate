@@ -1,12 +1,9 @@
 ﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.User;
-using CloudCrate.Application.DTOs.User.Mappers;
-using CloudCrate.Application.DTOs.User.Response;
-using CloudCrate.Domain.Entities;
 
-namespace CloudCrate.Application.Common.Mappings;
+namespace CloudCrate.Application.Common.Mappers;
 
-public static class FileMapper
+public static class CrateFileMapper
 {
     public static SoftDeletedFile MapToSoftDeletedFile(CrateFile file)
     {

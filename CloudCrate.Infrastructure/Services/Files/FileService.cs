@@ -1,6 +1,6 @@
 ﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Extensions;
-using CloudCrate.Application.Common.Mappings;
+using CloudCrate.Application.Common.Mappers;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
@@ -327,15 +327,26 @@ public class FileService : IFileService
 
     private async Task<CrateFileResponse> MapFileWithUploaderAsync(CrateFile file, string currentUserId)
     {
-        var user = await _userService.GetUserByIdAsync(file.UploaderId);
+        var userResult = await _userService.GetUserByIdAsync(file.UploaderId);
+        if (!userResult.Succeeded || userResult.Value == null)
+        {
+            return CrateFileMapper.ToCrateFileResponse(file, null, null);
+        }
+
+        var user = userResult.Value;
 
         var urlResult =
             await _storageService.GetFileUrlAsync(currentUserId, file.CrateId, file.CrateFolderId, file.Name);
-        var response = FileMapper.ToCrateFileResponse(file, UserMapper.ToUploader(user),
-            urlResult.Succeeded ? urlResult.Value : null);
+
+        var response = CrateFileMapper.ToCrateFileResponse(
+            file,
+            UserMapper.ToUploader(user),
+            urlResult.Succeeded ? urlResult.Value : null
+        );
 
         return response;
     }
+
 
     private IQueryable<CrateFile> BuildFileQuery(FolderContentsParameters parameters)
     {

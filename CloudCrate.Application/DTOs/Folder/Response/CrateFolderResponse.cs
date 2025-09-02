@@ -13,7 +13,6 @@ public class CrateFolderResponse
 
     public Guid CrateId { get; set; }
 
-    public required Uploader Uploader { get; set; }
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

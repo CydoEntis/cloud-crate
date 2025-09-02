@@ -8,7 +8,7 @@ namespace CloudCrate.Application.Interfaces.Folder;
 
 public interface IFolderService
 {
-    Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId);
+    Task<Result<Guid>> CreateFolderAsync(CreateFolderRequest request, string userId);
 
     Task<Result> UpdateFolderAsync(Guid folderId, UpdateFolderRequest request, string userId);
 

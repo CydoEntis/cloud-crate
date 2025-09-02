@@ -12,7 +12,11 @@ public static class UserMapper
             Id = user.Id,
             Email = user.Email,
             DisplayName = user.DisplayName,
-            ProfilePictureUrl = user.ProfilePictureUrl
+            ProfilePictureUrl = user.ProfilePictureUrl,
+            MaxStorageBytes = user.MaxStorageBytes,   
+            UsedStorageBytes = user.UsedStorageBytes,  
+            CreatedAt = user.CreatedAt,
+            UpdadatedAt = user.UpdadatedAt
         };
     }
 }

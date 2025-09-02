@@ -1,12 +1,8 @@
 ﻿using CloudCrate.Application.Common.Constants;
 using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Mappings;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Storage.Response;
-using CloudCrate.Application.DTOs.User;
-using CloudCrate.Application.DTOs.User.Mappers;
 using CloudCrate.Application.DTOs.User.Response;
-using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
@@ -22,20 +18,25 @@ public class UserService : IUserService
     private readonly AppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
 
+    private const double BytesPerMb = 1024.0 * 1024.0;
+    private const double MinCrateAllocationMb = 1024.0;
+
     public UserService(AppDbContext context, UserManager<ApplicationUser> userManager)
     {
         _context = context;
         _userManager = userManager;
     }
 
-    public async Task<UserResponse?> GetUserByIdAsync(string userId)
+    public async Task<Result<UserResponse>> GetUserByIdAsync(string userId)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user is null)
-            return null;
+            return Result<UserResponse>.Failure(Errors.User.NotFound);
 
-        return UserMapper.ToUserResponse(user);
+        var response = UserMapper.ToUserResponse(user);
+        return Result<UserResponse>.Success(response);
     }
+
 
     public async Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId)
     {
@@ -43,84 +44,61 @@ public class UserService : IUserService
         if (user is null)
             return Result<StorageSummaryResponse>.Failure(Errors.User.NotFound);
 
-        var totalStorageMb = SubscriptionLimits.GetStorageLimit(user.Plan);
+        var totalStorageMb = PlanStorageLimits.GetLimit(user.Plan) / BytesPerMb;
 
         var ownedCrateIds = await _context.CrateMembers
             .Where(r => r.UserId == userId && r.Role == CrateRole.Owner)
             .Select(r => r.CrateId)
             .ToListAsync();
 
-        var totalBytes = 0L;
+        long allocatedBytes = 0L;
+        long usedBytes = 0L;
+
         if (ownedCrateIds.Count > 0)
         {
-            totalBytes = await _context.FileObjects
-                .Where(f => ownedCrateIds.Contains(f.CrateId))
-                .SumAsync(f => (long?)f.SizeInBytes) ?? 0;
+            allocatedBytes = await _context.Crates
+                .Where(c => ownedCrateIds.Contains(c.Id))
+                .SumAsync(c => (long?)c.AllocatedStorageBytes) ?? 0L;
+
+            usedBytes = await _context.Crates
+                .Where(c => ownedCrateIds.Contains(c.Id))
+                .SumAsync(c => (long?)c.UsedStorageBytes) ?? 0L;
         }
 
-        var usedStorageMb = Math.Round(totalBytes / 1024.0 / 1024.0, 2);
+        var usedStorageMb = Math.Round(usedBytes / BytesPerMb, 2);
+        var allocatedStorageMb = Math.Round(allocatedBytes / BytesPerMb, 2);
 
         var summary = new StorageSummaryResponse
         {
             TotalStorageMb = totalStorageMb,
-            UsedStorageMb = usedStorageMb
+            UsedStorageMb = usedStorageMb,
+            AllocatedStorageMb = allocatedStorageMb
         };
 
         return Result<StorageSummaryResponse>.Success(summary);
     }
 
-
-    public async Task<Result<bool>> CanCreateCrateAsync(string userId)
+    public async Task<Result<bool>> CanAllocateCrateStorageAsync(string userId, double requestedAllocationMb)
     {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
-            return Result<bool>.Failure(Errors.User.NotFound);
+        if (requestedAllocationMb < 0)
+            return Result<bool>.Failure(Errors.Storage.InvalidAllocation);
 
-        var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
+        var summaryResult = await GetUserStorageSummaryAsync(userId);
+        if (!summaryResult.Succeeded)
+            return Result<bool>.Failure(summaryResult.Errors);
 
-        var ownedCrateCount = await _context.CrateMembers
-            .CountAsync(cm => cm.UserId == userId && cm.Role == CrateRole.Owner);
+        var summary = summaryResult.Value!;
+        var canAllocate = requestedAllocationMb <= summary.RemainingAllocatableMb;
 
-        return Result<bool>.Success(ownedCrateCount < crateLimit);
-    }
-
-    public async Task<Result<UserProfileResponse>> GetUserProfileAsync(string userId)
-    {
-        var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
-            return Result<UserProfileResponse>.Failure(Errors.User.NotFound);
-
-        var storageSummaryResult = await GetUserStorageSummaryAsync(userId);
-        if (!storageSummaryResult.Succeeded)
-            return Result<UserProfileResponse>.Failure(storageSummaryResult.Errors);
-
-        var canCreateCrateResult = await CanCreateCrateAsync(userId);
-        if (!canCreateCrateResult.Succeeded)
-            return Result<UserProfileResponse>.Failure(canCreateCrateResult.Errors);
-
-        var crateLimit = SubscriptionLimits.GetCrateLimit(user.Plan);
-        var crateCount = await GetOwnedCrateCountAsync(userId);
-        var userProfile = new UserProfileResponse
-        {
-            UserId = user.Id,
-            Email = user.Email!,
-            DisplayName = user.DisplayName,
-            ProfilePicture = user.ProfilePictureUrl,
-            Plan = user.Plan,
-            TotalStorageMb = storageSummaryResult.Value.TotalStorageMb,
-            UsedStorageMb = storageSummaryResult.Value.UsedStorageMb,
-            CanCreateMoreCrates = canCreateCrateResult.Value,
-            CrateLimit = crateLimit,
-            CrateCount = crateCount
-        };
-
-        return Result<UserProfileResponse>.Success(userProfile);
+        return canAllocate
+            ? Result<bool>.Success(true)
+            : Result<bool>.Failure(Errors.Storage.StorageAllocationExceeded);
     }
 
 
     public async Task<List<UserResponse>> GetUsersByIdsAsync(IEnumerable<string> userIds)
     {
-        var users = await _userManager.Users
+        return await _userManager.Users
             .Where(u => userIds.Contains(u.Id))
             .Select(u => new UserResponse
             {
@@ -130,9 +108,27 @@ public class UserService : IUserService
                 ProfilePictureUrl = u.ProfilePictureUrl
             })
             .ToListAsync();
-
-        return users;
     }
+
+
+    public async Task<Result> UpdateUserPlanAsync(string userId, SubscriptionPlan newPlan)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure(Errors.User.NotFound);
+
+        user.Plan = newPlan;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            var errors = result.Errors.Select(e => IdentityErrorMapper.Map(e.Code, e.Description)).ToList();
+            return Result.Failure(errors);
+        }
+
+        return Result.Success();
+    }
+
 
     private async Task<int> GetOwnedCrateCountAsync(string userId)
     {

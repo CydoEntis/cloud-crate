@@ -47,5 +47,14 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
                 }
             }
         }
+        
+        builder.Entity<CrateFolder>(b =>
+        {
+            b.HasIndex(x => new { x.CrateId })
+                .HasFilter("\"IsRoot\" = TRUE")          
+                .IsUnique();                             
+
+            b.Property(x => x.IsRoot).HasDefaultValue(false);
+        });
     }
 }

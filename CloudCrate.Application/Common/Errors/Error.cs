@@ -6,9 +6,6 @@ public static class Errors
 {
     public static class Crates
     {
-        public static readonly Error LimitReached =
-            new("ERR_CRATE_LIMIT", "Crate limit reached for your subscription plan.", 403);
-
         public static readonly Error NotFound =
             new("ERR_CRATE_NOT_FOUND", "Crate not found or access denied.", 404);
     }
@@ -101,6 +98,13 @@ public static class Errors
     {
         public static readonly Error Failure =
             new("ERR_STORAGE_FAILED", "A storage error occurred.", 500);
+
+        public static readonly Error StorageAllocationExceeded =
+            new("ERR_STORAGE_ALLOCATION_EXCEEDED", "The requested storage allocation exceeds your remaining quota.",
+                400);
+
+        public static readonly Error InvalidAllocation =
+            new("ERR_INVALID_ALLOCATION", "The requested storage allocation must be >= 0.", 400);
     }
 
     public static class Invites

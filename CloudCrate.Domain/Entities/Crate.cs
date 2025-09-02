@@ -7,11 +7,16 @@ public class Crate
     public Guid Id { get; private set; }
     public string Name { get; private set; }
     public string Color { get; private set; }
-    public DateTime CreatedAt { get; private set; }
-    public DateTime UpdatedAt { get; private set; }
+
     public ICollection<Folder> Folders { get; set; }
     public ICollection<FileObject> Files { get; set; }
     public ICollection<CrateMember> Members { get; set; }
+
+    public long AllocatedStorageBytes { get; set; }
+    public long UsedStorageBytes { get; set; }
+
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
 
     protected Crate()
     {

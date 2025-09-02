@@ -9,6 +9,7 @@ public class CrateFolder
     public Guid? ParentFolderId { get; set; }
     public Folder? ParentFolder { get; set; }
 
+    public bool IsRoot { get; private set; }
     public Guid CrateId { get; set; }
     public Crate Crate { get; set; }
 
@@ -21,6 +22,29 @@ public class CrateFolder
     public string UserId { get; set; }
     public bool IsDeleted { get; set; } = false;
 
+    public static CrateFolder CreateRoot(
+        string name,
+        Guid crateId,
+        Guid? parentFolderId,
+        string? color,
+        string userId
+    )
+    {
+        return new CrateFolder
+        {
+            Id = Guid.NewGuid(),
+            Name = "Root",
+            CrateId = crateId,
+            ParentFolderId = parentFolderId,
+            IsRoot = true,
+            Color = color ?? "#EAAC00",
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+            UserId = userId,
+            IsDeleted = false
+        };
+    }
+    
     public static CrateFolder Create(
         string name,
         Guid crateId,
@@ -35,6 +59,7 @@ public class CrateFolder
             Name = name,
             CrateId = crateId,
             ParentFolderId = parentFolderId,
+            IsRoot = false,
             Color = color ?? "#EAAC00",
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,

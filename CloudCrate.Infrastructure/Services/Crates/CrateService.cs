@@ -45,45 +45,90 @@ public class CrateService : ICrateService
         _crateRoleService = crateRoleService;
     }
 
-    public async Task<Result<CrateResponse>> CreateCrateAsync(string userId, string name, string color)
+    public async Task<Result<Guid>> CreateCrateAsync(string userId, string name, string color,
+        double requestedAllocationMb)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
-            return Result<CrateResponse>.Failure(Errors.User.NotFound);
+            return Result<Guid>.Failure(Errors.User.NotFound);
 
-        var canCreate = await _userService.CanCreateCrateAsync(userId);
-        if (!canCreate.Succeeded)
-            return Result<CrateResponse>.Failure(Errors.Crates.LimitReached);
+        var canAllocateResult = await _userService.CanAllocateCrateStorageAsync(userId, requestedAllocationMb);
+        if (!canAllocateResult.Succeeded)
+            return Result<Guid>.Failure(canAllocateResult.Errors);
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
             var crate = Crate.Create(name, userId, color);
+            crate.AllocatedStorageBytes = (long)(requestedAllocationMb * 1024 * 1024);
             _context.Crates.Add(crate);
             await _context.SaveChangesAsync();
 
             var storageResult = await _storageService.EnsureBucketExistsAsync(crate.GetCrateStorageName());
             if (!storageResult.Succeeded)
-                return await transaction.RollbackWithFailure<CrateResponse>(storageResult.Errors);
+                return await transaction.RollbackWithFailure<Guid>(storageResult.Errors);
+
+            var rootFolder = CrateFolder.CreateRoot(
+                name: "Root",
+                crateId: crate.Id,
+                parentFolderId: null,
+                color: null,
+                userId
+            );
+            _context.CrateFolders.Add(rootFolder);
+            await _context.SaveChangesAsync();
 
             await transaction.CommitAsync();
 
-            return Result<CrateResponse>.Success(new CrateResponse
-            {
-                Id = crate.Id,
-                Name = crate.Name,
-                Color = crate.Color
-            });
+            return Result<Guid>.Success(crate.Id);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            return Result<CrateResponse>.Failure(Errors.Common.InternalServerError with
+            return Result<Guid>.Failure(Errors.Common.InternalServerError with
             {
                 Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
             });
         }
     }
+
+    public async Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, double requestedAllocationMb)
+    {
+        if (requestedAllocationMb < 0)
+            return Result<bool>.Failure(Errors.Storage.InvalidAllocation);
+
+        var member = await _context.CrateMembers
+            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
+
+        if (member == null || member.Role != CrateRole.Owner)
+            return Result<bool>.Failure(Errors.Crates.NotFound);
+
+        var userResult = await _userService.GetUserByIdAsync(userId);
+        if (!userResult.Succeeded)
+            return Result<bool>.Failure(userResult.Errors);
+
+        var user = userResult.Value!;
+
+        long requestedAllocationBytes = (long)(requestedAllocationMb * 1024 * 1024);
+
+        long remainingBytes = user.MaxStorageBytes - user.UsedStorageBytes;
+        if (requestedAllocationBytes > remainingBytes)
+            return Result<bool>.Failure(Errors.Storage.StorageAllocationExceeded);
+
+        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
+        if (crate == null)
+            return Result<bool>.Failure(Errors.Crates.NotFound);
+
+        crate.AllocatedStorageBytes = requestedAllocationBytes;
+        _context.Crates.Update(crate);
+        await _context.SaveChangesAsync();
+
+        return Result<bool>.Success(true);
+    }
+
+
+
+
 
     public async Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
@@ -280,7 +325,7 @@ public class CrateService : ICrateService
                 Role = member.Role,
                 Color = crate.Color,
                 TotalUsedStorage = totalUsedMb,
-                StorageLimit = SubscriptionLimits.GetStorageLimit(user.Plan),
+                StorageLimit = crate.AllocatedStorageBytes,
                 BreakdownByType = breakdownByType
             };
 

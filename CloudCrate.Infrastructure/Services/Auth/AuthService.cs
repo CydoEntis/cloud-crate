@@ -5,6 +5,7 @@ using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Auth.Request;
 using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.Interfaces.Auth;
+using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 
@@ -25,13 +26,11 @@ public class AuthService : IAuthService
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
     {
-        var user = new ApplicationUser
-        {
-            UserName = request.Email,
-            Email = request.Email,
-            DisplayName = request.DisplayName,
-            ProfilePictureUrl = request.ProfilePictureUrl
-        };
+        var user = ApplicationUser.Create(
+            email: request.Email,
+            displayName: request.DisplayName,
+            profilePictureUrl: request.ProfilePictureUrl
+        );
 
         var result = await _userManager.CreateAsync(user, request.Password);
 
@@ -55,6 +54,7 @@ public class AuthService : IAuthService
             Token = token
         });
     }
+
 
     public async Task<Result<AuthResponse>> LoginAsync(string email, string password)
     {

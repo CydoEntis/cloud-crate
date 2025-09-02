@@ -26,7 +26,7 @@ public class UserController : ControllerBase
         if (string.IsNullOrWhiteSpace(userId))
             return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
 
-        var result = await _userService.GetUserProfileAsync(userId);
+        var result = await _userService.GetUserByIdAsync(userId);
 
         return result.ToActionResult(this, 200, "User profile retrieved successfully");
     }

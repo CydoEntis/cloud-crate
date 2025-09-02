@@ -1,6 +1,5 @@
 ﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Extensions;
-using CloudCrate.Application.Common.Mappings;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
@@ -14,6 +13,7 @@ using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using FolderEntity = CloudCrate.Domain.Entities.Folder;
 using System.IO.Compression;
+using CloudCrate.Application.Common.Mappers;
 using CloudCrate.Application.DTOs;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.User;
@@ -85,35 +85,30 @@ public class FolderService : IFolderService
 
     #region Create Folders
 
-    public async Task<Result<FolderResponse>> CreateFolderAsync(CreateFolderRequest request, string userId)
+    public async Task<Result<Guid>> CreateFolderAsync(CreateFolderRequest request, string userId)
     {
         var permission = await _crateRoleService.CanUpload(request.CrateId, userId);
-        if (!permission.Succeeded) return Result<FolderResponse>.Failure(permission.Errors);
+        if (!permission.Succeeded) return Result<Guid>.Failure(permission.Errors);
 
         if (request.ParentFolderId.HasValue)
         {
-            bool parentExists = await _context.Folders
+            bool parentExists = await _context.CrateFolders
                 .AnyAsync(f => f.Id == request.ParentFolderId && f.CrateId == request.CrateId && !f.IsDeleted);
-            if (!parentExists) return Result<FolderResponse>.Failure(Errors.Folders.NotFound);
+            if (!parentExists) return Result<Guid>.Failure(Errors.Folders.NotFound);
         }
 
-        var user = await _userService.GetUserByIdAsync(userId);
-
-        var folder = FolderEntity.Create(
+        var folder = CrateFolder.Create(
             request.Name,
             request.CrateId,
             request.ParentFolderId,
             request.Color,
-            userId,
-            user?.DisplayName ?? "Unknown",
-            user?.Email ?? string.Empty,
-            user?.ProfilePictureUrl ?? string.Empty
+            userId
         );
 
-        _context.Folders.Add(folder);
+        _context.CrateFolders.Add(folder);
         await _context.SaveChangesAsync();
 
-        return Result<FolderResponse>.Success(FolderItemMapper.MapFolderResponse(folder));
+        return Result<Guid>.Success(folder.Id);
     }
 
     #endregion
@@ -499,13 +494,13 @@ public class FolderService : IFolderService
                 ParentFolderId = folder.ParentFolderId,
                 ParentFolderName = folder.ParentFolder?.Name,
                 CrateId = folder.CrateId,
-                Uploader = new Uploader
-                {
-                    UserId = folder.UploadedByUserId ?? string.Empty,
-                    DisplayName = uploader?.DisplayName ?? string.Empty,
-                    Email = uploader?.Email ?? string.Empty,
-                    ProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty
-                },
+                // Uploader = new Uploader
+                // {
+                //     UserId = folder.UploadedByUserId ?? string.Empty,
+                //     DisplayName = uploader?.DisplayName ?? string.Empty,
+                //     Email = uploader?.Email ?? string.Empty,
+                //     ProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty
+                // },
                 CreatedAt = folder.CreatedAt,
                 UpdatedAt = folder.UpdatedAt,
                 IsDeleted = folder.IsDeleted
