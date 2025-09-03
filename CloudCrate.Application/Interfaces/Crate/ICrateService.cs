@@ -9,7 +9,7 @@ namespace CloudCrate.Application.Interfaces.Crate;
 public interface ICrateService
 {
     Task<Result<Guid>> CreateCrateAsync(string userId, string name, string color,
-        double requestedAllocationMb);
+        int storageAllocationGB);
     Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters);
     Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId);
 

@@ -4,5 +4,5 @@ public class CreateCrateRequest
 {
     public string Name { get; set; } = null!;
     public string Color { get; set; } = null!;
-    public double RequestedAllocationGb { get; set; } = 1;
+    public int AllocatedStorageGb { get; set; } = 1;
 }

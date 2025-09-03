@@ -46,13 +46,13 @@ public class CrateService : ICrateService
     }
 
     public async Task<Result<Guid>> CreateCrateAsync(string userId, string name, string color,
-        double requestedAllocationMb)
+        int storageAllocationGB)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user == null)
             return Result<Guid>.Failure(Errors.User.NotFound);
 
-        var canAllocateResult = await _userService.CanAllocateCrateStorageAsync(userId, requestedAllocationMb);
+        var canAllocateResult = await _userService.CanAllocateCrateStorageAsync(userId, storageAllocationGB);
         if (!canAllocateResult.Succeeded)
             return Result<Guid>.Failure(canAllocateResult.Errors);
 
@@ -60,7 +60,16 @@ public class CrateService : ICrateService
         try
         {
             var crate = Crate.Create(name, userId, color);
-            crate.AllocatedStorageBytes = (long)(requestedAllocationMb * 1024 * 1024);
+
+            // Convert requested MB to GB
+            if (!crate.TryAllocateStorageGB(storageAllocationGB, out var allocationError))
+            {
+                return Result<Guid>.Failure(Errors.Storage.StorageAllocationExceeded with
+                {
+                    Message = allocationError
+                });
+            }
+
             _context.Crates.Add(crate);
             await _context.SaveChangesAsync();
 
@@ -109,27 +118,33 @@ public class CrateService : ICrateService
 
         var user = userResult.Value!;
 
-        long requestedAllocationBytes = (long)(requestedAllocationMb * 1024 * 1024);
-
         long remainingBytes = user.MaxStorageBytes - user.UsedStorageBytes;
-        if (requestedAllocationBytes > remainingBytes)
+        long requestedBytes = (long)(requestedAllocationMb * 1024 * 1024);
+        if (requestedBytes > remainingBytes)
             return Result<bool>.Failure(Errors.Storage.StorageAllocationExceeded);
 
         var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
         if (crate == null)
             return Result<bool>.Failure(Errors.Crates.NotFound);
 
-        crate.AllocatedStorageBytes = requestedAllocationBytes;
+        // Convert requested MB to GB
+        long requestedGb = (long)Math.Ceiling(requestedAllocationMb / 1024);
+
+        if (!crate.TryAllocateStorageGB(requestedGb, out var error))
+        {
+            return Result<bool>.Failure(Errors.Storage.StorageAllocationExceeded with
+            {
+                Message = error
+            });
+        }
+
         _context.Crates.Update(crate);
         await _context.SaveChangesAsync();
 
         return Result<bool>.Success(true);
     }
 
-
-
-
-
+    // --- GET CRATES ---
     public async Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
         try
@@ -262,6 +277,7 @@ public class CrateService : ICrateService
         }
     }
 
+    // --- GET SINGLE CRATE ---
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
         try
@@ -340,6 +356,7 @@ public class CrateService : ICrateService
         }
     }
 
+    // --- GET CRATE MEMBERS ---
     public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(
         Guid crateId,
         CrateMemberRequest request)
@@ -357,7 +374,7 @@ public class CrateService : ICrateService
                 .ToListAsync();
 
             if (memberUserIds.Count == 0)
-                return Result<List<CrateMemberResponse>>.Success([]);
+                return Result<List<CrateMemberResponse>>.Success(new List<CrateMemberResponse>());
 
             var usersQuery = _userManager.Users
                 .Where(u => memberUserIds.Contains(u.Id));
@@ -375,7 +392,7 @@ public class CrateService : ICrateService
                 .ToListAsync();
 
             if (pagedUsers.Count == 0)
-                return Result<List<CrateMemberResponse>>.Success([]);
+                return Result<List<CrateMemberResponse>>.Success(new List<CrateMemberResponse>());
 
             var pagedUserIds = pagedUsers.Select(u => u.Id).ToList();
 
@@ -403,6 +420,7 @@ public class CrateService : ICrateService
         }
     }
 
+    // --- UPDATE CRATE ---
     public async Task<Result<CrateResponse>> UpdateCrateAsync(
         Guid crateId,
         string userId,
@@ -445,6 +463,7 @@ public class CrateService : ICrateService
         }
     }
 
+    // --- DELETE CRATE ---
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
         var canManage = await _crateRoleService.CanManageCrate(crateId, userId);
@@ -473,7 +492,6 @@ public class CrateService : ICrateService
                 await CollectFolderDeletionsAsync(folder, crate.Id, userId, keysToDelete);
 
             _context.CrateMembers.RemoveRange(crate.Members);
-
             _context.Folders.RemoveRange(crate.Folders);
             _context.Crates.Remove(crate);
 

@@ -74,24 +74,28 @@ public class Crate
 
     public void AllocateStorageGB(long gb)
     {
-        if (GbToBytes(gb) < MinAllocationBytes)
+        var bytes = GbToBytes(gb);
+        if (bytes < MinAllocationBytes)
             throw new MinimumAllocationException(1);
 
-        AllocatedStorageBytes = GbToBytes(gb);
+        if (UsedStorageBytes > bytes)
+            throw new InvalidOperationException("Cannot allocate less than already used storage.");
+
+        AllocatedStorageBytes = bytes;
         UpdatedAt = DateTime.UtcNow;
     }
 
     public bool TryAllocateStorageGB(long gb, out string? error)
     {
         error = null;
+        var bytes = GbToBytes(gb);
 
-        if (gb < 1)
+        if (bytes < MinAllocationBytes)
         {
             error = "Minimum allocation is 1 GB.";
             return false;
         }
 
-        var bytes = GbToBytes(gb);
         if (UsedStorageBytes > bytes)
         {
             error = "Cannot allocate less than already used storage.";

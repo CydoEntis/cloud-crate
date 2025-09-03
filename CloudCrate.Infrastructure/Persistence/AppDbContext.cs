@@ -19,7 +19,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public DbSet<Crate> Crates { get; set; }
     public DbSet<CrateFile> CrateFiles { get; set; }
 
-    public DbSet<CrateFolder> CrateFolders { get; }
+    public DbSet<CrateFolder> CrateFolders { get; set; }
     public DbSet<CrateMember> CrateMembers { get; set; }
     public DbSet<CrateInvite> CrateInvites { get; set; }
     public DbSet<FileObject> FileObjects { get; set; }

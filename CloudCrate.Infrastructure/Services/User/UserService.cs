@@ -78,9 +78,9 @@ public class UserService : IUserService
         return Result<StorageSummaryResponse>.Success(summary);
     }
 
-    public async Task<Result<bool>> CanAllocateCrateStorageAsync(string userId, double requestedAllocationMb)
+    public async Task<Result<bool>> CanAllocateCrateStorageAsync(string userId, double requestedAllocationGB)
     {
-        if (requestedAllocationMb < 0)
+        if (requestedAllocationGB < 0)
             return Result<bool>.Failure(Errors.Storage.InvalidAllocation);
 
         var summaryResult = await GetUserStorageSummaryAsync(userId);
@@ -88,7 +88,10 @@ public class UserService : IUserService
             return Result<bool>.Failure(summaryResult.Errors);
 
         var summary = summaryResult.Value!;
-        var canAllocate = requestedAllocationMb <= summary.RemainingAllocatableMb;
+
+        var requestedMb = requestedAllocationGB * 1024;
+
+        var canAllocate = requestedMb <= summary.RemainingAllocatableMb;
 
         return canAllocate
             ? Result<bool>.Success(true)
