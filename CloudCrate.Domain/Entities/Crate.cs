@@ -28,7 +28,7 @@ public class Crate
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    protected Crate() { }
+    protected Crate() { } // EF Core
 
     private static long GbToBytes(long gb) => gb * 1024 * 1024 * 1024;
 
@@ -79,6 +79,28 @@ public class Crate
 
         AllocatedStorageBytes = GbToBytes(gb);
         UpdatedAt = DateTime.UtcNow;
+    }
+
+    public bool TryAllocateStorageGB(long gb, out string? error)
+    {
+        error = null;
+
+        if (gb < 1)
+        {
+            error = "Minimum allocation is 1 GB.";
+            return false;
+        }
+
+        var bytes = GbToBytes(gb);
+        if (UsedStorageBytes > bytes)
+        {
+            error = "Cannot allocate less than already used storage.";
+            return false;
+        }
+
+        AllocatedStorageBytes = bytes;
+        UpdatedAt = DateTime.UtcNow;
+        return true;
     }
 
     public void ConsumeStorageBytes(long bytes)
