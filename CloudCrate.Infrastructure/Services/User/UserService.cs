@@ -117,7 +117,7 @@ public class UserService : IUserService
         if (user == null)
             return Result.Failure(Errors.User.NotFound);
 
-        user.Plan = newPlan;
+        user.ChangePlan(newPlan); 
 
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)

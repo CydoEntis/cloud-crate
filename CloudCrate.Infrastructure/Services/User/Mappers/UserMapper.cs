@@ -16,7 +16,7 @@ public static class UserMapper
             MaxStorageBytes = user.MaxStorageBytes,   
             UsedStorageBytes = user.UsedStorageBytes,  
             CreatedAt = user.CreatedAt,
-            UpdadatedAt = user.UpdadatedAt
+            UpdadatedAt = user.UpdatedAt
         };
     }
 }
