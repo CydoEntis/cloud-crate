@@ -30,7 +30,7 @@ public class Crate
 
     protected Crate() { } // EF Core
 
-    private static long GbToBytes(long gb) => gb * 1024 * 1024 * 1024;
+    public static long GbToBytes(long gb) => gb * 1024 * 1024 * 1024;
 
     public static Crate Create(string name, string userId, string? color = null)
     {
