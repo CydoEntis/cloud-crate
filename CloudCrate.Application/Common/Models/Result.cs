@@ -2,30 +2,41 @@
 
 namespace CloudCrate.Application.Common.Models;
 
-public class Result
+public readonly struct Result
 {
-    public bool Succeeded { get; set; }
-    public List<Error> Errors { get; set; } = new();
+    private Result(bool isSuccess, Error? error)
+    {
+        IsSuccess = isSuccess;
+        Error = error;
+    }
 
-    public static Result Success() => new() { Succeeded = true };
+    public bool IsSuccess { get; }
+    public bool IsFailure => !IsSuccess;
+    public Error? Error { get; }
 
-    public static Result Failure(Error error) =>
-        new() { Succeeded = false, Errors = new List<Error> { error } };
+    public static Result Success() => new(true, null);
+    public static Result Failure(Error error) => new(false, error);
 
-    public static Result Failure(List<Error> errors) =>
-        new() { Succeeded = false, Errors = errors };
+    public static implicit operator Result(Error error) => Failure(error);
 }
 
-public class Result<T> : Result
+public readonly struct Result<T>
 {
-    public T? Value { get; set; }
+    private Result(bool isSuccess, T? value, Error? error)
+    {
+        IsSuccess = isSuccess;
+        Value = value;
+        Error = error;
+    }
 
-    public static Result<T> Success(T value) =>
-        new Result<T> { Succeeded = true, Value = value };
+    public bool IsSuccess { get; }
+    public bool IsFailure => !IsSuccess;
+    public T? Value { get; }
+    public Error? Error { get; }
 
-    public new static Result<T> Failure(Error error) =>
-        new Result<T> { Succeeded = false, Errors = new List<Error> { error } };
+    public static Result<T> Success(T value) => new(true, value, null);
+    public static Result<T> Failure(Error error) => new(false, default, error);
 
-    public new static Result<T> Failure(List<Error> errors) =>
-        new Result<T> { Succeeded = false, Errors = errors };
+    public static implicit operator Result<T>(T value) => Success(value);
+    public static implicit operator Result<T>(Error error) => Failure(error);
 }
