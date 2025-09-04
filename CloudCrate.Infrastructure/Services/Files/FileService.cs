@@ -122,6 +122,52 @@ public class FileService : IFileService
 
     #region Upload Files
 
+    public async Task<Result<List<Guid>>> UploadFilesAsync(MultiFileUploadRequest request, string userId)
+    {
+        if (request.Files == null || !request.Files.Any())
+            return Result<List<Guid>>.Failure(Error.Validation("No files provided.", "Files"));
+
+        var storageResults = new List<Result<string>>();
+
+        // Upload all files to storage first
+        foreach (var fileReq in request.Files)
+        {
+            var result = await _storageService.SaveFileAsync(userId, fileReq);
+            if (result.IsFailure)
+            {
+                // Rollback previous uploads
+                foreach (var r in storageResults.Where(r => r.IsSuccess))
+                {
+                    var uploadedIndex = storageResults.IndexOf(r);
+                    var uploadedFile = request.Files[uploadedIndex];
+                    await _storageService.DeleteFileAsync(userId, uploadedFile.CrateId, uploadedFile.FolderId, uploadedFile.FileName);
+                }
+                return Result<List<Guid>>.Failure(result.Error!);
+            }
+
+            storageResults.Add(result);
+        }
+
+        // Now create DB entries
+        var fileEntities = request.Files.Select((req, i) =>
+        {
+            var file = CrateFile.Create(req.FileName, req.SizeInBytes, req.MimeType, req.CrateId, userId, req.FolderId);
+            file.ObjectKey = storageResults[i].Value;
+            return file;
+        }).ToList();
+
+        _context.CrateFiles.AddRange(fileEntities);
+
+        var totalSize = request.Files.Sum(f => f.SizeInBytes);
+        var storageIncrementResult = await _userService.IncrementUsedStorageAsync(userId, totalSize);
+        if (storageIncrementResult.IsFailure)
+            return Result<List<Guid>>.Failure(storageIncrementResult.Error!);
+
+        await _context.SaveChangesAsync();
+
+        return Result<List<Guid>>.Success(fileEntities.Select(f => f.Id).ToList());
+    }
+
     public async Task<Result<Guid>> UploadFileAsync(FileUploadRequest request, string userId)
     {
         var validationResult = await _fileValidatorService.ValidateUploadAsync(request, userId);
@@ -143,6 +189,11 @@ public class FileService : IFileService
         crateFile.ObjectKey = saveResult.Value!;
 
         _context.CrateFiles.Add(crateFile);
+
+        var storageResult = await _userService.IncrementUsedStorageAsync(userId, request.SizeInBytes);
+        if (storageResult.IsFailure)
+            return Result<Guid>.Failure(storageResult.Error!);
+
         await _context.SaveChangesAsync();
 
         return Result<Guid>.Success(crateFile.Id);
@@ -177,11 +228,15 @@ public class FileService : IFileService
         var deleteResult = await _storageService.DeleteFileAsync(userId, file.CrateId, file.CrateFolderId, file.Name);
         if (deleteResult.IsFailure) return Result.Failure(deleteResult.Error!);
 
+        var storageResult = await _userService.DecrementUsedStorageAsync(userId, file.SizeInBytes);
+        if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
+
         _context.CrateFiles.Remove(file);
         await _context.SaveChangesAsync();
 
         return Result.Success();
     }
+
 
     public async Task<Result> SoftDeleteFileAsync(Guid fileId, string userId)
     {

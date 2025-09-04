@@ -94,6 +94,42 @@ public class MinioStorageService : IStorageService
         }
     }
 
+    public async Task<Result<List<string>>> SaveFilesAsync(string userId, List<FileUploadRequest> requests)
+    {
+        var uploadedKeys = new List<string>();
+
+        foreach (var request in requests)
+        {
+            var bucketName = $"crate-{request.CrateId}".ToLowerInvariant();
+            try
+            {
+                var bucketResult = await EnsureBucketExistsAsync(bucketName);
+                if (bucketResult.IsFailure)
+                    return Result<List<string>>.Failure(bucketResult.Error!);
+
+                var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
+
+                var putRequest = new PutObjectRequest
+                {
+                    BucketName = bucketName,
+                    Key = key,
+                    InputStream = request.Content
+                };
+
+                await _s3Client.PutObjectAsync(putRequest);
+
+                uploadedKeys.Add(key);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", request.FileName, $"crate-{request.CrateId}");
+                return Result<List<string>>.Failure(new FileSaveError($"Failed to save file {request.FileName}. ({ex.Message})"));
+            }
+        }
+
+        return Result<List<string>>.Success(uploadedKeys);
+    }
+
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
     {

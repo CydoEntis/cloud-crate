@@ -1,7 +1,5 @@
-﻿using CloudCrate.Application.Common.Constants;
-using CloudCrate.Application.Common.Errors;
+﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Storage.Response;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Domain.Enums;
@@ -18,8 +16,6 @@ public class UserService : IUserService
     private readonly AppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    private const double BytesPerMb = 1024.0 * 1024.0;
-
     public UserService(AppDbContext context, UserManager<ApplicationUser> userManager)
     {
         _context = context;
@@ -29,70 +25,57 @@ public class UserService : IUserService
     public async Task<Result<UserResponse>> GetUserByIdAsync(string userId)
     {
         var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
+        if (user == null)
             return Result<UserResponse>.Failure(new NotFoundError("User not found"));
 
-        var response = UserMapper.ToUserResponse(user);
+        var response = UserMapper.ToUserResponse(user); // maps storage info
         return Result<UserResponse>.Success(response);
     }
 
-    public async Task<Result<StorageSummaryResponse>> GetUserStorageSummaryAsync(string userId)
+    public async Task<Result> IncrementUsedStorageAsync(string userId, long bytesToAdd)
     {
         var user = await _userManager.FindByIdAsync(userId);
-        if (user is null)
-            return Result<StorageSummaryResponse>.Failure(Error.NotFound("User not found"));
+        if (user == null)
+            return Result.Failure(new NotFoundError("User not found"));
 
-        var totalStorageMb = PlanStorageLimits.GetLimit(user.Plan) / BytesPerMb;
-
-        var ownedCrateIds = await _context.CrateMembers
-            .Where(r => r.UserId == userId && r.Role == CrateRole.Owner)
-            .Select(r => r.CrateId)
-            .ToListAsync();
-
-        long allocatedBytes = 0L;
-        long usedBytes = 0L;
-
-        if (ownedCrateIds.Count > 0)
+        try
         {
-            allocatedBytes = await _context.Crates
-                .Where(c => ownedCrateIds.Contains(c.Id))
-                .SumAsync(c => (long?)c.AllocatedStorageBytes) ?? 0L;
-
-            usedBytes = await _context.Crates
-                .Where(c => ownedCrateIds.Contains(c.Id))
-                .SumAsync(c => (long?)c.UsedStorageBytes) ?? 0L;
+            user.ConsumeStorage(bytesToAdd); // safely increment storage
+            var result = await _userManager.UpdateAsync(user);
+            if (!result.Succeeded)
+                return Result.Failure(new InternalError("Failed to update user storage"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(new StorageError(ex.Message));
         }
 
-        var usedStorageMb = Math.Round(usedBytes / BytesPerMb, 2);
-        var allocatedStorageMb = Math.Round(allocatedBytes / BytesPerMb, 2);
-
-        var summary = new StorageSummaryResponse
-        {
-            TotalStorageMb = totalStorageMb,
-            UsedStorageMb = usedStorageMb,
-            AllocatedStorageMb = allocatedStorageMb
-        };
-
-        return Result<StorageSummaryResponse>.Success(summary);
+        return Result.Success();
     }
 
-    public async Task<Result<bool>> CanAllocateCrateStorageAsync(string userId, double requestedAllocationGB)
+    public async Task<Result> DecrementUsedStorageAsync(string userId, long bytesToSubtract)
     {
-        if (requestedAllocationGB < 0)
-            return Result<bool>.Failure(new StorageError("Invalid allocation requested"));
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null)
+            return Result.Failure(new NotFoundError("User not found"));
 
-        var summaryResult = await GetUserStorageSummaryAsync(userId);
-        if (summaryResult.IsFailure)
-            return Result<bool>.Failure(new StorageError("Could not retrieve user storage summary"));
+        user.ReleaseStorage(bytesToSubtract); // safely decrement storage
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return Result.Failure(new InternalError("Failed to update user storage"));
 
-        var summary = summaryResult.Value!;
-        var requestedMb = requestedAllocationGB * 1024;
+        return Result.Success();
+    }
 
-        var canAllocate = requestedMb <= summary.RemainingAllocatableMb;
+    public async Task<Result> CanConsumeStorageAsync(string userId, long bytesToAdd)
+    {
+        var userResult = await GetUserByIdAsync(userId);
+        if (userResult.IsFailure) return Result.Failure(userResult.Error!);
 
-        return canAllocate
-            ? Result<bool>.Success(true)
-            : Result<bool>.Failure(new StorageError("Requested allocation exceeds available storage"));
+        if (userResult.Value.UsedStorageBytes + bytesToAdd > userResult.Value.MaxStorageBytes)
+            return Result.Failure(new StorageError("Insufficient storage available"));
+
+        return Result.Success();
     }
 
     public async Task<List<UserResponse>> GetUsersByIdsAsync(IEnumerable<string> userIds)
@@ -104,7 +87,11 @@ public class UserService : IUserService
                 Id = u.Id,
                 Email = u.Email ?? "",
                 DisplayName = u.DisplayName ?? "Unknown",
-                ProfilePictureUrl = u.ProfilePictureUrl
+                ProfilePictureUrl = u.ProfilePictureUrl,
+                UsedStorageBytes = u.UsedStorageBytes,
+                MaxStorageBytes = u.MaxStorageBytes,
+                CreatedAt = u.CreatedAt,
+                UpdadatedAt = u.UpdatedAt
             })
             .ToListAsync();
     }
@@ -115,13 +102,18 @@ public class UserService : IUserService
         if (user == null)
             return Result.Failure(new NotFoundError("User not found"));
 
-        user.ChangePlan(newPlan);
+        try
+        {
+            user.ChangePlan(newPlan); 
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Result.Failure(new StorageError(ex.Message));
+        }
 
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded)
-        {
             return Result.Failure(new InternalError("Failed to update user plan"));
-        }
 
         return Result.Success();
     }

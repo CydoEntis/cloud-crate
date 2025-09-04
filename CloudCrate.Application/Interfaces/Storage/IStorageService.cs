@@ -16,6 +16,7 @@ public interface IStorageService
         TimeSpan? expiry = null);
 
     Task<Result<string>> SaveFileAsync(string userId, FileUploadRequest request);
+    Task<Result<List<string>>> SaveFilesAsync(string userId, List<FileUploadRequest> requests);
 
     Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName);
     Task<Result> DeleteFileAsync(string userId, Guid crateId, Guid? folderId, string fileName);

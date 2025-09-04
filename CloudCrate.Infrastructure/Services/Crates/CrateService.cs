@@ -50,10 +50,11 @@ public class CrateService : ICrateService
         if (user is null)
             return Result<Guid>.Failure(new NotFoundError("User not found"));
 
-        var canAllocateResult = await _userService.CanAllocateCrateStorageAsync(userId, storageAllocationGB);
+        var canAllocateResult = await _userService.CanConsumeStorageAsync(userId, Crate.GbToBytes(storageAllocationGB));
         if (!canAllocateResult.IsSuccess)
             return Result<Guid>.Failure(canAllocateResult.Error ??
                                         new InternalError("Storage allocation check failed"));
+
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
@@ -120,7 +121,8 @@ public class CrateService : ICrateService
     public async Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
         if (string.IsNullOrEmpty(parameters.UserId))
-            return Result<PaginatedResult<CrateResponse>>.Failure(Error.Unauthorized("User must be logged in to access this resource"));
+            return Result<PaginatedResult<CrateResponse>>.Failure(
+                Error.Unauthorized("User must be logged in to access this resource"));
 
         try
         {

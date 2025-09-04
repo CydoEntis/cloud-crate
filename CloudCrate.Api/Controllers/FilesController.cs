@@ -60,6 +60,41 @@ public class FilesController : BaseController
         return Response(ApiResponse<Guid>.FromResult(result, "File uploaded successfully", 201));
     }
 
+    [HttpPost("upload-multiple")]
+    public async Task<IActionResult> UploadMultipleFiles(Guid crateId, [FromForm] UploadMultipleFilesRequest request)
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
+
+        if (request.Files == null || !request.Files.Any())
+        {
+            var failureResult = Result<List<Guid>>.Failure(Error.Validation("No files uploaded.", "Files"));
+            return Response(ApiResponse<List<Guid>>.FromResult(failureResult));
+        }
+
+        var uploadRequests = request.Files.Select(file => new FileUploadRequest
+        {
+            CrateId = crateId,
+            FolderId = request.FolderId,
+            FileName = file.FileName,
+            MimeType = file.ContentType,
+            SizeInBytes = file.Length,
+            Content = file.OpenReadStream() 
+        }).ToList();
+
+        var multiUploadRequest = new MultiFileUploadRequest
+        {
+            CrateId = crateId,
+            FolderId = request.FolderId,
+            Files = uploadRequests
+        };
+
+        var result = await _fileService.UploadFilesAsync(multiUploadRequest, UserId!);
+
+        return Response(ApiResponse<List<Guid>>.FromResult(result, "Files uploaded successfully", 201));
+    }
+
+
 
     [HttpGet("{fileId}")]
     public async Task<IActionResult> GetFileMetadata(Guid crateId, Guid fileId)
@@ -103,6 +138,17 @@ public class FilesController : BaseController
         var result = await _fileService.DeleteFileAsync(fileId, UserId!);
         return Response(ApiResponse.FromResult(result, "File deleted successfully", 204));
     }
+
+    [HttpPut("{fileId}/trash")]
+    public async Task<IActionResult> SoftDeleteFile(Guid crateId, Guid fileId)
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
+
+        var result = await _fileService.SoftDeleteFileAsync(fileId, UserId!);
+        return Response(ApiResponse.FromResult(result, "File moved to trash", 200));
+    }
+
 
     [HttpPut("{fileId:guid}/move")]
     public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
