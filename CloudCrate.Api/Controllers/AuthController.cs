@@ -1,49 +1,49 @@
-﻿using System.Security.Claims;
-using CloudCrate.Api.Common.Extensions;
-using CloudCrate.Api.Models;
-using Microsoft.AspNetCore.Mvc;
+﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.Auth.Request;
+using CloudCrate.Application.DTOs.Auth.Response;
+using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Auth;
+using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
 namespace CloudCrate.Api.Controllers;
 
-[ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public class AuthController : BaseController
 {
     private readonly IAuthService _authService;
+    private readonly IUserService _userService;
 
-    public AuthController(IAuthService authService)
+    public AuthController(IAuthService authService, IUserService userService)
     {
         _authService = authService;
+        _userService = userService;
     }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await _authService.RegisterAsync(request);
-        return result.ToActionResult(this, 201, "User registered successfully");
+        return Response(ApiResponse<AuthResponse>.FromResult(result, "User registered successfully", 201));
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await _authService.LoginAsync(request.Email, request.Password);
-
-        return result.ToActionResult(this, 200, "Login successful");
+        return Response(ApiResponse<AuthResponse>.FromResult(result, "Login successful", 200));
     }
 
-    // [Authorize]
-    // [HttpGet("user")]
-    // public async Task<IActionResult> GetCurrentUser()
-    // {
-    //     var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-    //     if (string.IsNullOrWhiteSpace(userId))
-    //         return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-    //
-    //     var result = await _authService.GetUserByIdAsync(userId);
-    //
-    //     return result.ToActionResult(this, 200, "User retrieved successfully");
-    // }
+    [Authorize]
+    [HttpGet("user")]
+    public async Task<IActionResult> GetCurrentUser()
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
+
+        var result = await _userService.GetUserByIdAsync(UserId!);
+        return Response(ApiResponse<UserResponse>.FromResult(result, "User retrieved successfully", 200));
+    }
 }

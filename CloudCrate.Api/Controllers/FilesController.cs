@@ -1,21 +1,21 @@
-﻿using CloudCrate.Api.Common.Extensions;
+﻿using CloudCrate.Api.DTOs.File.Request;
 using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using CloudCrate.Application.Common.Errors;
-using System.Security.Claims;
-using CloudCrate.Api.DTOs.File.Request;
-using CloudCrate.Application.DTOs.File.Request;
-using CloudCrate.Application.Interfaces.File;
 
 namespace CloudCrate.Api.Controllers;
 
 [ApiController]
 [Authorize]
 [Route("api/crates/{crateId}/files")]
-public class FilesController : ControllerBase
+public class FilesController : BaseController
 {
     private readonly IFileService _fileService;
     private readonly UserManager<ApplicationUser> _userManager;
@@ -26,38 +26,21 @@ public class FilesController : ControllerBase
         _userManager = userManager;
     }
 
-    #region Helpers
-
-    private async Task<ApplicationUser?> GetCurrentUserAsync() =>
-        await _userManager.GetUserAsync(User);
-
-    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-    private ActionResult? ValidateUser(out string userId)
-    {
-        userId = GetUserId() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            userId = null!;
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-        }
-
-        return null;
-    }
-
-    #endregion
-
     [HttpPost]
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
         if (request.File == null || request.File.Length == 0)
         {
-            var error = new Error(Errors.Validation.Failed.Code, "No file uploaded.",
-                Errors.Validation.Failed.StatusCode);
-            return BadRequest(ApiResponse<string>.ValidationFailed(new List<Error> { error }));
+            var failureResult = Result<Guid>.Failure(
+                Error.Validation("No file uploaded.", "File")
+            );
+
+            var errorResponse = ApiResponse<Guid>.FromResult(failureResult);
+
+            return Response(errorResponse);
         }
 
         await using var stream = request.File.OpenReadStream();
@@ -72,57 +55,62 @@ public class FilesController : ControllerBase
             Content = stream
         };
 
-        var result = await _fileService.UploadFileAsync(uploadRequest, userId);
+        var result = await _fileService.UploadFileAsync(uploadRequest, UserId!);
 
-        return result.ToActionResult(this, 200, "File uploaded successfully");
+        return Response(ApiResponse<Guid>.FromResult(result, "File uploaded successfully", 201));
     }
+
 
     [HttpGet("{fileId}")]
     public async Task<IActionResult> GetFileMetadata(Guid crateId, Guid fileId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _fileService.FetchFileResponseAsync(fileId, userId);
-        return result.ToActionResult(this, successMessage: "File metadata retrieved successfully");
+        var result = await _fileService.FetchFileResponseAsync(fileId, UserId!);
+        return Response(
+            ApiResponse<CrateFileResponse>.FromResult(result, "File metadata retrieved successfully"));
     }
 
     [HttpGet("{fileId}/download")]
     public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var fileResult = await _fileService.FetchFileResponseAsync(fileId, userId);
-        if (!fileResult.Succeeded) return fileResult.ToActionResult(this);
+        var fileResult = await _fileService.FetchFileResponseAsync(fileId, UserId!);
+        if (fileResult.IsFailure)
+            return Response(
+                ApiResponse<CrateFileResponse>.FromResult(fileResult));
 
-        var contentResult = await _fileService.DownloadFileAsync(fileId, userId);
-        if (!contentResult.Succeeded) return contentResult.ToActionResult(this);
+        var contentResult = await _fileService.DownloadFileAsync(fileId, UserId!);
+        if (contentResult.IsFailure)
+            return Response(ApiResponse<byte[]>.FromResult(contentResult));
 
         var file = fileResult.Value!;
-
-        Response.Headers.Add("Content-Disposition", $"attachment; filename=\"{file.Name}\"");
+        HttpContext.Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{file.Name}\"");
 
         return File(contentResult.Value!, file.MimeType, file.Name);
     }
 
+
     [HttpDelete("{fileId}")]
     public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _fileService.DeleteFileAsync(fileId, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "File deleted successfully");
+        var result = await _fileService.DeleteFileAsync(fileId, UserId!);
+        return Response(ApiResponse.FromResult(result, "File deleted successfully", 204));
     }
 
     [HttpPut("{fileId:guid}/move")]
     public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "File moved successfully");
+        var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, UserId!);
+        return Response(ApiResponse.FromResult(result, "File moved successfully", 200));
     }
 }

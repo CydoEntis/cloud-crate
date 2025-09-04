@@ -1,8 +1,7 @@
-﻿using CloudCrate.Api.Common.Extensions;
-using CloudCrate.Api.Models;
+﻿using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using System.Security.Claims;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
@@ -13,7 +12,7 @@ namespace CloudCrate.Api.Controllers;
 [ApiController]
 [Route("api/crates/{crateId:guid}/folders")]
 [Authorize]
-public class FolderController : ControllerBase
+public class FolderController : BaseController
 {
     private readonly IFolderService _folderService;
 
@@ -22,137 +21,106 @@ public class FolderController : ControllerBase
         _folderService = folderService;
     }
 
-    #region Helpers
-
-    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-    private ActionResult? ValidateUser(out string userId)
-    {
-        userId = GetUserId() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            userId = null!;
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-        }
-
-        return null;
-    }
-
-    private ActionResult? ValidateRouteId(Guid routeId, Guid bodyId, string name)
-    {
-        if (routeId != bodyId)
-            return BadRequest(ApiResponse<string>.Error($"{name} ID in route and request body do not match"));
-        return null;
-    }
-
-    #endregion
-
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        validationResult = ValidateRouteId(crateId, request.CrateId, "Crate");
-        if (validationResult != null) return validationResult;
+        var routeMismatch = EnsureRouteIdMatches(crateId, request.CrateId, "Crate");
+        if (routeMismatch != null) return routeMismatch;
 
-        var result = await _folderService.CreateFolderAsync(request, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder created successfully");
+        var result = await _folderService.CreateFolderAsync(request, UserId!);
+        return Response(ApiResponse<Guid>.FromResult(result, "Folder created successfully", 201));
     }
 
     [HttpPut("{folderId:guid}")]
     public async Task<IActionResult> UpdateFolder(Guid crateId, Guid folderId, [FromBody] UpdateFolderRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        validationResult = ValidateRouteId(folderId, request.FolderId, "Folder");
-        if (validationResult != null) return validationResult;
+        var routeMismatch = EnsureRouteIdMatches(folderId, request.FolderId, "Folder");
+        if (routeMismatch != null) return routeMismatch;
 
-        var result = await _folderService.UpdateFolderAsync(request.FolderId, request, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder updated successfully");
+        var result = await _folderService.UpdateFolderAsync(request.FolderId, request, UserId!);
+        return Response(ApiResponse.FromResult(result, "Folder updated successfully"));
     }
 
     [HttpDelete("{folderId:guid}")]
     public async Task<IActionResult> DeleteFolder(Guid crateId, Guid folderId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _folderService.DeleteFolderAsync(folderId, userId);
-        return result.ToActionResult(this, successStatusCode: 200,
-            successMessage: "Folder deleted successfully (soft delete)");
+        var result = await _folderService.DeleteFolderAsync(folderId, UserId!);
+        return Response(ApiResponse.FromResult(result, "Folder deleted successfully (soft delete)"));
     }
 
     [HttpDelete("{folderId:guid}/permanent")]
     public async Task<IActionResult> PermanentlyDeleteFolder(Guid folderId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId, userId);
-        return result.ToActionResult(this, successStatusCode: 200,
-            successMessage: "Folder permanently deleted successfully");
+        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId, UserId!);
+        return Response(ApiResponse.FromResult(result, "Folder permanently deleted successfully"));
     }
 
     [HttpPut("{folderId:guid}/move")]
     public async Task<IActionResult> MoveFolder(Guid crateId, Guid folderId, [FromBody] MoveFolderRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder moved successfully");
+        var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, UserId!);
+        return Response(ApiResponse.FromResult(result, "Folder moved successfully"));
     }
 
     [HttpGet("contents/{parentFolderId:guid?}")]
-    public async Task<IActionResult> GetFolderContents(
-        Guid crateId,
-        Guid? parentFolderId,
+    public async Task<IActionResult> GetFolderContents(Guid crateId, Guid? parentFolderId,
         [FromQuery] FolderContentsParameters queryParameters)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
         queryParameters.CrateId = crateId;
         queryParameters.FolderId = parentFolderId;
-        queryParameters.UserId = userId;
+        queryParameters.UserId = UserId!;
 
         var result = await _folderService.GetFolderContentsAsync(queryParameters);
-        return result.ToActionResult(this, successMessage: "Folder contents retrieved successfully");
+        return Response(
+            ApiResponse<FolderContentsResponse>.FromResult(result, "Folder contents retrieved successfully"));
     }
 
     [HttpGet("available-move-targets")]
     public async Task<IActionResult> GetAvailableMoveTargets(Guid crateId, Guid? excludeFolderId = null)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
         var result = await _folderService.GetAvailableMoveFoldersAsync(crateId, excludeFolderId);
-        if (!result.Succeeded)
-            return BadRequest(ApiResponse<string>.Error("Could not retrieve folders"));
-
-        return Ok(ApiResponse<List<FolderResponse>>.Success(result.Value));
+        return Response(
+            ApiResponse<List<FolderResponse>>.FromResult(result, "Available move targets retrieved successfully"));
     }
-
 
     [HttpGet("folders/{folderId}/download")]
     public async Task<IActionResult> DownloadFolder(Guid folderId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _folderService.DownloadFolderAsync(folderId, userId);
-        return result.ToActionResult(this, successMessage: "Folder downloaded successfully");
+        var result = await _folderService.DownloadFolderAsync(folderId, UserId!);
+        return Response(ApiResponse<FolderDownloadResult>.FromResult(result, "Folder downloaded successfully"));
     }
 
     [HttpPut("{folderId:guid}/restore")]
     public async Task<IActionResult> RestoreFolder(Guid crateId, Guid folderId)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        var result = await _folderService.RestoreFolderAsync(folderId, userId);
-        return result.ToActionResult(this, successStatusCode: 200, successMessage: "Folder restored successfully");
+        var result = await _folderService.RestoreFolderAsync(folderId, UserId!);
+        return Response(ApiResponse.FromResult(result, "Folder restored successfully"));
     }
 }

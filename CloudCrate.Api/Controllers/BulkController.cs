@@ -1,8 +1,7 @@
-﻿using System.Security.Claims;
-using CloudCrate.Api.Common.Extensions;
-using CloudCrate.Api.Models;
-using CloudCrate.Application.DTOs;
+﻿using CloudCrate.Application.DTOs;
 using CloudCrate.Application.Interfaces.Bulk;
+using CloudCrate.Api.Models;
+using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,7 +10,7 @@ namespace CloudCrate.Api.Controllers;
 [ApiController]
 [Route("api/crates/{crateId:guid}/bulk")]
 [Authorize]
-public class BulkController : ControllerBase
+public class BulkController : BaseController
 {
     private readonly IBulkService _bulkService;
 
@@ -20,70 +19,42 @@ public class BulkController : ControllerBase
         _bulkService = bulkService;
     }
 
-    #region Helpers
-
-    private string? GetUserId() => User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-    private ActionResult? ValidateUser(out string userId)
-    {
-        userId = GetUserId() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(userId))
-        {
-            userId = null!;
-            return Unauthorized(ApiResponse<string>.Unauthorized("You do not have permission to access this resource"));
-        }
-
-        return null;
-    }
-
-    private ActionResult? ValidateRouteId(Guid routeId, Guid bodyId, string name)
-    {
-        if (routeId != bodyId)
-            return BadRequest(ApiResponse<string>.Error($"{name} ID in route and request body do not match"));
-        return null;
-    }
-
-    #endregion
-
     [HttpPost("delete")]
     public async Task<IActionResult> DeleteMultiple(Guid crateId, [FromBody] MultipleDeleteRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        validationResult = ValidateRouteId(crateId, crateId, "Crate");
-        if (validationResult != null) return validationResult;
+        var routeMismatch = EnsureRouteIdMatches(crateId, crateId, "Crate");
+        if (routeMismatch != null) return routeMismatch;
 
-        var result = await _bulkService.DeleteAsync(request, userId);
-        return result.ToActionResult(this, successStatusCode: 200,
-            successMessage: "Selected files and folders deleted successfully");
+        var result = await _bulkService.DeleteAsync(request, UserId!);
+        return Response(ApiResponse.FromResult(result, "Selected files and folders deleted successfully", 200));
     }
 
     [HttpPost("move")]
     public async Task<IActionResult> MoveMultiple(Guid crateId, [FromBody] MultipleMoveRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        validationResult = ValidateRouteId(crateId, request.CrateId, "Crate");
-        if (validationResult != null) return validationResult;
+        var routeMismatch = EnsureRouteIdMatches(crateId, request.CrateId, "Crate");
+        if (routeMismatch != null) return routeMismatch;
 
-        var result = await _bulkService.MoveAsync(request, userId);
-        return result.ToActionResult(this, successStatusCode: 200,
-            successMessage: "Selected files and folders moved successfully");
+        var result = await _bulkService.MoveAsync(request, UserId!);
+        return Response(ApiResponse.FromResult(result, "Selected files and folders moved successfully", 200));
     }
 
     [HttpPost("restore")]
     public async Task<IActionResult> RestoreMultiple(Guid crateId, [FromBody] MultipleRestoreRequest request)
     {
-        var validationResult = ValidateUser(out var userId);
-        if (validationResult != null) return validationResult;
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        validationResult = ValidateRouteId(crateId, request.CrateId, "Crate");
-        if (validationResult != null) return validationResult;
+        var routeMismatch = EnsureRouteIdMatches(crateId, request.CrateId, "Crate");
+        if (routeMismatch != null) return routeMismatch;
 
-        var result = await _bulkService.RestoreAsync(request, userId);
-        return result.ToActionResult(this, successStatusCode: 200,
-            successMessage: "Selected files and folders restored successfully");
+        var result = await _bulkService.RestoreAsync(request, UserId!);
+        return Response(ApiResponse.FromResult(result, "Selected files and folders restored successfully", 200));
     }
 }

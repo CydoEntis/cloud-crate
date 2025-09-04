@@ -1,77 +1,64 @@
-﻿using System.Security.Claims;
-using CloudCrate.Api.Common.Extensions;
-using CloudCrate.Api.Models;
+﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.Invite.Request;
 using CloudCrate.Application.Interfaces.Crate;
+using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.DTOs.Invite.Response;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CloudCrate.Api.Controllers
+namespace CloudCrate.Api.Controllers;
+
+[ApiController]
+[Route("api/invite")]
+[Authorize]
+public class CrateInviteController : BaseController
 {
-    [ApiController]
-    [Route("api/invite")]
-    public class CrateInviteController : ControllerBase
+    private readonly ICrateInviteService _inviteService;
+    private readonly ICrateMemberService _roleService;
+
+    public CrateInviteController(ICrateInviteService inviteService, ICrateMemberService roleService)
     {
-        private readonly ICrateInviteService _inviteService;
-        private readonly ICrateMemberService _roleService;
+        _inviteService = inviteService;
+        _roleService = roleService;
+    }
 
-        public CrateInviteController(ICrateInviteService inviteService, ICrateMemberService roleService)
-        {
-            _inviteService = inviteService;
-            _roleService = roleService;
-        }
+    [HttpPost]
+    public async Task<IActionResult> SendInvite([FromBody] CrateInviteRequest request)
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
+        var result = await _inviteService.CreateInviteAsync(
+            request.CrateId, request.Email, UserId!, request.Role, request.ExpiresAt);
 
-        [HttpPost]
-        [Authorize]
-        public async Task<IActionResult> SendInvite(
-            [FromBody] CrateInviteRequest request)
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized(ApiResponse<object>.Unauthorized("You must be logged in to send invites."));
+        return Response(ApiResponse<Result>.Success(result, "Invite sent", 201));
+    }
 
-            var result = await _inviteService.CreateInviteAsync(
-                request.CrateId,
-                request.Email,
-                userId,
-                request.Role,
-                request.ExpiresAt);
+    [HttpGet("token/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetInviteByToken(string token)
+    {
+        var result = await _inviteService.GetInviteByTokenAsync(token);
+        return Response(ApiResponse<CrateInviteDetailsResponse>.FromResult(result, "Invite retrieved", 200));
+    }
 
-            return result.ToActionResult(this, successMessage: "Invite sent");
-        }
+    [HttpPost("token/{token}/accept")]
+    public async Task<IActionResult> AcceptInvite(string token)
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
+        var result = await _inviteService.AcceptInviteAsync(token, UserId!, _roleService);
+        return Response(ApiResponse.FromResult(result, "Invite accepted", 200));
+    }
 
-        [HttpGet("token/{token}")]
-        [AllowAnonymous]
-        public async Task<IActionResult> GetInviteByToken(string token)
-        {
-            var result = await _inviteService.GetInviteByTokenAsync(token);
-            return result.ToActionResult(this, successMessage: "Invite retrieved");
-        }
+    [HttpPost("token/{token}/decline")]
+    public async Task<IActionResult> DeclineInvite(string token)
+    {
+        var unauthorized = EnsureUserAuthenticated();
+        if (unauthorized != null) return unauthorized;
 
-        [HttpPost("token/{token}/accept")]
-        [Authorize]
-        public async Task<IActionResult> AcceptInvite(string token)
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized(ApiResponse<object>.Unauthorized("You must be logged in to accept invites."));
-
-            var result = await _inviteService.AcceptInviteAsync(token, userId, _roleService);
-            return result.ToActionResult(this, successMessage: "Invite accepted");
-        }
-
-        [HttpPost("token/{token}/decline")]
-        [Authorize]
-        public async Task<IActionResult> DeclineInvite(string token)
-        {
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrWhiteSpace(userId))
-                return Unauthorized(ApiResponse<object>.Unauthorized("You must be logged in to decline invites."));
-
-            var result = await _inviteService.DeclineInviteAsync(token);
-            return result.ToActionResult(this, successMessage: "Invite declined");
-        }
+        var result = await _inviteService.DeclineInviteAsync(token);
+        return Response(ApiResponse.FromResult(result, "Invite declined", 200));
     }
 }
