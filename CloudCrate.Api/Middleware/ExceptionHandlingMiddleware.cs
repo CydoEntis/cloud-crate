@@ -43,7 +43,7 @@ public class ExceptionHandlingMiddleware
                 ? $"{ex.Message} — {ex.GetType().Name}"
                 : "An unexpected error occurred.";
 
-            var error = new Error("ERR_UNHANDLED_EXCEPTION", errorMessage);
+            var error = new InternalError(errorMessage);
 
             var response = new ApiResponse<object>(
                 isSuccess: false,
