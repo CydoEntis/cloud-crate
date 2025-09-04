@@ -13,7 +13,6 @@ public class MinioStorageService : IStorageService
 {
     private readonly IAmazonS3 _s3Client;
     private readonly ILogger<MinioStorageService> _logger;
-    private const int DeleteBatchSize = 1000;
 
     public MinioStorageService(IAmazonS3 s3Client, ILogger<MinioStorageService> logger)
     {
@@ -34,10 +33,7 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create bucket {Bucket}", bucketName);
-            return Result.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"Failed to create bucket {bucketName}. ({ex.Message})"
-            });
+            return Result.Failure(new StorageError($"Failed to create bucket {bucketName}. ({ex.Message})"));
         }
     }
 
@@ -60,16 +56,13 @@ public class MinioStorageService : IStorageService
             };
 
             var url = _s3Client.GetPreSignedURL(request);
-
             return Result<string>.Success(url);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate presigned URL for file {Key} in bucket {Bucket}", key, bucketName);
-            return Result<string>.Failure(Errors.Files.AccessFailed with
-            {
-                Message = $"Failed to generate access URL for file. ({ex.Message})"
-            });
+            return Result<string>.Failure(
+                new FileAccessError($"Failed to generate access URL for file. ({ex.Message})"));
         }
     }
 
@@ -78,7 +71,10 @@ public class MinioStorageService : IStorageService
         var bucketName = $"crate-{request.CrateId}".ToLowerInvariant();
         try
         {
-            await EnsureBucketExistsAsync(bucketName);
+            var bucketResult = await EnsureBucketExistsAsync(bucketName);
+            if (bucketResult.IsFailure)
+                return Result<string>.Failure(bucketResult.Error!);
+
             var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
 
             var putRequest = new PutObjectRequest
@@ -94,13 +90,9 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", request.FileName, bucketName);
-            return Result<string>.Failure(Errors.Files.SaveFailed with
-            {
-                Message = $"{Errors.Files.SaveFailed.Message} ({ex.Message})"
-            });
+            return Result<string>.Failure(new FileSaveError($"Failed to save file {request.FileName}. ({ex.Message})"));
         }
     }
-
 
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
@@ -117,15 +109,12 @@ public class MinioStorageService : IStorageService
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
-            return Result<byte[]>.Failure(Errors.Files.NotFound);
+            return Result<byte[]>.Failure(new FileNotFoundError($"File {fileName} not found in bucket {bucketName}"));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to read file {Key}", key);
-            return Result<byte[]>.Failure(Errors.Files.ReadFailed with
-            {
-                Message = $"{Errors.Files.ReadFailed.Message} ({ex.Message})"
-            });
+            return Result<byte[]>.Failure(new FileReadError($"Failed to read file {fileName}. ({ex.Message})"));
         }
     }
 
@@ -142,10 +131,7 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete file {Key}", key);
-            return Result.Failure(Errors.Files.DeleteFailed with
-            {
-                Message = $"{Errors.Files.DeleteFailed.Message} ({ex.Message})"
-            });
+            return Result.Failure(new FileDeleteError($"Failed to delete file {fileName}. ({ex.Message})"));
         }
     }
 
@@ -156,7 +142,7 @@ public class MinioStorageService : IStorageService
 
         try
         {
-            var response = _s3Client.GetObjectMetadataAsync(bucketName, key).GetAwaiter().GetResult();
+            _s3Client.GetObjectMetadataAsync(bucketName, key).GetAwaiter().GetResult();
             return true;
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -172,8 +158,7 @@ public class MinioStorageService : IStorageService
 
     public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
     {
-        // No-op for S3 — folders are virtual.
-        return Result.Success();
+        return Result.Success(); // S3 folders are virtual
     }
 
     public async Task<Result> DeleteAllFilesInBucketAsync(Guid crateId)
@@ -194,15 +179,11 @@ public class MinioStorageService : IStorageService
                 };
 
                 var listResponse = await _s3Client.ListObjectsV2Async(request);
-
                 if (listResponse?.S3Objects == null || listResponse.S3Objects.Count == 0)
-                {
-                    _logger.LogInformation("No objects found in bucket {Bucket} to delete.", bucketName);
                     break;
-                }
 
                 var keysToDelete = listResponse.S3Objects
-                    .Where(obj => obj != null && !string.IsNullOrEmpty(obj.Key))
+                    .Where(obj => !string.IsNullOrEmpty(obj.Key))
                     .Select(obj => new KeyVersion { Key = obj.Key })
                     .ToList();
 
@@ -220,14 +201,14 @@ public class MinioStorageService : IStorageService
                     {
                         _logger.LogError("Errors deleting objects in bucket {Bucket}: {Errors}", bucketName,
                             deleteResponse.DeleteErrors);
-                        return Result.Failure(Errors.Common.InternalServerError with
-                        {
-                            Message = $"Errors deleting some objects in bucket {bucketName}."
-                        });
+                        return Result.Failure(
+                            new StorageError($"Errors deleting some objects in bucket {bucketName}."));
                     }
                 }
 
-                continuationToken = (listResponse.IsTruncated == true) ? listResponse.NextContinuationToken : null;
+                continuationToken = listResponse.IsTruncated.GetValueOrDefault()
+                    ? listResponse.NextContinuationToken
+                    : null;
             } while (continuationToken != null);
 
             return Result.Success();
@@ -235,13 +216,10 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete all files in bucket {Bucket}", bucketName);
-            return Result.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"Failed to delete all files in bucket {bucketName}. ({ex.Message})"
-            });
+            return Result.Failure(
+                new StorageError($"Failed to delete all files in bucket {bucketName}. ({ex.Message})"));
         }
     }
-
 
     public async Task<Result> DeleteBucketAsync(Guid crateId)
     {
@@ -250,7 +228,7 @@ public class MinioStorageService : IStorageService
         try
         {
             var deleteFilesResult = await DeleteAllFilesInBucketAsync(crateId);
-            if (!deleteFilesResult.Succeeded)
+            if (deleteFilesResult.IsFailure)
                 return deleteFilesResult;
 
             await _s3Client.DeleteBucketAsync(bucketName);
@@ -259,10 +237,7 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete bucket {Bucket}", bucketName);
-            return Result.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"Failed to delete bucket {bucketName}. ({ex.Message})"
-            });
+            return Result.Failure(new StorageError($"Failed to delete bucket {bucketName}. ({ex.Message})"));
         }
     }
 

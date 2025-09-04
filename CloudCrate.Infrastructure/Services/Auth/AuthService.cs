@@ -1,11 +1,8 @@
-﻿using CloudCrate.Application.Common.Constants;
-using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Extensions;
+﻿using CloudCrate.Application.Common.Errors;
 using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Auth.Request;
 using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.Interfaces.Auth;
-using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 
@@ -32,15 +29,19 @@ public class AuthService : IAuthService
             profilePictureUrl: request.ProfilePictureUrl
         );
 
-        var result = await _userManager.CreateAsync(user, request.Password);
+        var identityResult = await _userManager.CreateAsync(user, request.Password);
 
-        if (!result.Succeeded)
+        if (!identityResult.Succeeded)
         {
-            var errors = result.Errors
+            var mappedErrors = identityResult.Errors
                 .Select(e => IdentityErrorMapper.Map(e.Code, e.Description))
-                .ToList();
+                .ToArray();
 
-            return Result<AuthResponse>.Failure(errors);
+            Error errorToReturn = mappedErrors.Length == 1
+                ? mappedErrors[0]
+                : Error.Validations(mappedErrors.OfType<ValidationError>());
+
+            return Result<AuthResponse>.Failure(errorToReturn);
         }
 
         var token = _jwtTokenService.GenerateToken(new UserTokenInfo
@@ -59,10 +60,11 @@ public class AuthService : IAuthService
     public async Task<Result<AuthResponse>> LoginAsync(string email, string password)
     {
         var user = await _userManager.FindByEmailAsync(email);
+
         if (user == null || !await _userManager.CheckPasswordAsync(user, password))
         {
-            return Result<AuthResponse>.Failure(
-                Errors.User.Unauthorized.WithMessage("Invalid credentials"));
+            var error = new UnauthorizedError("Invalid credentials");
+            return Result<AuthResponse>.Failure(error);
         }
 
         var token = _jwtTokenService.GenerateToken(new UserTokenInfo

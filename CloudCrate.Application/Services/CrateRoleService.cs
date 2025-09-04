@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 
 namespace CloudCrate.Application.Services;
 
+public sealed record CrateUnauthorizedError(string Message = "User is not authorized for this crate") : Error(Message);
+
 public class CrateRoleService : ICrateRoleService
 {
     private readonly ICrateMemberService _crateMemberService;
@@ -21,12 +23,12 @@ public class CrateRoleService : ICrateRoleService
     private async Task<Result<bool>> HasRoleAsync(Guid crateId, string userId, params CrateRole[] allowedRoles)
     {
         var roleResult = await _crateMemberService.GetUserRoleAsync(crateId, userId);
-        if (!roleResult.Succeeded)
-            return Result<bool>.Failure(roleResult.Errors);
+        if (roleResult.IsFailure)
+            return Result<bool>.Failure(roleResult.Error!);
 
-        return allowedRoles.Contains(roleResult.Value)
+        return allowedRoles.Contains(roleResult.Value!)
             ? Result<bool>.Success(true)
-            : Result<bool>.Failure(Errors.User.Unauthorized);
+            : Result<bool>.Failure(new CrateUnauthorizedError());
     }
 
     public Task<Result<bool>> CanManageCrate(Guid crateId, string userId) =>

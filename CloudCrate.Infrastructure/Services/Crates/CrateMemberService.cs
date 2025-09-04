@@ -45,23 +45,14 @@ public class CrateMemberService : ICrateMemberService
 
     public async Task<Result<CrateRole>> GetUserRoleAsync(Guid crateId, string userId)
     {
-        try
-        {
-            var member = await _context.CrateMembers
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
+        var member = await _context.CrateMembers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
 
-            return member is null
-                ? Result<CrateRole>.Failure(Errors.User.Unauthorized)
-                : Result<CrateRole>.Success(member.Role);
-        }
-        catch (Exception ex)
-        {
-            return Result<CrateRole>.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
-            });
-        }
+        if (member is null)
+            return Result<CrateRole>.Failure(new UnauthorizedError("User is not a member of this crate"));
+
+        return Result<CrateRole>.Success(member.Role);
     }
 
     public async Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role)
@@ -71,7 +62,7 @@ public class CrateMemberService : ICrateMemberService
             var member = await _context.CrateMembers
                 .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
 
-            if (member == null)
+            if (member is null)
             {
                 member = CrateMember.Create(crateId, userId, role);
                 _context.CrateMembers.Add(member);
@@ -87,10 +78,7 @@ public class CrateMemberService : ICrateMemberService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.Common.InternalServerError with
-            {
-                Message = $"{Errors.Common.InternalServerError.Message} ({ex.Message})"
-            });
+            return Result.Failure(new InternalError($"Failed to assign role: {ex.Message}"));
         }
     }
 

@@ -55,7 +55,7 @@ public class MailtrapEmailService : IEmailService
         }
         catch (Exception ex)
         {
-            return Result.Failure(Errors.Email.SendException(ex.Message));
+            return Result.Failure(new EmailSendError($"Failed to send email: {ex.Message}"));
         }
     }
 }

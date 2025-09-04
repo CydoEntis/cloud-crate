@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Text.Json;
 using Amazon.S3;
 using CloudCrate.Api.Validators.Crate;
 using CloudCrate.Application.Interfaces.Auth;
@@ -113,7 +114,11 @@ builder.Services.AddAuthentication(options =>
 // Controllers & JSON
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
-        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.Converters.Add(
+            new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 
 // ✅ FluentValidation Setup
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();

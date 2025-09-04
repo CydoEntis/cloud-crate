@@ -20,6 +20,7 @@ public interface ICrateService
     Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor);
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<Result> LeaveCrateAsync(Guid crateId, string userId);
-    Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, double requestedAllocationMb);
+    Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, int requestedAllocationGB);
+
 
 }

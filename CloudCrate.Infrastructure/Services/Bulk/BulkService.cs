@@ -28,11 +28,13 @@ namespace CloudCrate.Infrastructure.Services.Bulk
             foreach (var folderId in request.FolderIds)
             {
                 var folderResult = await _folderService.MoveFolderAsync(folderId, request.NewParentId, userId);
-                if (!folderResult.Succeeded) return folderResult;
+                if (folderResult.IsFailure)
+                    return folderResult;
             }
 
             var fileResult = await _fileService.MoveFilesAsync(request.FileIds, request.NewParentId, userId);
-            if (!fileResult.Succeeded) return fileResult;
+            if (fileResult.IsFailure)
+                return fileResult;
 
             scope.Complete();
             return Result.Success();
@@ -43,7 +45,8 @@ namespace CloudCrate.Infrastructure.Services.Bulk
             using var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled);
 
             var result = await _folderService.DeleteMultipleAsync(request, userId);
-            if (!result.Succeeded) return result;
+            if (result.IsFailure)
+                return result;
 
             scope.Complete();
             return Result.Success();
@@ -56,11 +59,13 @@ namespace CloudCrate.Infrastructure.Services.Bulk
             foreach (var folderId in request.FolderIds)
             {
                 var folderResult = await _folderService.RestoreFolderAsync(folderId, userId);
-                if (!folderResult.Succeeded) return folderResult;
+                if (folderResult.IsFailure)
+                    return folderResult;
             }
 
             var fileResult = await _fileService.RestoreFilesAsync(request.FileIds, userId);
-            if (!fileResult.Succeeded) return fileResult;
+            if (fileResult.IsFailure)
+                return fileResult;
 
             scope.Complete();
             return Result.Success();

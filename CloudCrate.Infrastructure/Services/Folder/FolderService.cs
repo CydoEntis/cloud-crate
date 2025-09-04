@@ -45,25 +45,21 @@ public class FolderService : IFolderService
     public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(FolderContentsParameters parameters)
     {
         if (string.IsNullOrWhiteSpace(parameters.UserId))
-            return Result<FolderContentsResponse>.Failure(
-                Errors.User.Unauthorized with { Message = "UserId is required" });
+            return Result<FolderContentsResponse>.Failure(new UnauthorizedError("UserId is required"));
 
         var permission = await _crateRoleService.CanView(parameters.CrateId, parameters.UserId);
-        if (!permission.Succeeded)
-            return Result<FolderContentsResponse>.Failure(permission.Errors);
+        if (!permission.IsSuccess)
+            return Result<FolderContentsResponse>.Failure(permission.Error!);
 
         bool searchMode = !string.IsNullOrWhiteSpace(parameters.SearchTerm);
         var searchTerm = parameters.SearchTerm?.Trim().ToLower() ?? "";
 
-        // fetch folders
         var folders = searchMode
             ? await GetFolderItemsAsync(parameters.CrateId, parameters.FolderId, searchTerm)
             : await GetFolderItemsAsync(parameters.CrateId, parameters.FolderId);
 
-        // fetch files
         var files = await _fileService.FetchFilesAsync(parameters);
 
-        // build response
         string folderName = await GetFolderNameAsync(parameters.FolderId);
         var breadcrumbs = await GetFolderBreadcrumbs(parameters.FolderId);
 
@@ -88,13 +84,13 @@ public class FolderService : IFolderService
     public async Task<Result<Guid>> CreateFolderAsync(CreateFolderRequest request, string userId)
     {
         var permission = await _crateRoleService.CanUpload(request.CrateId, userId);
-        if (!permission.Succeeded) return Result<Guid>.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result<Guid>.Failure(permission.Error!);
 
         if (request.ParentFolderId.HasValue)
         {
             bool parentExists = await _context.CrateFolders
                 .AnyAsync(f => f.Id == request.ParentFolderId && f.CrateId == request.CrateId && !f.IsDeleted);
-            if (!parentExists) return Result<Guid>.Failure(Errors.Folders.NotFound);
+            if (!parentExists) return Result<Guid>.Failure(new NotFoundError("Parent folder not found"));
         }
 
         var folder = CrateFolder.Create(
@@ -118,10 +114,10 @@ public class FolderService : IFolderService
     public async Task<Result> UpdateFolderAsync(Guid folderId, UpdateFolderRequest request, string userId)
     {
         var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanUpload(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         folder.Name = request.NewName ?? folder.Name;
         folder.Color = request.NewColor ?? folder.Color;
@@ -141,10 +137,10 @@ public class FolderService : IFolderService
             .Include(f => f.Subfolders)
             .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
 
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         await SoftDeleteFolderRecursiveAsync(folder, userId);
         await _context.SaveChangesAsync();
@@ -160,10 +156,10 @@ public class FolderService : IFolderService
             .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
 
         if (folder == null)
-            return Result.Failure(Errors.Folders.NotFound);
+            return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         return await SoftDeleteFolderRecursiveAsync(folder, userId);
     }
@@ -174,10 +170,10 @@ public class FolderService : IFolderService
             .Include(f => f.Subfolders)
             .FirstOrDefaultAsync(f => f.Id == folderId);
 
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         var fileIds = (await _fileService.FetchFilesInFolderRecursivelyAsync(folderId))
             .Select(f => f.Id).ToList();
@@ -185,13 +181,13 @@ public class FolderService : IFolderService
         if (fileIds.Any())
         {
             var fileResult = await _fileService.PermanentlyDeleteFilesAsync(fileIds, userId);
-            if (!fileResult.Succeeded) return fileResult;
+            if (!fileResult.IsSuccess) return Result.Failure(fileResult.Error!);
         }
 
         foreach (var subfolder in folder.Subfolders)
         {
             var subResult = await PermanentlyDeleteFolderAsync(subfolder.Id, userId);
-            if (!subResult.Succeeded) return subResult;
+            if (!subResult.IsSuccess) return Result.Failure(subResult.Error!);
         }
 
         _context.Folders.Remove(folder);
@@ -208,7 +204,7 @@ public class FolderService : IFolderService
                 ? await _fileService.PermanentlyDeleteFilesAsync(request.FileIds, userId)
                 : await _fileService.SoftDeleteFilesAsync(request.FileIds, userId);
 
-            if (!fileResult.Succeeded) return fileResult;
+            if (!fileResult.IsSuccess) return Result.Failure(fileResult.Error!);
         }
 
         foreach (var folderId in request.FolderIds)
@@ -223,15 +219,15 @@ public class FolderService : IFolderService
                 var folder = await _context.Folders
                     .Include(f => f.Subfolders)
                     .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
-                if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+                if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
                 var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-                if (!permission.Succeeded) return Result.Failure(permission.Errors);
+                if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
                 folderResult = await SoftDeleteFolderRecursiveAsync(folder, userId);
             }
 
-            if (!folderResult.Succeeded) return folderResult;
+            if (!folderResult.IsSuccess) return Result.Failure(folderResult.Error!);
         }
 
         await _context.SaveChangesAsync();
@@ -247,13 +243,13 @@ public class FolderService : IFolderService
         if (files.Any())
         {
             var fileResult = await _fileService.SoftDeleteFilesAsync(files.Select(f => f.Id).ToList(), userId);
-            if (!fileResult.Succeeded) return fileResult;
+            if (!fileResult.IsSuccess) return Result.Failure(fileResult.Error!);
         }
 
         foreach (var sub in folder.Subfolders)
         {
             var subResult = await SoftDeleteFolderRecursiveAsync(sub, userId);
-            if (!subResult.Succeeded) return subResult;
+            if (!subResult.IsSuccess) return Result.Failure(subResult.Error!);
         }
 
         return Result.Success();
@@ -266,23 +262,23 @@ public class FolderService : IFolderService
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
         var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanUpload(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         if (newParentId.HasValue)
         {
             var newParent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == newParentId.Value && !f.IsDeleted);
             if (newParent == null || newParent.CrateId != folder.CrateId)
-                return Result.Failure(Errors.Folders.NotFound);
+                return Result.Failure(new NotFoundError("Target parent folder not found"));
 
-            if (newParentId == folder.Id) return Result.Failure(Errors.Folders.InvalidMove);
+            if (newParentId == folder.Id) return Result.Failure(new AlreadyExistsError("Cannot move folder into itself"));
 
             Guid? current = newParentId;
             while (current != null)
             {
-                if (current == folder.Id) return Result.Failure(Errors.Folders.InvalidMove);
+                if (current == folder.Id) return Result.Failure(new AlreadyExistsError("Cannot move folder into a descendant"));
                 current = await _context.Folders
                     .Where(f => f.Id == current)
                     .Select(f => f.ParentFolderId)
@@ -339,12 +335,11 @@ public class FolderService : IFolderService
     public async Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId)
     {
         var folder = await _context.Folders.FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
-        if (folder == null) return Result<FolderDownloadResult>.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result<FolderDownloadResult>.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanDownload(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result<FolderDownloadResult>.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result<FolderDownloadResult>.Failure(permission.Error!);
 
-        // Fetch all subfolders and files in one query
         var allFolders = await _context.Folders
             .Where(f => f.CrateId == folder.CrateId && !f.IsDeleted)
             .ToListAsync();
@@ -376,10 +371,10 @@ public class FolderService : IFolderService
             .Include(f => f.Subfolders)
             .FirstOrDefaultAsync(f => f.Id == folderId && f.IsDeleted);
 
-        if (folder == null) return Result.Failure(Errors.Folders.NotFound);
+        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
 
         var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-        if (!permission.Succeeded) return Result.Failure(permission.Errors);
+        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
 
         if (folder.ParentFolderId.HasValue)
         {
@@ -387,12 +382,10 @@ public class FolderService : IFolderService
             while (current != null)
             {
                 var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == current);
-                if (parent == null) return Result.Failure(Errors.Folders.NotFound);
+                if (parent == null) return Result.Failure(new NotFoundError("Parent folder not found"));
                 if (parent.IsDeleted)
-                    return Result.Failure(Errors.Folders.InvalidMove with
-                    {
-                        Message = "A parent folder is deleted. Restore parent(s) first or move to root."
-                    });
+                    return Result.Failure(new AlreadyExistsError(
+                        "A parent folder is deleted. Restore parent(s) first or move to root."));
                 current = parent.ParentFolderId;
             }
         }
@@ -444,7 +437,7 @@ public class FolderService : IFolderService
         foreach (var file in filesInThisFolder)
         {
             var fileBytesResult = await _fileService.FetchFileBytesAsync(file.Id, userId);
-            if (!fileBytesResult.Succeeded) continue;
+            if (!fileBytesResult.IsSuccess) continue;
 
             string filePathInZip = Path.Combine(folderPath, file.Name).Replace("\\", "/");
             var zipEntry = zip.CreateEntry(filePathInZip, CompressionLevel.Fastest);
@@ -494,13 +487,6 @@ public class FolderService : IFolderService
                 ParentFolderId = folder.ParentFolderId,
                 ParentFolderName = folder.ParentFolder?.Name,
                 CrateId = folder.CrateId,
-                // Uploader = new Uploader
-                // {
-                //     UserId = folder.UploadedByUserId ?? string.Empty,
-                //     DisplayName = uploader?.DisplayName ?? string.Empty,
-                //     Email = uploader?.Email ?? string.Empty,
-                //     ProfilePictureUrl = uploader?.ProfilePictureUrl ?? string.Empty
-                // },
                 CreatedAt = folder.CreatedAt,
                 UpdatedAt = folder.UpdatedAt,
                 IsDeleted = folder.IsDeleted
