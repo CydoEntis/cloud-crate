@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.Common.Errors;
+﻿namespace CloudCrate.Application.Errors;
 
 public abstract record Error(string Message)
 {

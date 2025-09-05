@@ -1,6 +1,6 @@
-﻿using CloudCrate.Application.Common.Errors;
+﻿using CloudCrate.Application.Errors;
 
-namespace CloudCrate.Application.Common.Models;
+namespace CloudCrate.Application.Models;
 
 public readonly struct Result
 {

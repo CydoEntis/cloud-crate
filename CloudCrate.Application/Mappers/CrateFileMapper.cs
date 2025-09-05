@@ -1,7 +1,7 @@
 ﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.User;
 
-namespace CloudCrate.Application.Common.Mappers;
+namespace CloudCrate.Application.Mappers;
 
 public static class CrateFileMapper
 {

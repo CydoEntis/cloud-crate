@@ -1,6 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 
-namespace CloudCrate.Application.Common.Errors;
+namespace CloudCrate.Application.Errors;
 
 public static class ErrorStatusMapper
 {

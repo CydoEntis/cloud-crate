@@ -1,7 +1,7 @@
 ﻿using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Domain.Entities;
 
-namespace CloudCrate.Application.Common.Mappers;
+namespace CloudCrate.Application.Mappers;
 
 public static class CrateFolderMapper
 {

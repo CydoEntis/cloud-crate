@@ -1,6 +1,6 @@
 ﻿using CloudCrate.Application.DTOs.Pagination;
 
-namespace CloudCrate.Application.Common.Extensions;
+namespace CloudCrate.Application.Extensions;
 
 public static class EnumerableExtensions
 {

@@ -1,6 +1,6 @@
 ﻿using CloudCrate.Domain.Enums;
 
-namespace CloudCrate.Application.Common.Constants;
+namespace CloudCrate.Application.Constants;
 
 public static class PlanStorageLimits
 {
