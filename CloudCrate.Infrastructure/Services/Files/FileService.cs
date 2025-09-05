@@ -99,7 +99,7 @@ public class FileService : IFileService
 
             allFiles.AddRange(filesInFolder);
 
-            var subfolders = await _context.Folders
+            var subfolders = await _context.CrateFolders
                 .Where(f => f.ParentFolderId == currentFolderId && !f.IsDeleted)
                 .Select(f => f.Id)
                 .ToListAsync();
@@ -129,26 +129,25 @@ public class FileService : IFileService
 
         var storageResults = new List<Result<string>>();
 
-        // Upload all files to storage first
         foreach (var fileReq in request.Files)
         {
             var result = await _storageService.SaveFileAsync(userId, fileReq);
             if (result.IsFailure)
             {
-                // Rollback previous uploads
                 foreach (var r in storageResults.Where(r => r.IsSuccess))
                 {
                     var uploadedIndex = storageResults.IndexOf(r);
                     var uploadedFile = request.Files[uploadedIndex];
-                    await _storageService.DeleteFileAsync(userId, uploadedFile.CrateId, uploadedFile.FolderId, uploadedFile.FileName);
+                    await _storageService.DeleteFileAsync(userId, uploadedFile.CrateId, uploadedFile.FolderId,
+                        uploadedFile.FileName);
                 }
+
                 return Result<List<Guid>>.Failure(result.Error!);
             }
 
             storageResults.Add(result);
         }
 
-        // Now create DB entries
         var fileEntities = request.Files.Select((req, i) =>
         {
             var file = CrateFile.Create(req.FileName, req.SizeInBytes, req.MimeType, req.CrateId, userId, req.FolderId);
@@ -159,14 +158,51 @@ public class FileService : IFileService
         _context.CrateFiles.AddRange(fileEntities);
 
         var totalSize = request.Files.Sum(f => f.SizeInBytes);
+
+        // --- Update crate storage ---
+        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.Files.First().CrateId);
+        if (crate == null) return Result<List<Guid>>.Failure(Error.NotFound("Crate not found"));
+
+        if (crate.RemainingStorageBytes < totalSize)
+        {
+            // Rollback uploaded files
+            foreach (var r in storageResults.Where(r => r.IsSuccess))
+            {
+                var uploadedIndex = storageResults.IndexOf(r);
+                var uploadedFile = request.Files[uploadedIndex];
+                await _storageService.DeleteFileAsync(userId, uploadedFile.CrateId, uploadedFile.FolderId,
+                    uploadedFile.FileName);
+            }
+
+            return Result<List<Guid>>.Failure(Error.Validation("Crate storage limit exceeded.", "Storage"));
+        }
+
+        crate.ConsumeStorageBytes(totalSize);
+
+        // --- Update user storage ---
         var storageIncrementResult = await _userService.IncrementUsedStorageAsync(userId, totalSize);
         if (storageIncrementResult.IsFailure)
+        {
+            // Rollback crate usage
+            crate.ReleaseStorageBytes(totalSize);
+
+            // Rollback uploaded files
+            foreach (var r in storageResults.Where(r => r.IsSuccess))
+            {
+                var uploadedIndex = storageResults.IndexOf(r);
+                var uploadedFile = request.Files[uploadedIndex];
+                await _storageService.DeleteFileAsync(userId, uploadedFile.CrateId, uploadedFile.FolderId,
+                    uploadedFile.FileName);
+            }
+
             return Result<List<Guid>>.Failure(storageIncrementResult.Error!);
+        }
 
         await _context.SaveChangesAsync();
 
         return Result<List<Guid>>.Success(fileEntities.Select(f => f.Id).ToList());
     }
+
 
     public async Task<Result<Guid>> UploadFileAsync(FileUploadRequest request, string userId)
     {
@@ -190,9 +226,30 @@ public class FileService : IFileService
 
         _context.CrateFiles.Add(crateFile);
 
+        // --- Update crate storage ---
+        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.CrateId);
+        if (crate == null)
+        {
+            await _storageService.DeleteFileAsync(userId, request.CrateId, request.FolderId, request.FileName);
+            return Result<Guid>.Failure(Error.NotFound("Crate not found"));
+        }
+
+        if (crate.RemainingStorageBytes < request.SizeInBytes)
+        {
+            await _storageService.DeleteFileAsync(userId, request.CrateId, request.FolderId, request.FileName);
+            return Result<Guid>.Failure(Error.Validation("Crate storage limit exceeded.", "Storage"));
+        }
+
+        crate.ConsumeStorageBytes(request.SizeInBytes);
+
+        // --- Update user storage ---
         var storageResult = await _userService.IncrementUsedStorageAsync(userId, request.SizeInBytes);
         if (storageResult.IsFailure)
+        {
+            crate.ReleaseStorageBytes(request.SizeInBytes);
+            await _storageService.DeleteFileAsync(userId, request.CrateId, request.FolderId, request.FileName);
             return Result<Guid>.Failure(storageResult.Error!);
+        }
 
         await _context.SaveChangesAsync();
 
@@ -225,8 +282,14 @@ public class FileService : IFileService
         var deletePermission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
         if (deletePermission.IsFailure) return Result.Failure(deletePermission.Error!);
 
+        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
+        if (crate == null) return Result.Failure(Error.NotFound("Crate not found"));
+
         var deleteResult = await _storageService.DeleteFileAsync(userId, file.CrateId, file.CrateFolderId, file.Name);
         if (deleteResult.IsFailure) return Result.Failure(deleteResult.Error!);
+
+        // --- Update storage usage ---
+        crate.ReleaseStorageBytes(file.SizeInBytes);
 
         var storageResult = await _userService.DecrementUsedStorageAsync(userId, file.SizeInBytes);
         if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
@@ -284,7 +347,7 @@ public class FileService : IFileService
             if (result.IsFailure) return result;
         }
 
-        var subfolders = await _context.Folders.Where(f => f.ParentFolderId == folderId).ToListAsync();
+        var subfolders = await _context.CrateFolders.Where(f => f.ParentFolderId == folderId).ToListAsync();
         foreach (var sub in subfolders)
         {
             var result = await DeleteFilesInFolderRecursivelyAsync(sub.Id, userId);
@@ -307,7 +370,7 @@ public class FileService : IFileService
         if (newParentId.HasValue)
         {
             var folderExists =
-                await _context.Folders.AnyAsync(f => f.Id == newParentId.Value && f.CrateId == file.CrateId);
+                await _context.CrateFolders.AnyAsync(f => f.Id == newParentId.Value && f.CrateId == file.CrateId);
             if (!folderExists) return Result.Failure(new NotFoundError("Destination folder not found"));
         }
 
@@ -338,7 +401,7 @@ public class FileService : IFileService
 
         if (file.CrateFolderId.HasValue)
         {
-            var parent = await _context.Folders.FirstOrDefaultAsync(f => f.Id == file.CrateFolderId.Value);
+            var parent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == file.CrateFolderId.Value);
             if (parent == null) return Result.Failure(new NotFoundError("Parent folder not found"));
             if (parent.IsDeleted)
                 return Result.Failure(new FileError("Parent folder is deleted. Restore parent or move to root."));
