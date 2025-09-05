@@ -1,8 +1,8 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs;
+﻿using CloudCrate.Application.DTOs;
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Folder;
 

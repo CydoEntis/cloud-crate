@@ -1,11 +1,11 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.Interfaces.Crate;
+﻿using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Domain.Enums;
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using CloudCrate.Application.Errors;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Services;
 
@@ -22,14 +22,16 @@ public class CrateRoleService : ICrateRoleService
 
     private async Task<Result<bool>> HasRoleAsync(Guid crateId, string userId, params CrateRole[] allowedRoles)
     {
-        var roleResult = await _crateMemberService.GetUserRoleAsync(crateId, userId);
-        if (roleResult.IsFailure)
-            return Result<bool>.Failure(roleResult.Error!);
+        var member = await _crateMemberService.GetCrateMemberAsync(crateId, userId);
 
-        return allowedRoles.Contains(roleResult.Value!)
+        if (member == null)
+            return Result<bool>.Failure(new CrateUnauthorizedError());
+
+        return allowedRoles.Contains(member.Role)
             ? Result<bool>.Success(true)
             : Result<bool>.Failure(new CrateUnauthorizedError());
     }
+
 
     public Task<Result<bool>> CanManageCrate(Guid crateId, string userId) =>
         HasRoleAsync(crateId, userId, CrateRole.Owner);

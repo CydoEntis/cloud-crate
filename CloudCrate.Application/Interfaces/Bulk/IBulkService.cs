@@ -1,5 +1,5 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs;
+﻿using CloudCrate.Application.DTOs;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Bulk;
 

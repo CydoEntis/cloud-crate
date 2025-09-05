@@ -1,5 +1,5 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.User.Response;
+﻿using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.Interfaces.User;

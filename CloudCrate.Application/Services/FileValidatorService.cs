@@ -1,10 +1,10 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.File.Request;
+﻿using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Application.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Application.Services;

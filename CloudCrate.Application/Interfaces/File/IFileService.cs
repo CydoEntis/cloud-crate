@@ -1,15 +1,18 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.File;
+﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.DTOs.File.Response;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 
 namespace CloudCrate.Application.Interfaces.File;
 
 public interface IFileService
 {
+    Task<List<FileTypeBreakdownDto>> GetFilesByMimeTypeAsync(Guid crateId);
+
+    List<FileTypeBreakdownDto> GetFilesByMimeTypeInMemory(IEnumerable<CrateFile> files);
     // Fetch single file info (with URL)
     Task<Result<CrateFileResponse>> FetchFileResponseAsync(Guid fileId, string userId);
 

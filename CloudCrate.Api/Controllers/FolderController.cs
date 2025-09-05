@@ -1,5 +1,4 @@
 ﻿using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using CloudCrate.Application.DTOs.Folder;

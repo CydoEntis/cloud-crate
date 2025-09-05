@@ -1,10 +1,10 @@
 ﻿using Amazon.S3;
 using Amazon.S3.Model;
 using Amazon.S3.Util;
-using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Storage;
+using CloudCrate.Application.Models;
 using Microsoft.Extensions.Logging;
 
 namespace CloudCrate.Infrastructure.Services.Storage;
@@ -20,14 +20,27 @@ public class MinioStorageService : IStorageService
         _logger = logger;
     }
 
-    public async Task<Result> EnsureBucketExistsAsync(string bucketName)
+    #region Bucket Management
+
+    public async Task<Result<bool>> BucketExistsAsync(string bucketName)
     {
         try
         {
             var exists = await AmazonS3Util.DoesS3BucketExistV2Async(_s3Client, bucketName);
-            if (!exists)
-                await _s3Client.PutBucketAsync(bucketName);
+            return Result<bool>.Success(exists);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to check if bucket {Bucket} exists", bucketName);
+            return Result<bool>.Failure(new StorageError($"Failed to check bucket {bucketName}. ({ex.Message})"));
+        }
+    }
 
+    public async Task<Result> CreateBucketAsync(string bucketName)
+    {
+        try
+        {
+            await _s3Client.PutBucketAsync(bucketName);
             return Result.Success();
         }
         catch (Exception ex)
@@ -37,8 +50,27 @@ public class MinioStorageService : IStorageService
         }
     }
 
-    public async Task<Result<string>> GetFileUrlAsync(string userId, Guid crateId, Guid? folderId, string fileName,
-        TimeSpan? expiry = null)
+    public async Task<Result> GetOrCreateBucketAsync(string bucketName)
+    {
+        var existsResult = await BucketExistsAsync(bucketName);
+        if (!existsResult.IsSuccess)
+            return Result.Failure(existsResult.Error);
+
+        if (!existsResult.Value)
+        {
+            var createResult = await CreateBucketAsync(bucketName);
+            if (!createResult.IsSuccess)
+                return Result.Failure(createResult.Error);
+        }
+
+        return Result.Success();
+    }
+
+    #endregion
+
+    #region File Operations
+
+    public async Task<Result<string>> GetFileUrlAsync(string userId, Guid crateId, Guid? folderId, string fileName, TimeSpan? expiry = null)
     {
         var bucketName = $"crate-{crateId}".ToLowerInvariant();
         var key = GetObjectKey(userId, crateId, folderId, fileName);
@@ -46,7 +78,6 @@ public class MinioStorageService : IStorageService
         try
         {
             var urlExpiry = expiry ?? TimeSpan.FromMinutes(15);
-
             var request = new GetPreSignedUrlRequest
             {
                 BucketName = bucketName,
@@ -55,36 +86,33 @@ public class MinioStorageService : IStorageService
                 Verb = HttpVerb.GET
             };
 
-            var url = _s3Client.GetPreSignedURL(request);
-            return Result<string>.Success(url);
+            return Result<string>.Success(_s3Client.GetPreSignedURL(request));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to generate presigned URL for file {Key} in bucket {Bucket}", key, bucketName);
-            return Result<string>.Failure(
-                new FileAccessError($"Failed to generate access URL for file. ({ex.Message})"));
+            return Result<string>.Failure(new FileAccessError($"Failed to generate access URL for file. ({ex.Message})"));
         }
     }
 
     public async Task<Result<string>> SaveFileAsync(string userId, FileUploadRequest request)
     {
         var bucketName = $"crate-{request.CrateId}".ToLowerInvariant();
+        var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
+
         try
         {
-            var bucketResult = await EnsureBucketExistsAsync(bucketName);
-            if (bucketResult.IsFailure)
+            var bucketResult = await GetOrCreateBucketAsync(bucketName);
+            if (!bucketResult.IsSuccess)
                 return Result<string>.Failure(bucketResult.Error!);
 
-            var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
-
-            var putRequest = new PutObjectRequest
+            await _s3Client.PutObjectAsync(new PutObjectRequest
             {
                 BucketName = bucketName,
                 Key = key,
                 InputStream = request.Content
-            };
+            });
 
-            await _s3Client.PutObjectAsync(putRequest);
             return Result<string>.Success(key);
         }
         catch (Exception ex)
@@ -100,36 +128,15 @@ public class MinioStorageService : IStorageService
 
         foreach (var request in requests)
         {
-            var bucketName = $"crate-{request.CrateId}".ToLowerInvariant();
-            try
-            {
-                var bucketResult = await EnsureBucketExistsAsync(bucketName);
-                if (bucketResult.IsFailure)
-                    return Result<List<string>>.Failure(bucketResult.Error!);
+            var result = await SaveFileAsync(userId, request);
+            if (!result.IsSuccess)
+                return Result<List<string>>.Failure(result.Error!);
 
-                var key = GetObjectKey(userId, request.CrateId, request.FolderId, request.FileName);
-
-                var putRequest = new PutObjectRequest
-                {
-                    BucketName = bucketName,
-                    Key = key,
-                    InputStream = request.Content
-                };
-
-                await _s3Client.PutObjectAsync(putRequest);
-
-                uploadedKeys.Add(key);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to save file {FileName} in {Bucket}", request.FileName, $"crate-{request.CrateId}");
-                return Result<List<string>>.Failure(new FileSaveError($"Failed to save file {request.FileName}. ({ex.Message})"));
-            }
+            uploadedKeys.Add(result.Value);
         }
 
         return Result<List<string>>.Success(uploadedKeys);
     }
-
 
     public async Task<Result<byte[]>> ReadFileAsync(string userId, Guid crateId, Guid? folderId, string fileName)
     {
@@ -173,12 +180,10 @@ public class MinioStorageService : IStorageService
 
     public bool FileExists(string userId, Guid crateId, Guid? folderId, string fileName)
     {
-        var bucketName = $"crate-{crateId}".ToLowerInvariant();
-        var key = GetObjectKey(userId, crateId, folderId, fileName);
-
         try
         {
-            _s3Client.GetObjectMetadataAsync(bucketName, key).GetAwaiter().GetResult();
+            _s3Client.GetObjectMetadataAsync($"crate-{crateId}".ToLowerInvariant(), GetObjectKey(userId, crateId, folderId, fileName))
+                .GetAwaiter().GetResult();
             return true;
         }
         catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
@@ -187,64 +192,55 @@ public class MinioStorageService : IStorageService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not verify file existence for {Key}", key);
+            _logger.LogWarning(ex, "Could not verify file existence for {Key}", fileName);
             return false;
         }
     }
 
-    public Result EnsureDirectory(string userId, Guid crateId, Guid? folderId)
-    {
-        return Result.Success(); // S3 folders are virtual
-    }
+    #endregion
+
+    #region Bucket Cleanup
 
     public async Task<Result> DeleteAllFilesInBucketAsync(Guid crateId)
     {
         var bucketName = $"crate-{crateId}".ToLowerInvariant();
-
         try
         {
             string? continuationToken = null;
 
             do
             {
-                var request = new ListObjectsV2Request
+                var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
                 {
                     BucketName = bucketName,
                     ContinuationToken = continuationToken,
                     MaxKeys = 1000
-                };
+                });
 
-                var listResponse = await _s3Client.ListObjectsV2Async(request);
                 if (listResponse?.S3Objects == null || listResponse.S3Objects.Count == 0)
                     break;
 
                 var keysToDelete = listResponse.S3Objects
-                    .Where(obj => !string.IsNullOrEmpty(obj.Key))
-                    .Select(obj => new KeyVersion { Key = obj.Key })
+                    .Where(o => !string.IsNullOrEmpty(o.Key))
+                    .Select(o => new KeyVersion { Key = o.Key })
                     .ToList();
 
                 if (keysToDelete.Count > 0)
                 {
-                    var deleteRequest = new DeleteObjectsRequest
+                    var deleteResponse = await _s3Client.DeleteObjectsAsync(new DeleteObjectsRequest
                     {
                         BucketName = bucketName,
                         Objects = keysToDelete
-                    };
-
-                    var deleteResponse = await _s3Client.DeleteObjectsAsync(deleteRequest);
+                    });
 
                     if (deleteResponse.DeleteErrors != null && deleteResponse.DeleteErrors.Count != 0)
                     {
-                        _logger.LogError("Errors deleting objects in bucket {Bucket}: {Errors}", bucketName,
-                            deleteResponse.DeleteErrors);
-                        return Result.Failure(
-                            new StorageError($"Errors deleting some objects in bucket {bucketName}."));
+                        _logger.LogError("Errors deleting objects in bucket {Bucket}: {Errors}", bucketName, deleteResponse.DeleteErrors);
+                        return Result.Failure(new StorageError($"Errors deleting some objects in bucket {bucketName}."));
                     }
                 }
 
-                continuationToken = listResponse.IsTruncated.GetValueOrDefault()
-                    ? listResponse.NextContinuationToken
-                    : null;
+                continuationToken = (listResponse.IsTruncated ?? false) ? listResponse.NextContinuationToken : null;
             } while (continuationToken != null);
 
             return Result.Success();
@@ -252,21 +248,19 @@ public class MinioStorageService : IStorageService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to delete all files in bucket {Bucket}", bucketName);
-            return Result.Failure(
-                new StorageError($"Failed to delete all files in bucket {bucketName}. ({ex.Message})"));
+            return Result.Failure(new StorageError($"Failed to delete all files in bucket {bucketName}. ({ex.Message})"));
         }
     }
 
     public async Task<Result> DeleteBucketAsync(Guid crateId)
     {
         var bucketName = $"crate-{crateId}".ToLowerInvariant();
+        var deleteFilesResult = await DeleteAllFilesInBucketAsync(crateId);
+        if (!deleteFilesResult.IsSuccess)
+            return deleteFilesResult;
 
         try
         {
-            var deleteFilesResult = await DeleteAllFilesInBucketAsync(crateId);
-            if (deleteFilesResult.IsFailure)
-                return deleteFilesResult;
-
             await _s3Client.DeleteBucketAsync(bucketName);
             return Result.Success();
         }
@@ -276,6 +270,8 @@ public class MinioStorageService : IStorageService
             return Result.Failure(new StorageError($"Failed to delete bucket {bucketName}. ({ex.Message})"));
         }
     }
+
+    #endregion
 
     private static string GetObjectKey(string userId, Guid crateId, Guid? folderId, string fileName)
     {

@@ -1,6 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using CloudCrate.Application.Constants;
 using CloudCrate.Domain.Enums;
-using CloudCrate.Application.Common.Constants;
 using Microsoft.AspNetCore.Identity;
 
 namespace CloudCrate.Infrastructure.Identity;

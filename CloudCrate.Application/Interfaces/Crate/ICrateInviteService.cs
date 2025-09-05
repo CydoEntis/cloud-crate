@@ -1,5 +1,5 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Invite.Response;
+﻿using CloudCrate.Application.DTOs.Invite.Response;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 

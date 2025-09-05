@@ -1,5 +1,5 @@
 ﻿using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors;
+using CloudCrate.Application.Errors;
 
 namespace CloudCrate.Api.Middleware;
 

@@ -1,15 +1,14 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Crate.Request;
+﻿using CloudCrate.Application.DTOs.Crate.Request;
 using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.Interfaces.Crate;
 
 public interface ICrateService
 {
-    Task<Result<Guid>> CreateCrateAsync(string userId, string name, string color,
-        int storageAllocationGB);
+    Task<Result<Guid>> CreateCrateAsync(CreateCrateRequest request);
     Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters);
     Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId);
 

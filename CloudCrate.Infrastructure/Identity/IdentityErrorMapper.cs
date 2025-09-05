@@ -1,5 +1,5 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
+﻿using CloudCrate.Application.Errors;
+using CloudCrate.Application.Models;
 using Microsoft.AspNetCore.Identity;
 
 namespace CloudCrate.Infrastructure.Identity;

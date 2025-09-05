@@ -1,10 +1,10 @@
 ﻿using CloudCrate.Api.DTOs.File.Request;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.File;
+using CloudCrate.Application.Models;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;

@@ -1,6 +1,6 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Auth.Request;
+﻿using CloudCrate.Application.DTOs.Auth.Request;
 using CloudCrate.Application.DTOs.Auth.Response;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Auth;
 

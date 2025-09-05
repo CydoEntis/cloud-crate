@@ -11,7 +11,7 @@ public class CrateMember
     public string UserId { get; set; } = string.Empty!;
     public CrateRole Role { get; set; }
 
-    public DateTime JoinedDate { get; set; }
+    public DateTime JoinedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }
 
@@ -23,7 +23,7 @@ public class CrateMember
             CrateId = crateId,
             UserId = userId,
             Role = role,
-            JoinedDate = DateTime.UtcNow
+            JoinedAt = DateTime.UtcNow
         };
     }
 }

@@ -1,38 +1,37 @@
 ﻿using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.Exceptions;
+using CloudCrate.Domain.ValueObjects;
 
 namespace CloudCrate.Domain.Entities;
 
 public class Crate
 {
-    public const long MinAllocationBytes = 1L * 1024 * 1024 * 1024; // 1 GB
+    public static readonly StorageSize MinAllocation = StorageSize.FromGigabytes(1);
     public const string DefaultColor = "#4B9CED";
 
     public Guid Id { get; private set; }
     public string Name { get; private set; } = string.Empty;
     public string Color { get; private set; } = DefaultColor;
 
-    private readonly List<Folder> _folders = new();
-    public IReadOnlyCollection<Folder> Folders => _folders.AsReadOnly();
+    private readonly List<CrateFolder> _folders = new();
+    public IReadOnlyCollection<CrateFolder> Folders => _folders.AsReadOnly();
 
-    private readonly List<FileObject> _files = new();
-    public IReadOnlyCollection<FileObject> Files => _files.AsReadOnly();
+    private readonly List<CrateFile> _files = new();
+    public IReadOnlyCollection<CrateFile> Files => _files.AsReadOnly();
 
     private readonly List<CrateMember> _members = new();
     public IReadOnlyCollection<CrateMember> Members => _members.AsReadOnly();
 
-    public long AllocatedStorageBytes { get; private set; }
-    public long UsedStorageBytes { get; private set; }
-    public long RemainingStorageBytes => AllocatedStorageBytes - UsedStorageBytes;
+    public StorageSize AllocatedStorage { get; private set; }
+    public StorageSize UsedStorage { get; private set; }
+    public StorageSize RemainingStorage => StorageSize.FromBytes(AllocatedStorage.Bytes - UsedStorage.Bytes);
 
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
     protected Crate() { } // EF Core
 
-    public static long GbToBytes(long gb) => gb * 1024 * 1024 * 1024;
-
-    public static Crate Create(string name, string userId, string? color = null)
+    public static Crate Create(string name, string userId, long allocatedGb, string? color = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ValueEmptyException(nameof(Name));
@@ -45,6 +44,8 @@ public class Crate
             Id = Guid.NewGuid(),
             Name = name,
             Color = string.IsNullOrWhiteSpace(color) ? DefaultColor : color,
+            AllocatedStorage = StorageSize.FromGigabytes(allocatedGb),
+            UsedStorage = StorageSize.FromBytes(0),
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -72,59 +73,60 @@ public class Crate
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void AllocateStorageGB(long gb)
+    public void AllocateStorage(long gb)
     {
-        var bytes = GbToBytes(gb);
-        if (bytes < MinAllocationBytes)
+        var newSize = StorageSize.FromGigabytes(gb);
+
+        if (newSize.Bytes < MinAllocation.Bytes)
             throw new MinimumAllocationException(1);
 
-        if (UsedStorageBytes > bytes)
+        if (UsedStorage.Bytes > newSize.Bytes)
             throw new InvalidOperationException("Cannot allocate less than already used storage.");
 
-        AllocatedStorageBytes = bytes;
+        AllocatedStorage = newSize;
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public bool TryAllocateStorageGB(long gb, out string? error)
+    public bool TryAllocateStorage(long gb, out string? error)
     {
         error = null;
-        var bytes = GbToBytes(gb);
+        var newSize = StorageSize.FromGigabytes(gb);
 
-        if (bytes < MinAllocationBytes)
+        if (newSize.Bytes < MinAllocation.Bytes)
         {
             error = "Minimum allocation is 1 GB.";
             return false;
         }
 
-        if (UsedStorageBytes > bytes)
+        if (UsedStorage.Bytes > newSize.Bytes)
         {
             error = "Cannot allocate less than already used storage.";
             return false;
         }
 
-        AllocatedStorageBytes = bytes;
+        AllocatedStorage = newSize;
         UpdatedAt = DateTime.UtcNow;
         return true;
     }
 
-    public void ConsumeStorageBytes(long bytes)
+    public void ConsumeStorage(StorageSize size)
     {
-        if (bytes < 0)
-            throw new NegativeValueException(nameof(bytes));
+        if (size.Bytes < 0)
+            throw new NegativeValueException(nameof(size));
 
-        if (UsedStorageBytes + bytes > AllocatedStorageBytes)
+        if (UsedStorage.Bytes + size.Bytes > AllocatedStorage.Bytes)
             throw new InsufficientStorageException();
 
-        UsedStorageBytes += bytes;
+        UsedStorage = StorageSize.FromBytes(UsedStorage.Bytes + size.Bytes);
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void ReleaseStorageBytes(long bytes)
+    public void ReleaseStorage(StorageSize size)
     {
-        if (bytes < 0)
-            throw new NegativeValueException(nameof(bytes));
+        if (size.Bytes < 0)
+            throw new NegativeValueException(nameof(size));
 
-        UsedStorageBytes = Math.Max(0, UsedStorageBytes - bytes);
+        UsedStorage = StorageSize.FromBytes(Math.Max(0, UsedStorage.Bytes - size.Bytes));
         UpdatedAt = DateTime.UtcNow;
     }
 

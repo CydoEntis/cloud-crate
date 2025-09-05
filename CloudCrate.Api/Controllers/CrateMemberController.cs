@@ -4,8 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Identity;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Roles.Request;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Permissions;

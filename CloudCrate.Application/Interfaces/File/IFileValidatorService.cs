@@ -1,5 +1,5 @@
-﻿using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.File.Request;
+﻿using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.File
 {

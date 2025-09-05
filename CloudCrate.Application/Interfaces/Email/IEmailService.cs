@@ -1,4 +1,4 @@
-﻿using CloudCrate.Application.Common.Models;
+﻿using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Email;
 

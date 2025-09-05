@@ -4,7 +4,6 @@ using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Interfaces.User;
-using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

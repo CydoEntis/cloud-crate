@@ -1,6 +1,4 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Folder;
+﻿using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.File;
@@ -11,6 +9,8 @@ using CloudCrate.Application.Interfaces.User;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using CloudCrate.Application.DTOs;
+using CloudCrate.Application.Errors;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 
 namespace CloudCrate.Infrastructure.Services.Folder;

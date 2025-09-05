@@ -2,7 +2,6 @@
 using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Interfaces.Crate;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.User.Response;
 using Microsoft.AspNetCore.Authorization;
@@ -25,20 +24,15 @@ public class CrateController : BaseController
     [HttpPost]
     public async Task<IActionResult> CreateCrate([FromBody] CreateCrateRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
+        request.UserId = UserId;
         var result =
-            await _crateService.CreateCrateAsync(UserId!, request.Name, request.Color, request.AllocatedStorageGb);
+            await _crateService.CreateCrateAsync(request);
         return Response(ApiResponse<Guid>.FromResult(result, "Crate created successfully", 201));
     }
 
     [HttpGet]
     public async Task<IActionResult> GetCrates([FromQuery] CrateQueryParameters queryParameters)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         queryParameters.UserId = UserId!;
         var result = await _crateService.GetCratesAsync(queryParameters);
         return Response(
@@ -48,9 +42,6 @@ public class CrateController : BaseController
     [HttpPut("{crateId:guid}")]
     public async Task<IActionResult> UpdateCrate(Guid crateId, [FromBody] UpdateCrateRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         var result = await _crateService.UpdateCrateAsync(crateId, UserId!, request.Name, request.Color);
         return Response(ApiResponse<CrateResponse>.FromResult(result, "Crate updated successfully"));
     }
@@ -58,9 +49,6 @@ public class CrateController : BaseController
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         var result = await _crateService.DeleteCrateAsync(crateId, UserId!);
         return Response(ApiResponse.FromResult(result, "Crate deleted successfully", 204));
     }
@@ -68,9 +56,6 @@ public class CrateController : BaseController
     [HttpGet("{crateId:guid}")]
     public async Task<IActionResult> GetCrate(Guid crateId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         var result = await _crateService.GetCrateAsync(crateId, UserId!);
         return Response(ApiResponse<CrateDetailsResponse>.FromResult(result, "Crate retrieved successfully"));
     }
@@ -78,9 +63,6 @@ public class CrateController : BaseController
     [HttpGet("{crateId:guid}/members")]
     public async Task<IActionResult> GetCrateMembers(Guid crateId, [FromQuery] CrateMemberRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         var result = await _crateService.GetCrateMembersAsync(crateId, request);
         return Response(
             ApiResponse<List<CrateMemberResponse>>.FromResult(result, "Crate members retrieved successfully"));
@@ -89,9 +71,6 @@ public class CrateController : BaseController
     [HttpDelete("{crateId:guid}/leave")]
     public async Task<IActionResult> LeaveCrate(Guid crateId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
-
         var result = await _crateService.LeaveCrateAsync(crateId, UserId!);
         return Response(ApiResponse.FromResult(result, "You have left the crate successfully", 204));
     }

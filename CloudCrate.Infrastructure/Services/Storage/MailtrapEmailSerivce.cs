@@ -1,8 +1,8 @@
 ﻿using System.Net;
 using System.Net.Mail;
-using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Email;
+using CloudCrate.Application.Models;
 using Microsoft.Extensions.Configuration;
 using RazorLight;
 

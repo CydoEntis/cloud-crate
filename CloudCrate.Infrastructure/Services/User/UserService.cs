@@ -1,7 +1,7 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.User.Response;
+﻿using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Application.Models;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
@@ -40,7 +40,7 @@ public class UserService : IUserService
 
         try
         {
-            user.ConsumeStorage(bytesToAdd); // safely increment storage
+            user.ConsumeStorage(bytesToAdd); 
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
                 return Result.Failure(new InternalError("Failed to update user storage"));

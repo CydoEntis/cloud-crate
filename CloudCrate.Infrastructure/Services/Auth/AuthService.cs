@@ -1,8 +1,8 @@
-﻿using CloudCrate.Application.Common.Errors;
-using CloudCrate.Application.Common.Models;
-using CloudCrate.Application.DTOs.Auth.Request;
+﻿using CloudCrate.Application.DTOs.Auth.Request;
 using CloudCrate.Application.DTOs.Auth.Response;
+using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Auth;
+using CloudCrate.Application.Models;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 

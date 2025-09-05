@@ -1,6 +1,5 @@
 ﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.Interfaces.User;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.User.Response;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

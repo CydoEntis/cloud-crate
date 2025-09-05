@@ -1,8 +1,8 @@
 ﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.Invite.Request;
 using CloudCrate.Application.Interfaces.Crate;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs.Invite.Response;
+using CloudCrate.Application.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

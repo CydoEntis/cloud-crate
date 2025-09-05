@@ -1,7 +1,6 @@
 ﻿using CloudCrate.Application.DTOs;
 using CloudCrate.Application.Interfaces.Bulk;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

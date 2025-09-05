@@ -1,9 +1,9 @@
 ﻿using System.Transactions;
-using CloudCrate.Application.Common.Models;
 using CloudCrate.Application.DTOs;
 using CloudCrate.Application.Interfaces.Bulk;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Folder;
+using CloudCrate.Application.Models;
 
 namespace CloudCrate.Infrastructure.Services.Bulk
 {

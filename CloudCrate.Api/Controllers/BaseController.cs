@@ -1,5 +1,4 @@
 ﻿using CloudCrate.Api.Models;
-using CloudCrate.Application.Common.Errors;
 using Microsoft.AspNetCore.Mvc;
 using System.Security.Claims;
 
