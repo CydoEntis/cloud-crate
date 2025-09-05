@@ -22,8 +22,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
     public DbSet<CrateFolder> CrateFolders { get; set; }
     public DbSet<CrateMember> CrateMembers { get; set; }
     public DbSet<CrateInvite> CrateInvites { get; set; }
-    public DbSet<FileObject> FileObjects { get; set; }
-    public DbSet<Folder> Folders { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
