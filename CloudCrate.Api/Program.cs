@@ -22,6 +22,7 @@ using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
+using CloudCrate.Application.Interfaces.Transactions;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Services;
 using CloudCrate.Infrastructure.Services.Auth;
@@ -29,6 +30,7 @@ using CloudCrate.Infrastructure.Services.Bulk;
 using CloudCrate.Infrastructure.Services.Crates;
 using CloudCrate.Infrastructure.Services.Folder;
 using CloudCrate.Infrastructure.Services.Storage;
+using CloudCrate.Infrastructure.Services.Transactions;
 using CloudCrate.Infrastructure.Services.User;
 using RazorLight;
 using Resend;
@@ -140,6 +142,7 @@ builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IBulkService, BulkService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
 builder.Services.AddTransient<IFileValidatorService, FileValidatorService>();
+builder.Services.AddTransient<ITransactionService, TransactionService>();
 
 
 // Registering Minio Storage
