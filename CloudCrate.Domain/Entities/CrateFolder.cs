@@ -7,14 +7,14 @@ public class CrateFolder
     public string Color { get; set; } = "#EAAC00";
 
     public Guid? ParentFolderId { get; set; }
-    public Folder? ParentFolder { get; set; }
+    public CrateFolder? ParentFolder { get; set; }
 
     public bool IsRoot { get; private set; }
     public Guid CrateId { get; set; }
     public Crate Crate { get; set; }
 
-    public ICollection<FileObject> Files { get; set; } = new List<FileObject>();
-    public ICollection<Folder> Subfolders { get; set; } = new List<Folder>();
+    public ICollection<CrateFile> Files { get; set; } = new List<CrateFile>();
+    public ICollection<CrateFolder> Subfolders { get; set; } = new List<CrateFolder>();
 
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
