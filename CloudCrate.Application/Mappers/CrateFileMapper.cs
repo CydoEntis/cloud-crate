@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.User;
+using CloudCrate.Application.DTOs.User.Projections;
 
 namespace CloudCrate.Application.Mappers;
 

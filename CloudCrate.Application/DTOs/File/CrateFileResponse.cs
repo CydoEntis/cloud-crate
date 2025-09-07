@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.User;
+using CloudCrate.Application.DTOs.User.Projections;
 
 namespace CloudCrate.Application.DTOs.File;
 

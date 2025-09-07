@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.DTOs.User;
+﻿namespace CloudCrate.Application.DTOs.User.Projections;
 
 public class Uploader
 {
