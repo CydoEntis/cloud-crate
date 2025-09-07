@@ -54,5 +54,23 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
 
             b.Property(x => x.IsRoot).HasDefaultValue(false);
         });
+        
+        
+        builder.Entity<Crate>(builder =>
+        {
+            builder.OwnsOne(c => c.AllocatedStorage, sa =>
+            {
+                sa.Property(s => s.Bytes)
+                    .HasColumnName("AllocatedStorageBytes")
+                    .IsRequired();
+            });
+
+            builder.OwnsOne(c => c.UsedStorage, su =>
+            {
+                su.Property(s => s.Bytes)
+                    .HasColumnName("UsedStorageBytes")
+                    .IsRequired();
+            });
+        });
     }
 }
