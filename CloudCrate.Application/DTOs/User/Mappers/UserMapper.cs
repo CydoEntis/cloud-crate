@@ -13,14 +13,4 @@ public static class UserMapper
             Email = user.Email,
             ProfilePictureUrl = user.ProfilePictureUrl
         };
-    
-    
-    public static Owner ToOwner(UserResponse user) =>
-        new Owner
-        {
-            UserId = user.Id,
-            DisplayName = user.DisplayName,
-            Email = user.Email,
-            ProfilePictureUrl = user.ProfilePictureUrl
-        };
 }
