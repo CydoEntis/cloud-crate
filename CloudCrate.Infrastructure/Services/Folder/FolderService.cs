@@ -516,10 +516,14 @@ public class FolderService : IFolderService
 
     private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
     {
-        if (!folderId.HasValue) return new List<FolderBreadcrumb>();
-
-        var allFolders = await _context.CrateFolders.Where(f => !f.IsDeleted).ToListAsync();
         var breadcrumbs = new List<FolderBreadcrumb>();
+
+        if (!folderId.HasValue) return breadcrumbs;
+
+        var allFolders = await _context.CrateFolders
+            .Where(f => !f.IsDeleted)
+            .ToListAsync();
+
         var currentId = folderId;
 
         while (currentId.HasValue)
@@ -529,8 +533,10 @@ public class FolderService : IFolderService
 
             breadcrumbs.Insert(0, new FolderBreadcrumb
             {
-                Id = folder.Id,
-                Name = folder.Name
+                Id = folder.Id.ToString(),
+                Name = folder.Name,
+                Color = folder.Color ?? "#EAAC00",
+                IsRoot = folder.IsRoot
             });
 
             currentId = folder.ParentFolderId;
