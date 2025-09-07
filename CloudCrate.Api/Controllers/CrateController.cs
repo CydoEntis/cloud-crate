@@ -36,14 +36,14 @@ public class CrateController : BaseController
         queryParameters.UserId = UserId!;
         var result = await _crateService.GetCratesAsync(queryParameters);
         return Response(
-            ApiResponse<PaginatedResult<CrateResponse>>.FromResult(result, "Crates retrieved successfully"));
+            ApiResponse<PaginatedResult<CrateListItemResponse>>.FromResult(result, "Crates retrieved successfully"));
     }
 
     [HttpPut("{crateId:guid}")]
     public async Task<IActionResult> UpdateCrate(Guid crateId, [FromBody] UpdateCrateRequest request)
     {
         var result = await _crateService.UpdateCrateAsync(crateId, UserId!, request.Name, request.Color);
-        return Response(ApiResponse<CrateResponse>.FromResult(result, "Crate updated successfully"));
+        return Response(ApiResponse<CrateListItemResponse>.FromResult(result, "Crate updated successfully"));
     }
 
     [HttpDelete("{crateId:guid}")]

@@ -28,6 +28,7 @@ using CloudCrate.Application.Services;
 using CloudCrate.Infrastructure.Services.Auth;
 using CloudCrate.Infrastructure.Services.Bulk;
 using CloudCrate.Infrastructure.Services.Crates;
+using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
 using CloudCrate.Infrastructure.Services.Storage;
 using CloudCrate.Infrastructure.Services.Transactions;

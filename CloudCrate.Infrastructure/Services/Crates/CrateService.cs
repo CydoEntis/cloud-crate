@@ -171,12 +171,14 @@ public class CrateService : ICrateService
         return Result<bool>.Success(true);
     }
 
-    public async Task<Result<PaginatedResult<CrateResponse>>> GetCratesAsync(CrateQueryParameters parameters)
+    public async Task<Result<PaginatedResult<CrateListItemResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
         if (string.IsNullOrEmpty(parameters.UserId))
         {
             _logger.LogError("Attempted to get crates with empty UserId");
-            return Result<PaginatedResult<CrateResponse>>.Failure(new UnauthorizedError("User must be logged in"));
+            return Result<PaginatedResult<CrateListItemResponse>>.Failure(
+                new UnauthorizedError("User must be logged in")
+            );
         }
 
         try
@@ -193,23 +195,41 @@ public class CrateService : ICrateService
                 _ => query
             };
 
-            query = query.ApplySearch(parameters.SearchTerm).ApplyOrdering(parameters);
+            query = query.ApplySearch(parameters.SearchTerm)
+                .ApplyOrdering(parameters);
 
             var pagedCrates = await query.PaginateAsync(parameters.Page, parameters.PageSize);
 
-            var crateResponses = pagedCrates.Items.Select(c => c.ToCrateResponse(parameters.UserId)).ToList();
+            var userIds = pagedCrates.Items
+                .SelectMany(c => c.Members.Select(m => m.UserId))
+                .Distinct()
+                .ToList();
 
-            return Result<PaginatedResult<CrateResponse>>.Success(
-                PaginatedResult<CrateResponse>.Create(crateResponses, pagedCrates.TotalCount, parameters.Page,
-                    parameters.PageSize)
+            var users = await _userService.GetUsersByIdsAsync(userIds);
+            var userLookup = users.ToDictionary(u => u.Id, u => u);
+
+            var crateResponses = pagedCrates.Items
+                .Select(c => c.ToCrateListItemResponse(parameters.UserId, userLookup))
+                .ToList();
+
+            return Result<PaginatedResult<CrateListItemResponse>>.Success(
+                PaginatedResult<CrateListItemResponse>.Create(
+                    crateResponses,
+                    pagedCrates.TotalCount,
+                    parameters.Page,
+                    parameters.PageSize
+                )
             );
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to retrieve crates for user {UserId}", parameters.UserId);
-            return Result<PaginatedResult<CrateResponse>>.Failure(new InternalError(ex.Message));
+            return Result<PaginatedResult<CrateListItemResponse>>.Failure(
+                new InternalError("Could not fetch crates")
+            );
         }
     }
+
 
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
@@ -391,22 +411,23 @@ public class CrateService : ICrateService
         return Result.Success();
     }
 
-    public async Task<Result<CrateResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
-        string? newColor)
+    public async Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
     {
         var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
         if (!canManageResult.IsSuccess || !canManageResult.Value)
         {
-            _logger.LogError("User {UserId} cannot update crate {CrateId}", userId, crateId);
-            return Result<CrateResponse>.Failure(canManageResult.Error ??
-                                                 new ForbiddenError("User cannot update this crate"));
+            return Result<CrateListItemResponse>.Failure(
+                canManageResult.Error ?? new ForbiddenError("User cannot update this crate")
+            );
         }
 
-        var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
+        var crate = await _context.Crates
+            .Include(c => c.Members) 
+            .FirstOrDefaultAsync(c => c.Id == crateId);
+
         if (crate == null)
         {
-            _logger.LogError("Crate {CrateId} not found for update by user {UserId}", crateId, userId);
-            return Result<CrateResponse>.Failure(new NotFoundError("Crate not found"));
+            return Result<CrateListItemResponse>.Failure(new NotFoundError("Crate not found"));
         }
 
         if (!string.IsNullOrWhiteSpace(newName))
@@ -417,8 +438,13 @@ public class CrateService : ICrateService
 
         await _context.SaveChangesAsync();
 
-        return Result<CrateResponse>.Success(crate.ToCrateResponse(userId));
+        var userIds = crate.Members.Select(m => m.UserId).Distinct().ToList();
+        var users = await _userService.GetUsersByIdsAsync(userIds);
+        var userLookup = users.ToDictionary(u => u.Id, u => u);
+
+        return Result<CrateListItemResponse>.Success(crate.ToCrateListItemResponse(userId, userLookup));
     }
+
 
     #endregion
 }
