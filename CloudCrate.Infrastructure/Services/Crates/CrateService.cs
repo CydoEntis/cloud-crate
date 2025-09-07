@@ -81,8 +81,10 @@ public class CrateService : ICrateService
         var canAllocate = await _userService.CanConsumeStorageAsync(request.UserId, requestedBytes);
         if (!canAllocate.IsSuccess)
         {
-            _logger.LogError("User {UserId} cannot allocate {RequestedBytes} bytes: {Error}", request.UserId,
-                requestedBytes, canAllocate.Error?.Message);
+            _logger.LogError(
+                "User {UserId} cannot allocate {RequestedBytes} bytes: {Error}",
+                request.UserId, requestedBytes, canAllocate.Error?.Message
+            );
             return Result<Guid>.Failure(canAllocate.Error ?? new InternalError("Storage allocation check failed"));
         }
 
@@ -93,38 +95,44 @@ public class CrateService : ICrateService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create crate for user {UserId} with name {CrateName}", request.UserId,
-                request.Name);
+            _logger.LogError(
+                ex,
+                "Failed to create crate for user {UserId} with name {CrateName}",
+                request.UserId, request.Name
+            );
             return Result<Guid>.Failure(new ValidationError($"Invalid crate creation parameters: {ex.Message}"));
         }
 
         var bucketResult = await _storageService.GetOrCreateBucketAsync(crate.GetCrateStorageName());
         if (!bucketResult.IsSuccess)
         {
-            _logger.LogError("Failed to get or create bucket for crate {CrateId}: {Error}", crate.Id,
-                bucketResult.Error?.Message);
+            _logger.LogError(
+                "Failed to get or create bucket for crate {CrateId}: {Error}",
+                crate.Id, bucketResult.Error?.Message
+            );
             return Result<Guid>.Failure(bucketResult.Error);
         }
 
-        var rootFolder = CrateFolder.CreateRoot("Root", crate.Id, null, null, request.UserId);
-
+        // Only save the crate — root folder is already part of the crate entity
         var transactionResult = await _transactionService.ExecuteAsync(async () =>
         {
             _context.Crates.Add(crate);
-            _context.CrateFolders.Add(rootFolder);
             await _context.SaveChangesAsync();
         });
 
         if (!transactionResult.IsSuccess)
         {
-            _logger.LogError("Failed to save crate {CrateId} in transaction: {Error}", crate.Id,
-                transactionResult.Error?.Message);
+            _logger.LogError(
+                "Failed to save crate {CrateId} in transaction: {Error}",
+                crate.Id, transactionResult.Error?.Message
+            );
             return Result<Guid>.Failure(transactionResult.Error ??
                                         new InternalError("Failed to create crate in database"));
         }
 
         return Result<Guid>.Success(crate.Id);
     }
+
 
     public async Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, int requestedAllocationGB)
     {
@@ -236,8 +244,10 @@ public class CrateService : ICrateService
         var canViewResult = await _crateRoleService.CanView(crateId, userId);
         if (!canViewResult.IsSuccess)
         {
-            _logger.LogError("User {UserId} cannot view crate {CrateId}: {Error}", userId, crateId,
-                canViewResult.Error?.Message);
+            _logger.LogError(
+                "User {UserId} cannot view crate {CrateId}: {Error}",
+                userId, crateId, canViewResult.Error?.Message
+            );
             return Result<CrateDetailsResponse>.Failure(canViewResult.Error);
         }
 
@@ -245,6 +255,7 @@ public class CrateService : ICrateService
             .AsNoTracking()
             .Include(c => c.Members)
             .Include(c => c.Files)
+            .Include(c => c.Folders)
             .FirstOrDefaultAsync(c => c.Id == crateId);
 
         if (crate == null)
@@ -260,6 +271,13 @@ public class CrateService : ICrateService
             return Result<CrateDetailsResponse>.Failure(new UnauthorizedError("User is not a member of this crate"));
         }
 
+        var rootFolder = crate.Folders.FirstOrDefault(f => f.ParentFolderId == null);
+        if (rootFolder == null)
+        {
+            _logger.LogError("Root folder not found for crate {CrateId}", crateId);
+            return Result<CrateDetailsResponse>.Failure(new InternalError("Root folder missing"));
+        }
+
         var fileBreakdown = _fileService.GetFilesByMimeTypeInMemory(crate.Files);
 
         return Result<CrateDetailsResponse>.Success(new CrateDetailsResponse
@@ -269,10 +287,12 @@ public class CrateService : ICrateService
             Color = crate.Color,
             Role = member.Role,
             TotalUsedStorage = crate.UsedStorage.Bytes,
-            StorageLimit = crate.AllocatedStorage.ToGigabytes(),
-            BreakdownByType = fileBreakdown
+            StorageLimit = crate.AllocatedStorage.Bytes,
+            BreakdownByType = fileBreakdown,
+            RootFolderId = rootFolder.Id
         });
     }
+
 
     public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(Guid crateId, CrateMemberRequest request)
     {
@@ -411,7 +431,8 @@ public class CrateService : ICrateService
         return Result.Success();
     }
 
-    public async Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor)
+    public async Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
+        string? newColor)
     {
         var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
         if (!canManageResult.IsSuccess || !canManageResult.Value)
@@ -422,7 +443,7 @@ public class CrateService : ICrateService
         }
 
         var crate = await _context.Crates
-            .Include(c => c.Members) 
+            .Include(c => c.Members)
             .FirstOrDefaultAsync(c => c.Id == crateId);
 
         if (crate == null)
@@ -444,7 +465,6 @@ public class CrateService : ICrateService
 
         return Result<CrateListItemResponse>.Success(crate.ToCrateListItemResponse(userId, userLookup));
     }
-
 
     #endregion
 }

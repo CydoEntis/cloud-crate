@@ -25,6 +25,7 @@ public static class CrateMapper
                 {
                     UserId = owner.UserId,
                     DisplayName = users[owner.UserId].DisplayName,
+                    Email = users[owner.UserId].Email,
                     ProfilePicture = users[owner.UserId].ProfilePictureUrl,
                     JoinedAt = owner.JoinedAt,
                     Role = CrateRole.Owner

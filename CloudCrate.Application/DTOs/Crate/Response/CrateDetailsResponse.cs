@@ -6,11 +6,13 @@ namespace CloudCrate.Application.DTOs.Crate.Response;
 public class CrateDetailsResponse
 {
     public Guid Id { get; set; }
-    public string Name { get; set; } = String.Empty;
+    public string Name { get; set; } = string.Empty;
     public CrateRole Role { get; set; }
-    public string Color { get; set; } = String.Empty;
-    public double TotalUsedStorage { get; set; }
-    public double StorageLimit { get; set; }
+    public string Color { get; set; } = string.Empty;
+    public long TotalUsedStorage { get; set; } 
+    public long StorageLimit { get; set; } 
     public List<FileTypeBreakdownDto> BreakdownByType { get; set; } = [];
-    public double RemainingStorage => StorageLimit - TotalUsedStorage;
+    public long RemainingStorage => StorageLimit - TotalUsedStorage;
+
+    public Guid RootFolderId { get; set; } 
 }

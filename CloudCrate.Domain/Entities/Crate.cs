@@ -52,8 +52,12 @@ public class Crate
 
         crate._members.Add(CrateMember.Create(crate.Id, userId, CrateRole.Owner));
 
+        var rootFolder = CrateFolder.CreateRoot("Root", crate.Id, null, null, userId);
+        crate._folders.Add(rootFolder);
+
         return crate;
     }
+
 
     public void Rename(string newName)
     {
