@@ -53,7 +53,7 @@ public class FileValidatorService : IFileValidatorService
 
         var user = userResult.Value;
 
-        if (user.UsedStorageBytes + request.SizeInBytes > user.MaxStorageBytes)
+        if (user.UsedAccountStorageBytes + request.SizeInBytes > user.AllocatedStorageLimitBytes)
             return Result.Failure(new StorageQuotaExceededError());
 
         return Result.Success();

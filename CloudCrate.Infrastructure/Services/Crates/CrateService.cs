@@ -357,6 +357,19 @@ public class CrateService : ICrateService
             return Result.Failure(new NotFoundError("Crate not found"));
         }
 
+        var ownerMembers = crate.Members.Where(m => m.Role == CrateRole.Owner).ToList();
+        foreach (var owner in ownerMembers)
+        {
+            var releaseResult =
+                await _userService.DecrementUsedStorageAsync(owner.UserId, crate.AllocatedStorage.Bytes);
+            if (!releaseResult.IsSuccess)
+            {
+                _logger.LogError("Failed to release storage for user {UserId}: {Error}", owner.UserId,
+                    releaseResult.Error?.Message);
+                return Result.Failure(releaseResult.Error);
+            }
+        }
+
         var transactionResult = await _transactionService.ExecuteAsync(async () =>
         {
             foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
@@ -395,6 +408,7 @@ public class CrateService : ICrateService
 
         return Result.Success();
     }
+
 
     public async Task<Result> LeaveCrateAsync(Guid crateId, string userId)
     {

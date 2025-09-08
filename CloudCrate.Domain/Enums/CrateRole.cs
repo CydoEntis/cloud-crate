@@ -1,6 +1,5 @@
 ﻿namespace CloudCrate.Domain.Enums;
 
-using System.Text.Json.Serialization;
 
 public enum CrateRole
 {

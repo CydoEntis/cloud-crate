@@ -13,11 +13,11 @@ public class ApplicationUser : IdentityUser
 
     public SubscriptionPlan Plan { get; private set; } = SubscriptionPlan.Free;
 
-    public long MaxStorageBytes => PlanStorageLimits.GetLimit(Plan);
+    public long AllocatedStorageLimitBytes => PlanStorageLimits.GetLimit(Plan);
 
-    public long UsedStorageBytes { get; private set; } = 0;
+    public long UsedAccountStorageBytes { get; private set; } = 0;
 
-    public long RemainingStorageBytes => MaxStorageBytes - UsedStorageBytes;
+    public long RemainingAccountStorageBytes => AllocatedStorageLimitBytes - UsedAccountStorageBytes;
 
     public DateTime CreatedAt { get; private set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; private set; } = DateTime.UtcNow;
@@ -42,7 +42,7 @@ public class ApplicationUser : IdentityUser
             DisplayName = displayName,
             ProfilePictureUrl = profilePictureUrl,
             Plan = plan,
-            UsedStorageBytes = 0,
+            UsedAccountStorageBytes = 0,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -52,7 +52,7 @@ public class ApplicationUser : IdentityUser
 
     public void ChangePlan(SubscriptionPlan newPlan)
     {
-        if (UsedStorageBytes > PlanStorageLimits.GetLimit(newPlan))
+        if (UsedAccountStorageBytes > PlanStorageLimits.GetLimit(newPlan))
             throw new InvalidOperationException("Cannot downgrade plan below current used storage.");
 
         Plan = newPlan;
@@ -64,10 +64,10 @@ public class ApplicationUser : IdentityUser
         if (bytes < 0)
             throw new ArgumentOutOfRangeException(nameof(bytes));
 
-        if (UsedStorageBytes + bytes > MaxStorageBytes)
+        if (UsedAccountStorageBytes + bytes > AllocatedStorageLimitBytes)
             throw new InvalidOperationException("Insufficient storage available.");
 
-        UsedStorageBytes += bytes;
+        UsedAccountStorageBytes += bytes;
         UpdatedAt = DateTime.UtcNow;
     }
 
@@ -76,7 +76,7 @@ public class ApplicationUser : IdentityUser
         if (bytes < 0)
             throw new ArgumentOutOfRangeException(nameof(bytes));
 
-        UsedStorageBytes = Math.Max(0, UsedStorageBytes - bytes);
+        UsedAccountStorageBytes = Math.Max(0, UsedAccountStorageBytes - bytes);
         UpdatedAt = DateTime.UtcNow;
     }
 }

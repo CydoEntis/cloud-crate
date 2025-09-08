@@ -13,10 +13,26 @@ public static class UserMapper
             Email = user.Email,
             DisplayName = user.DisplayName,
             ProfilePictureUrl = user.ProfilePictureUrl,
-            MaxStorageBytes = user.MaxStorageBytes,   
-            UsedStorageBytes = user.UsedStorageBytes,  
+            AllocatedStorageLimitBytes = user.AllocatedStorageLimitBytes,   
+            UsedAccountStorageBytes = user.UsedAccountStorageBytes,  
             CreatedAt = user.CreatedAt,
-            UpdadatedAt = user.UpdatedAt
+            UpdatedAt = user.UpdatedAt
+        };
+    }
+    
+    public static UserResponse ToUserResponse(this ApplicationUser user, long allocatedSoFar)
+    {
+        return new UserResponse
+        {
+            Id = user.Id,
+            Email = user.Email,
+            DisplayName = user.DisplayName,
+            ProfilePictureUrl = user.ProfilePictureUrl,
+            AllocatedStorageLimitBytes = user.AllocatedStorageLimitBytes,
+            UsedAccountStorageBytes = user.UsedAccountStorageBytes,
+            RemainingAllocatableBytes = user.AllocatedStorageLimitBytes - allocatedSoFar, // ✅ new field
+            CreatedAt = user.CreatedAt,
+            UpdatedAt = user.UpdatedAt
         };
     }
 }

@@ -7,8 +7,11 @@ public class UserResponse
     public string DisplayName { get; set; } = string.Empty!;
     public string? ProfilePictureUrl { get; set; }
 
-    public long MaxStorageBytes { get; set; }
-    public long UsedStorageBytes { get; set; }
+    public long AllocatedStorageLimitBytes { get; set; }
+    public long UsedAccountStorageBytes { get; set; }
+
+    public long RemainingAllocatableBytes { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdadatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }

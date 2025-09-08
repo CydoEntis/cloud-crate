@@ -5,6 +5,7 @@ using CloudCrate.Application.Models;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
+using CloudCrate.Infrastructure.Services.User.Mappers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using UserMapper = CloudCrate.Infrastructure.Services.User.Mappers.UserMapper;
@@ -28,9 +29,16 @@ public class UserService : IUserService
         if (user == null)
             return Result<UserResponse>.Failure(new NotFoundError("User not found"));
 
-        var response = UserMapper.ToUserResponse(user); // maps storage info
+        var allocatedSoFar = await _context.CrateMembers
+            .Where(cm => cm.UserId == userId && cm.Role == CrateRole.Owner)
+            .Select(cm => cm.Crate.AllocatedStorage.Bytes)
+            .SumAsync();
+
+        var response = user.ToUserResponse(allocatedSoFar);
+
         return Result<UserResponse>.Success(response);
     }
+
 
     public async Task<Result> IncrementUsedStorageAsync(string userId, long bytesToAdd)
     {
@@ -40,7 +48,7 @@ public class UserService : IUserService
 
         try
         {
-            user.ConsumeStorage(bytesToAdd); 
+            user.ConsumeStorage(bytesToAdd);
             var result = await _userManager.UpdateAsync(user);
             if (!result.Succeeded)
                 return Result.Failure(new InternalError("Failed to update user storage"));
@@ -72,7 +80,7 @@ public class UserService : IUserService
         var userResult = await GetUserByIdAsync(userId);
         if (userResult.IsFailure) return Result.Failure(userResult.Error!);
 
-        if (userResult.Value.UsedStorageBytes + bytesToAdd > userResult.Value.MaxStorageBytes)
+        if (userResult.Value.UsedAccountStorageBytes + bytesToAdd > userResult.Value.AllocatedStorageLimitBytes)
             return Result.Failure(new StorageError("Insufficient storage available"));
 
         return Result.Success();
@@ -88,10 +96,10 @@ public class UserService : IUserService
                 Email = u.Email ?? "",
                 DisplayName = u.DisplayName ?? "Unknown",
                 ProfilePictureUrl = u.ProfilePictureUrl,
-                UsedStorageBytes = u.UsedStorageBytes,
-                MaxStorageBytes = u.MaxStorageBytes,
+                UsedAccountStorageBytes = u.UsedAccountStorageBytes,
+                AllocatedStorageLimitBytes = u.AllocatedStorageLimitBytes,
                 CreatedAt = u.CreatedAt,
-                UpdadatedAt = u.UpdatedAt
+                UpdatedAt = u.UpdatedAt
             })
             .ToListAsync();
     }
@@ -104,7 +112,7 @@ public class UserService : IUserService
 
         try
         {
-            user.ChangePlan(newPlan); 
+            user.ChangePlan(newPlan);
         }
         catch (InvalidOperationException ex)
         {

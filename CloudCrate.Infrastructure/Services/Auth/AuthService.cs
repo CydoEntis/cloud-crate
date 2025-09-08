@@ -5,6 +5,7 @@ using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Models;
 using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
+using Stripe;
 
 namespace CloudCrate.Infrastructure.Services.Auth;
 

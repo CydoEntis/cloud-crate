@@ -52,9 +52,32 @@ public class FolderService : IFolderService
             ? await GetFolderItemsAsync(parameters.CrateId, parameters.FolderId, searchTerm)
             : await GetFolderItemsAsync(parameters.CrateId, parameters.FolderId);
 
+        if (parameters.FolderId.HasValue)
+        {
+            var currentFolder = await _context.CrateFolders
+                .Include(f => f.ParentFolder)
+                .FirstOrDefaultAsync(f => f.Id == parameters.FolderId.Value && !f.IsDeleted);
+
+            if (currentFolder?.ParentFolder != null)
+            {
+                var parentFolder = new CrateFolderResponse
+                {
+                    Id = currentFolder.ParentFolder.Id,
+                    Name = currentFolder.ParentFolder.Name,
+                    Color = currentFolder.ParentFolder.Color,
+                    ParentFolderId = currentFolder.ParentFolder.ParentFolderId,
+                    CreatedAt = currentFolder.ParentFolder.CreatedAt,
+                    UpdatedAt = currentFolder.ParentFolder.UpdatedAt
+                };
+
+                folders.Insert(0, parentFolder);
+            }
+        }
+
         var files = await _fileService.FetchFilesAsync(parameters);
 
         string folderName = await GetFolderNameAsync(parameters.FolderId);
+
         var breadcrumbs = await GetFolderBreadcrumbs(parameters.FolderId);
 
         var response = new FolderContentsResponse
