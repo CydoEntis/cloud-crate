@@ -49,31 +49,6 @@ public class CrateService : ICrateService
         _logger = logger;
     }
 
-    #region Helpers
-
-    private async Task CollectFolderDeletionsAsync(CrateFolder folder, Guid crateId, string userId,
-        List<string> keysToDelete)
-    {
-        foreach (var file in folder.Files)
-        {
-            var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
-            keysToDelete.Add(key);
-            _context.CrateFiles.Remove(file);
-        }
-
-        foreach (var subfolder in folder.Subfolders)
-            await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
-    }
-
-    private IQueryable<Crate> GetOwnedCratesForUser(IQueryable<Crate> query, string userId) =>
-        query.Where(c => c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner));
-
-    private IQueryable<Crate> GetJoinedCratesForUser(IQueryable<Crate> query, string userId) =>
-        query.Where(c => c.Members.Any(m => m.UserId == userId && m.Role != CrateRole.Owner));
-
-    #endregion
-
-    #region Public Methods
 
     public async Task<Result<Guid>> CreateCrateAsync(CreateCrateRequest request)
     {
@@ -113,7 +88,6 @@ public class CrateService : ICrateService
             return Result<Guid>.Failure(bucketResult.Error);
         }
 
-        // Only save the crate — root folder is already part of the crate entity
         var transactionResult = await _transactionService.ExecuteAsync(async () =>
         {
             _context.Crates.Add(crate);
@@ -480,5 +454,115 @@ public class CrateService : ICrateService
         return Result<CrateListItemResponse>.Success(crate.ToCrateListItemResponse(userId, userLookup));
     }
 
-    #endregion
+    public async Task<Result<int>> BulkDeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
+    {
+        var cratesToDelete = await _context.Crates
+            .Include(c => c.Members)
+            .Include(c => c.Files)
+            .Include(c => c.Folders)
+            .Where(c => crateIds.Contains(c.Id) && c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner))
+            .ToListAsync();
+
+        if (!cratesToDelete.Any())
+            return Result<int>.Success(0);
+
+        var deletedCount = 0;
+
+        var transactionResult = await _transactionService.ExecuteAsync(async () =>
+        {
+            foreach (var crate in cratesToDelete)
+            {
+                var ownerMembers = crate.Members.Where(m => m.Role == CrateRole.Owner).ToList();
+                foreach (var owner in ownerMembers)
+                {
+                    var releaseResult =
+                        await _userService.DecrementUsedStorageAsync(owner.UserId, crate.AllocatedStorage.Bytes);
+                    if (!releaseResult.IsSuccess)
+                        throw new Exception(
+                            $"Failed to release storage for user {owner.UserId}: {releaseResult.Error?.Message}");
+                }
+
+                foreach (var folder in crate.Folders.Where(f => f.ParentFolderId == null))
+                {
+                    await CollectFolderDeletionsAsync(folder, crate.Id, userId, new List<string>());
+                }
+
+                _context.CrateFiles.RemoveRange(crate.Files);
+                _context.CrateMembers.RemoveRange(crate.Members);
+                _context.CrateFolders.RemoveRange(crate.Folders);
+                _context.Crates.Remove(crate);
+
+                deletedCount++;
+            }
+
+            await _context.SaveChangesAsync();
+        });
+
+        if (!transactionResult.IsSuccess)
+            return Result<int>.Failure(transactionResult.Error);
+
+        foreach (var crate in cratesToDelete)
+        {
+            var deleteFilesResult = await _storageService.DeleteAllFilesInBucketAsync(crate.Id);
+            if (!deleteFilesResult.IsSuccess)
+                return Result<int>.Failure(deleteFilesResult.Error);
+
+            var bucketDeleteResult = await _storageService.DeleteBucketAsync(crate.Id);
+            if (!bucketDeleteResult.IsSuccess)
+                return Result<int>.Failure(bucketDeleteResult.Error);
+        }
+
+        return Result<int>.Success(deletedCount);
+    }
+
+    public async Task<Result<int>> BulkLeaveCratesAsync(IEnumerable<Guid> crateIds, string userId)
+    {
+        var cratesToLeave = await _context.Crates
+            .Include(c => c.Members)
+            .Where(c => crateIds.Contains(c.Id))
+            .ToListAsync();
+
+        var leftCount = 0;
+
+        var transactionResult = await _transactionService.ExecuteAsync(async () =>
+        {
+            foreach (var crate in cratesToLeave)
+            {
+                var member = crate.Members.FirstOrDefault(m => m.UserId == userId);
+                if (member == null || member.Role == CrateRole.Owner)
+                    continue; // Skip if not a member or owner
+
+                _context.CrateMembers.Remove(member);
+                leftCount++;
+            }
+
+            await _context.SaveChangesAsync();
+        });
+
+        if (!transactionResult.IsSuccess)
+            return Result<int>.Failure(transactionResult.Error);
+
+        return Result<int>.Success(leftCount);
+    }
+
+
+    private async Task CollectFolderDeletionsAsync(CrateFolder folder, Guid crateId, string userId,
+        List<string> keysToDelete)
+    {
+        foreach (var file in folder.Files)
+        {
+            var key = userId.GetObjectKey(crateId, folder.Id, file.Name);
+            keysToDelete.Add(key);
+            _context.CrateFiles.Remove(file);
+        }
+
+        foreach (var subfolder in folder.Subfolders)
+            await CollectFolderDeletionsAsync(subfolder, crateId, userId, keysToDelete);
+    }
+
+    private IQueryable<Crate> GetOwnedCratesForUser(IQueryable<Crate> query, string userId) =>
+        query.Where(c => c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner));
+
+    private IQueryable<Crate> GetJoinedCratesForUser(IQueryable<Crate> query, string userId) =>
+        query.Where(c => c.Members.Any(m => m.UserId == userId && m.Role != CrateRole.Owner));
 }

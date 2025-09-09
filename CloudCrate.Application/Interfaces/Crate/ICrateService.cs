@@ -20,6 +20,7 @@ public interface ICrateService
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<Result> LeaveCrateAsync(Guid crateId, string userId);
     Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, int requestedAllocationGB);
-
+    Task<Result<int>> BulkDeleteCratesAsync(IEnumerable<Guid> crateIds, string userId);
+    Task<Result<int>> BulkLeaveCratesAsync(IEnumerable<Guid> crateIds, string userId);
 
 }

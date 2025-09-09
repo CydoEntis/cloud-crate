@@ -74,4 +74,25 @@ public class CrateController : BaseController
         var result = await _crateService.LeaveCrateAsync(crateId, UserId!);
         return Response(ApiResponse.FromResult(result, "You have left the crate successfully", 204));
     }
+    
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDeleteCrates([FromBody] BulkCrateActionRequest request)
+    {
+        if (request.CrateIds == null || !request.CrateIds.Any())
+            return BadRequest("No crate IDs provided.");
+
+        var result = await _crateService.BulkDeleteCratesAsync(request.CrateIds, UserId!);
+        return Response(ApiResponse<int>.FromResult(result, $"{result.Value} crates deleted successfully", 200));
+    }
+
+
+    [HttpPost("bulk-leave")]
+    public async Task<IActionResult> BulkLeaveCrates([FromBody] BulkCrateActionRequest request)
+    {
+        if (request.CrateIds == null || !request.CrateIds.Any())
+            return BadRequest("No crate IDs provided.");
+
+        var result = await _crateService.BulkLeaveCratesAsync(request.CrateIds, UserId!);
+        return Response(ApiResponse<int>.FromResult(result, $"Left {result.Value} crates successfully", 200));
+    }
 }
