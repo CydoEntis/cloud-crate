@@ -4,5 +4,5 @@ public enum OrderBy
 {
     Name,
     CreatedAt,
-    SizeInBytes
+    Size
 }

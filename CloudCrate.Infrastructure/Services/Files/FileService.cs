@@ -725,7 +725,7 @@ public class FileService : IFileService
         return orderBy switch
         {
             OrderBy.Name => ascending ? query.OrderBy(f => f.Name) : query.OrderByDescending(f => f.Name),
-            OrderBy.SizeInBytes => ascending
+            OrderBy.Size => ascending
                 ? query.OrderBy(f => f.SizeInBytes)
                 : query.OrderByDescending(f => f.SizeInBytes),
             OrderBy.CreatedAt => ascending
