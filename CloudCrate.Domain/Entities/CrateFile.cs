@@ -14,13 +14,17 @@ public class CrateFile
     public Guid? CrateFolderId { get; set; }
     public CrateFolder? CrateFolder { get; set; }
 
-    public string UploaderId { get; set; } = string.Empty; 
+    public string UploaderId { get; set; } = string.Empty;
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     public bool IsDeleted { get; set; } = false;
     public DateTime? DeletedAt { get; set; }
+
+    public string? DeletedByUserId { get; set; }
+    public string? RestoredByUserId { get; set; }
+    public DateTime? RestoredAt { get; set; }
 
     public static CrateFile Create(
         string name,

@@ -56,6 +56,13 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>, IAppDbContext
         });
         
         
+        
+        builder.Entity<CrateFile>()
+            .HasQueryFilter(f => !f.IsDeleted);
+
+        builder.Entity<CrateFolder>()
+            .HasQueryFilter(f => !f.IsDeleted);
+        
         builder.Entity<Crate>(builder =>
         {
             builder.OwnsOne(c => c.AllocatedStorage, sa =>

@@ -21,6 +21,11 @@ public class CrateFolder
 
     public string UserId { get; set; }
     public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
+    
+    public string? DeletedByUserId { get; set; }
+    public string? RestoredByUserId { get; set; }
+    public DateTime? RestoredAt { get; set; }
 
     public static CrateFolder CreateRoot(
         string name,
