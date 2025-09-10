@@ -46,12 +46,6 @@ public class CrateController : BaseController
         return Response(ApiResponse<CrateListItemResponse>.FromResult(result, "Crate updated successfully"));
     }
 
-    [HttpDelete("{crateId:guid}")]
-    public async Task<IActionResult> DeleteCrate(Guid crateId)
-    {
-        var result = await _crateService.DeleteCrateAsync(crateId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Crate deleted successfully", 204));
-    }
 
     [HttpGet("{crateId:guid}")]
     public async Task<IActionResult> GetCrate(Guid crateId)
@@ -68,21 +62,28 @@ public class CrateController : BaseController
             ApiResponse<List<CrateMemberResponse>>.FromResult(result, "Crate members retrieved successfully"));
     }
 
-    [HttpDelete("{crateId:guid}/leave")]
-    public async Task<IActionResult> LeaveCrate(Guid crateId)
+    [HttpDelete("{crateId:guid}")]
+    public async Task<IActionResult> DeleteCrate(Guid crateId)
     {
-        var result = await _crateService.LeaveCrateAsync(crateId, UserId!);
-        return Response(ApiResponse.FromResult(result, "You have left the crate successfully", 204));
+        var result = await _crateService.DeleteCrateAsync(crateId);
+        return Response(ApiResponse.FromResult(result, "Crate deleted successfully", 204));
     }
-    
+
     [HttpPost("bulk-delete")]
     public async Task<IActionResult> BulkDeleteCrates([FromBody] BulkCrateActionRequest request)
     {
         if (request.CrateIds == null || !request.CrateIds.Any())
             return BadRequest("No crate IDs provided.");
 
-        var result = await _crateService.BulkDeleteCratesAsync(request.CrateIds, UserId!);
-        return Response(ApiResponse<int>.FromResult(result, $"{result.Value} crates deleted successfully", 200));
+        var result = await _crateService.DeleteCratesAsync(request.CrateIds);
+        return Response(ApiResponse.FromResult(result, $"{request.CrateIds.Count} crates deleted successfully", 200));
+    }
+
+    [HttpDelete("{crateId:guid}/leave")]
+    public async Task<IActionResult> LeaveCrate(Guid crateId)
+    {
+        var result = await _crateService.LeaveCrateAsync(crateId, UserId!);
+        return Response(ApiResponse.FromResult(result, "You have left the crate successfully", 204));
     }
 
 

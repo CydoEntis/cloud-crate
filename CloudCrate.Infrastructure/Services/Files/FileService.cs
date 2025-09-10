@@ -509,12 +509,37 @@ public class FileService : IFileService
     {
         foreach (var fileId in fileIds)
         {
-            var result = await DeleteFileAsync(fileId, userId);
-            if (result.IsFailure) return result;
+            try
+            {
+                var file = await _context.CrateFiles.FirstOrDefaultAsync(f => f.Id == fileId);
+                if (file == null) continue; 
+
+                var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
+                if (permission.IsFailure) return Result.Failure(permission.Error!);
+
+                var storageResult = await _storageService.DeleteFileAsync(userId, file.CrateId, file.CrateFolderId, file.Name);
+                if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
+
+                var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
+                if (crate != null) crate.ReleaseStorage(StorageSize.FromBytes(file.SizeInBytes));
+
+                var userStorageResult = await _userService.DecrementUsedStorageAsync(userId, file.SizeInBytes);
+                if (userStorageResult.IsFailure) return Result.Failure(userStorageResult.Error!);
+
+                _context.CrateFiles.Remove(file);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception in PermanentlyDeleteFilesAsync for FileId {FileId}, UserId {UserId}", fileId, userId);
+                return Result.Failure(new InternalError(ex.Message));
+            }
         }
 
+        await _context.SaveChangesAsync();
         return Result.Success();
     }
+
+    
 
     public async Task<Result> DeleteFilesInFolderRecursivelyAsync(Guid folderId, string userId)
     {

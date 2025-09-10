@@ -10,8 +10,10 @@ using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using CloudCrate.Application.DTOs;
 using CloudCrate.Application.Errors;
+using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
+using CloudCrate.Domain.ValueObjects;
 
 namespace CloudCrate.Infrastructure.Services.Folder;
 
@@ -21,17 +23,19 @@ public class FolderService : IFolderService
     private readonly ICrateRoleService _crateRoleService;
     private readonly IUserService _userService;
     private readonly IFileService _fileService;
+    private readonly IStorageService _storageService;
 
     public FolderService(
         IAppDbContext context,
         ICrateRoleService crateRoleService,
         IUserService userService,
-        IFileService fileService)
+        IFileService fileService, IStorageService storageService)
     {
         _context = context;
         _crateRoleService = crateRoleService;
         _userService = userService;
         _fileService = fileService;
+        _storageService = storageService;
     }
 
     #region Get Folders and Contents
@@ -183,35 +187,76 @@ public class FolderService : IFolderService
 
     public async Task<Result> PermanentlyDeleteFolderAsync(Guid folderId, string userId)
     {
-        var folder = await _context.CrateFolders
-            .Include(f => f.Subfolders)
-            .FirstOrDefaultAsync(f => f.Id == folderId);
+        using var transaction = await _context.Database.BeginTransactionAsync();
 
-        if (folder == null) return Result.Failure(new NotFoundError("Folder not found"));
+        var rootFolder = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == folderId);
+        if (rootFolder == null)
+            return Result.Failure(new NotFoundError("Folder not found"));
 
-        var permission = await _crateRoleService.CanManageCrate(folder.CrateId, userId);
-        if (!permission.IsSuccess) return Result.Failure(permission.Error!);
+        var permission = await _crateRoleService.CanManageCrate(rootFolder.CrateId, userId);
+        if (!permission.IsSuccess)
+            return Result.Failure(permission.Error!);
 
-        var fileIds = (await _fileService.FetchFilesInFolderRecursivelyAsync(folderId))
-            .Select(f => f.Id).ToList();
+        // 1. Get all descendant folders
+        var allFolders = await _context.CrateFolders
+            .Where(f => f.CrateId == rootFolder.CrateId)
+            .ToListAsync();
 
-        if (fileIds.Any())
+        var folderIdsToDelete = GetDescendantFolderIds(allFolders, folderId);
+        folderIdsToDelete.Add(folderId);
+
+        // 2. Get ALL files in these folders
+        var allFiles = await _context.CrateFiles
+            .Where(f => f.CrateFolderId != null && folderIdsToDelete.Contains(f.CrateFolderId.Value))
+            .ToListAsync();
+
+        // 3. Delete files from storage first
+        foreach (var file in allFiles)
         {
-            var fileResult = await _fileService.PermanentlyDeleteFilesAsync(fileIds, userId);
-            if (!fileResult.IsSuccess) return Result.Failure(fileResult.Error!);
+            var storageResult =
+                await _storageService.DeleteFileAsync(userId, file.CrateId, file.CrateFolderId, file.Name);
+            if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
+
+            var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
+            crate?.ReleaseStorage(StorageSize.FromBytes(file.SizeInBytes));
+
+            var userStorageResult = await _userService.DecrementUsedStorageAsync(file.UploaderId, file.SizeInBytes);
+            if (userStorageResult.IsFailure) return Result.Failure(userStorageResult.Error!);
         }
 
-        foreach (var subfolder in folder.Subfolders)
-        {
-            var subResult = await PermanentlyDeleteFolderAsync(subfolder.Id, userId);
-            if (!subResult.IsSuccess) return Result.Failure(subResult.Error!);
-        }
+        // 4. Remove files from EF
+        _context.CrateFiles.RemoveRange(allFiles);
 
-        _context.CrateFolders.Remove(folder);
+        // 5. Remove folders from EF in **bottom-up order**
+        var foldersToDelete = allFolders
+            .Where(f => folderIdsToDelete.Contains(f.Id))
+            .OrderByDescending(f => GetFolderDepth(f, allFolders)) // leaf first
+            .ToList();
+
+        _context.CrateFolders.RemoveRange(foldersToDelete);
+
+        // 6. Commit all changes
         await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
 
         return Result.Success();
     }
+
+// Helper to calculate depth of a folder for bottom-up ordering
+    private int GetFolderDepth(CrateFolder folder, List<CrateFolder> allFolders)
+    {
+        int depth = 0;
+        var current = folder;
+        while (current.ParentFolderId.HasValue)
+        {
+            depth++;
+            current = allFolders.FirstOrDefault(f => f.Id == current.ParentFolderId.Value);
+            if (current == null) break;
+        }
+
+        return depth;
+    }
+
 
     public async Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId)
     {
