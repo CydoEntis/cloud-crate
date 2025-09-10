@@ -56,14 +56,16 @@ public class CrateService : ICrateService
 
     public async Task<Result<Guid>> CreateCrateAsync(CreateCrateRequest request)
     {
-        var requestedBytes = StorageSize.FromGigabytes(request.AllocatedStorageGb).Bytes;
-        var canAllocate = await _userService.CanConsumeStorageAsync(request.UserId, requestedBytes);
-
-        if (!canAllocate.IsSuccess)
+        if (request.UserId != null)
         {
-            _logger.LogError("User {UserId} cannot allocate {RequestedBytes} bytes: {Error}",
-                request.UserId, requestedBytes, canAllocate.Error?.Message);
-            return Result<Guid>.Failure(canAllocate.Error ?? new InternalError("Storage allocation check failed"));
+            var requestedBytes = StorageSize.FromGigabytes(request.AllocatedStorageGb).Bytes;
+            var canAllocate = await _userService.CanConsumeStorageAsync(request.UserId, requestedBytes);
+            if (!canAllocate.IsSuccess)
+            {
+                _logger.LogError("User {UserId} cannot allocate {RequestedBytes} bytes: {Error}",
+                    request.UserId, requestedBytes, canAllocate.Error?.Message);
+                return Result<Guid>.Failure(canAllocate.Error ?? new InternalError("Storage allocation check failed"));
+            }
         }
 
         Crate crate;
@@ -73,20 +75,14 @@ public class CrateService : ICrateService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create crate for user {UserId} with name {CrateName}",
-                request.UserId, request.Name);
+            _logger.LogError(ex, "Failed to create crate with name {CrateName}", request.Name);
             return Result<Guid>.Failure(new ValidationError($"Invalid crate creation parameters: {ex.Message}"));
         }
 
-        var bucketResult = await _storageService.GetOrCreateBucketAsync(crate.GetCrateStorageName());
+        var bucketResult = await _storageService.EnsureBucketExistsAsync();
         if (!bucketResult.IsSuccess)
         {
-            _logger.LogError("Failed to get or create bucket for crate {CrateId}: {Error}",
-                crate.Id, bucketResult.Error?.Message);
-
-            // Rollback crate creation
-            await DeleteCratesAsync(new[] { crate.Id });
-
+            _logger.LogError("Failed to ensure main bucket exists: {Error}", bucketResult.Error?.Message);
             return Result<Guid>.Failure(bucketResult.Error);
         }
 
@@ -100,15 +96,14 @@ public class CrateService : ICrateService
         {
             _logger.LogError("Failed to save crate {CrateId} in transaction: {Error}",
                 crate.Id, transactionResult.Error?.Message);
-
-            await DeleteCratesAsync(new[] { crate.Id });
-
+            await _storageService.DeleteAllFilesForCrateAsync(crate.Id);
             return Result<Guid>.Failure(transactionResult.Error ??
                                         new InternalError("Failed to create crate in database"));
         }
 
         return Result<Guid>.Success(crate.Id);
     }
+
 
     public async Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, int requestedAllocationGB)
     {

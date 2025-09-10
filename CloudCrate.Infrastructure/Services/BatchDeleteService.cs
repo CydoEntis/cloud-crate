@@ -15,12 +15,16 @@ public class BatchDeleteService : IBatchDeleteService
     private readonly ILogger<BatchDeleteService> _logger;
     private const int BatchSize = 500;
 
-    public BatchDeleteService(IAppDbContext context, IStorageService storageService, ILogger<BatchDeleteService> logger)
+    public BatchDeleteService(
+        IAppDbContext context,
+        IStorageService storageService,
+        ILogger<BatchDeleteService> logger)
     {
         _context = context;
         _storageService = storageService;
         _logger = logger;
     }
+
 
     public async Task<Result> DeleteFilesAsync(IEnumerable<Guid> fileIds)
     {
@@ -34,17 +38,19 @@ public class BatchDeleteService : IBatchDeleteService
                 .Select(f => new { f.Id, f.CrateId, f.CrateFolderId, f.Name })
                 .ToListAsync();
 
-            var groupedByCrate = files.GroupBy(f => new { f.CrateId, f.CrateFolderId });
-
-            foreach (var group in groupedByCrate)
+            // Group by crate and folder for deletion
+            foreach (var group in files.GroupBy(f => new { f.CrateId, f.CrateFolderId }))
             {
                 var result = await _storageService.DeleteFilesAsync(
-                    "system", group.Key.CrateId, group.Key.CrateFolderId, group.Select(f => f.Name));
+                    group.Key.CrateId, group.Key.CrateFolderId, group.Select(f => f.Name));
+
                 if (!result.IsSuccess)
-                    _logger.LogWarning("Failed to delete files in storage for crate {CrateId}, folder {FolderId}",
+                    _logger.LogWarning(
+                        "Failed to delete files for crate {CrateId}, folder {FolderId}",
                         group.Key.CrateId, group.Key.CrateFolderId);
             }
 
+            // Remove from DB
             await _context.CrateFiles.Where(f => batch.Contains(f.Id)).ExecuteDeleteAsync();
             list = list.Skip(BatchSize).ToList();
         }
@@ -52,33 +58,8 @@ public class BatchDeleteService : IBatchDeleteService
         return Result.Success();
     }
 
-    public async Task<Result> DeleteFoldersAsync(IEnumerable<Guid> folderIds)
-    {
-        var list = folderIds.ToList();
-        while (list.Any())
-        {
-            var batch = list.Take(BatchSize).ToList();
 
-            var folders = await _context.CrateFolders
-                .Where(f => batch.Contains(f.Id))
-                .Select(f => new { f.Id, f.CrateId })
-                .ToListAsync();
 
-            var groupedByCrate = folders.GroupBy(f => f.CrateId);
-
-            foreach (var group in groupedByCrate)
-            {
-                var result = await _storageService.DeleteFoldersAsync("system", group.Key, group.Select(f => f.Id));
-                if (!result.IsSuccess)
-                    _logger.LogWarning("Failed to delete folders in storage for crate {CrateId}", group.Key);
-            }
-
-            await _context.CrateFolders.Where(f => batch.Contains(f.Id)).ExecuteDeleteAsync();
-            list = list.Skip(BatchSize).ToList();
-        }
-
-        return Result.Success();
-    }
 
     public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds)
     {
@@ -86,14 +67,13 @@ public class BatchDeleteService : IBatchDeleteService
         {
             foreach (var crateId in batch)
             {
-                var bucketResult = await _storageService.DeleteBucketAsync(crateId);
-                if (!bucketResult.IsSuccess)
-                    _logger.LogWarning("Failed to delete bucket for crate {CrateId}", crateId);
+                var result = await _storageService.DeleteAllFilesForCrateAsync(crateId);
+                if (!result.IsSuccess)
+                    _logger.LogWarning("Failed to delete files for crate {CrateId}", crateId);
 
-                await DeleteFilesByCrateIdsAsync(new[] { crateId });
-                await DeleteFoldersByCrateIdsAsync(new[] { crateId });
-                await DeleteMembersByCrateIdsAsync(new[] { crateId });
-
+                await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+                await _context.CrateFolders.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+                await _context.CrateMembers.Where(m => m.CrateId == crateId).ExecuteDeleteAsync();
                 await _context.Crates.Where(c => c.Id == crateId).ExecuteDeleteAsync();
             }
         }
@@ -102,53 +82,24 @@ public class BatchDeleteService : IBatchDeleteService
     }
 
 
-    private async Task DeleteFilesByCrateIdsAsync(IEnumerable<Guid> crateIds)
+    public async Task<Result> DeleteFilesByFolderIdAsync(Guid folderId)
     {
-        foreach (var batch in crateIds.Batch(BatchSize))
+        var files = await _context.CrateFiles
+            .Where(f => f.CrateFolderId == folderId)
+            .Select(f => new { f.Id, f.CrateId, f.Name })
+            .ToListAsync();
+
+        foreach (var group in files.GroupBy(f => f.CrateId))
         {
-            var files = await _context.CrateFiles
-                .Where(f => batch.Contains(f.CrateId))
-                .Select(f => new { f.CrateId, f.CrateFolderId, f.Name })
-                .ToListAsync();
+            var result = await _storageService.DeleteFilesAsync(
+                group.Key, folderId, group.Select(f => f.Name));
 
-            foreach (var group in files.GroupBy(f => new { f.CrateId, f.CrateFolderId }))
-            {
-                var result = await _storageService.DeleteFilesAsync(
-                    "system", group.Key.CrateId, group.Key.CrateFolderId, group.Select(f => f.Name));
-                if (!result.IsSuccess)
-                    _logger.LogWarning("Failed to delete files in storage for crate {CrateId}, folder {FolderId}",
-                        group.Key.CrateId, group.Key.CrateFolderId);
-            }
-
-            await _context.CrateFiles.Where(f => batch.Contains(f.CrateId)).ExecuteDeleteAsync();
+            if (!result.IsSuccess)
+                _logger.LogWarning("Failed to delete files for crate {CrateId}, folder {FolderId}",
+                    group.Key, folderId);
         }
-    }
 
-    private async Task DeleteFoldersByCrateIdsAsync(IEnumerable<Guid> crateIds)
-    {
-        foreach (var batch in crateIds.Batch(BatchSize))
-        {
-            var folders = await _context.CrateFolders
-                .Where(f => batch.Contains(f.CrateId))
-                .Select(f => new { f.Id, f.CrateId })
-                .ToListAsync();
-
-            foreach (var group in folders.GroupBy(f => f.CrateId))
-            {
-                var result = await _storageService.DeleteFoldersAsync("system", group.Key, group.Select(f => f.Id));
-                if (!result.IsSuccess)
-                    _logger.LogWarning("Failed to delete folders in storage for crate {CrateId}", group.Key);
-            }
-
-            await _context.CrateFolders.Where(f => batch.Contains(f.CrateId)).ExecuteDeleteAsync();
-        }
-    }
-
-    private async Task DeleteMembersByCrateIdsAsync(IEnumerable<Guid> crateIds)
-    {
-        foreach (var batch in crateIds.Batch(BatchSize))
-        {
-            await _context.CrateMembers.Where(m => batch.Contains(m.CrateId)).ExecuteDeleteAsync();
-        }
+        await _context.CrateFiles.Where(f => f.CrateFolderId == folderId).ExecuteDeleteAsync();
+        return Result.Success();
     }
 }

@@ -214,7 +214,7 @@ public class FolderService : IFolderService
         foreach (var file in allFiles)
         {
             var storageResult =
-                await _storageService.DeleteFileAsync(userId, file.CrateId, file.CrateFolderId, file.Name);
+                await _storageService.DeleteFileAsync(file.CrateId, file.CrateFolderId, file.Name);
             if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
 
             var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
@@ -331,8 +331,7 @@ public class FolderService : IFolderService
 
         if (newParentId.HasValue)
         {
-            var newParent =
-                await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == newParentId.Value && !f.IsDeleted);
+            var newParent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == newParentId.Value && !f.IsDeleted);
             if (newParent == null || newParent.CrateId != folder.CrateId)
                 return Result.Failure(new NotFoundError("Target parent folder not found"));
 
@@ -351,11 +350,16 @@ public class FolderService : IFolderService
             }
         }
 
+        var storageResult = await _storageService.MoveFolderAsync(folder.CrateId, folder.Id, newParentId);
+        if (!storageResult.IsSuccess) return storageResult;
+
         folder.ParentFolderId = newParentId;
         folder.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
+
         return Result.Success();
     }
+
 
     public async Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(
         Guid crateId,
