@@ -24,9 +24,10 @@ public class BatchMembershipService : IBatchMembershipService
         _logger = logger;
     }
 
-    public async Task<Result> LeaveCratesAsync(string userId, IEnumerable<Guid> crateIds)
+    public async Task<Result<int>> LeaveCratesAsync(string userId, IEnumerable<Guid> crateIds)
     {
         var list = crateIds.ToList();
+        var leftCount = 0;
 
         while (list.Any())
         {
@@ -48,6 +49,7 @@ public class BatchMembershipService : IBatchMembershipService
                     }
 
                     _context.CrateMembers.Remove(membership);
+                    leftCount++;
                     _logger.LogInformation("User {UserId} left crate {CrateId}", userId, crateId);
                 }
                 else
@@ -61,6 +63,6 @@ public class BatchMembershipService : IBatchMembershipService
             list = list.Skip(BatchSize).ToList();
         }
 
-        return Result.Success();
+        return Result<int>.Success(leftCount);
     }
 }

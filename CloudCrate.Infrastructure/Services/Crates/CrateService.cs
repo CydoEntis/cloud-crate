@@ -31,6 +31,7 @@ public class CrateService : ICrateService
     private readonly ICrateRoleService _crateRoleService;
     private readonly ITransactionService _transactionService;
     private readonly IBatchDeleteService _batchDeleteService;
+    private readonly IBatchMembershipService _batchMembershipService;
     private readonly ILogger<CrateService> _logger;
 
     public CrateService(
@@ -41,7 +42,9 @@ public class CrateService : ICrateService
         ICrateRoleService crateRoleService,
         ITransactionService transactionService,
         IBatchDeleteService batchDeleteService,
-        ILogger<CrateService> logger)
+        IBatchMembershipService batchMembershipService,
+        ILogger<CrateService> logger
+    )
     {
         _context = context;
         _userService = userService;
@@ -51,6 +54,7 @@ public class CrateService : ICrateService
         _transactionService = transactionService;
         _batchDeleteService = batchDeleteService;
         _logger = logger;
+        _batchMembershipService = batchMembershipService;
     }
 
 
@@ -244,51 +248,6 @@ public class CrateService : ICrateService
         return Result<List<CrateMemberResponse>>.Success(responses);
     }
 
-    public async Task<Result> LeaveCrateAsync(Guid crateId, string userId)
-    {
-        var canLeaveResult = await _crateRoleService.CanView(crateId, userId);
-        if (!canLeaveResult.IsSuccess || !canLeaveResult.Value)
-            return Result.Failure(canLeaveResult.Error ?? new ForbiddenError("User cannot leave this crate"));
-
-        var crate = await _context.Crates.Include(c => c.Members).FirstOrDefaultAsync(c => c.Id == crateId);
-        if (crate == null) return Result.Failure(new NotFoundError("Crate not found"));
-
-        var member = crate.Members.FirstOrDefault(m => m.UserId == userId);
-        if (member == null) return Result.Failure(new NotFoundError("Membership not found"));
-        if (member.Role == CrateRole.Owner) return Result.Failure(new ValidationError("Owner cannot leave the crate"));
-
-        _context.CrateMembers.Remove(member);
-        await _context.SaveChangesAsync();
-        return Result.Success();
-    }
-
-    public async Task<Result<int>> BulkLeaveCratesAsync(IEnumerable<Guid> crateIds, string userId)
-    {
-        var cratesToLeave = await _context.Crates.Include(c => c.Members)
-            .Where(c => crateIds.Contains(c.Id))
-            .ToListAsync();
-
-        var leftCount = 0;
-        var transactionResult = await _transactionService.ExecuteAsync(async () =>
-        {
-            foreach (var crate in cratesToLeave)
-            {
-                var member = crate.Members.FirstOrDefault(m => m.UserId == userId);
-                if (member != null && member.Role != CrateRole.Owner)
-                {
-                    _context.CrateMembers.Remove(member);
-                    leftCount++;
-                }
-            }
-
-            await _context.SaveChangesAsync();
-        });
-
-        return transactionResult.IsSuccess
-            ? Result<int>.Success(leftCount)
-            : Result<int>.Failure(transactionResult.Error);
-    }
-
 
     public async Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName,
         string? newColor)
@@ -312,7 +271,6 @@ public class CrateService : ICrateService
 
         return Result<CrateListItemResponse>.Success(crate.ToCrateListItemResponse(userId, userLookup));
     }
-
 
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
@@ -340,13 +298,13 @@ public class CrateService : ICrateService
     public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
     {
         var crates = await _context.CrateMembers
-            .Where(m => crateIds.Contains(m.CrateId) 
-                        && m.UserId == userId 
+            .Where(m => crateIds.Contains(m.CrateId)
+                        && m.UserId == userId
                         && m.Role == CrateRole.Owner)
             .Select(m => m.CrateId)
             .ToListAsync();
 
-        if (!crates.Any()) 
+        if (!crates.Any())
             return Result.Failure(new ForbiddenError("You do not have permission to delete these crates"));
 
         var result = await _batchDeleteService.DeleteCratesAsync(crates);
@@ -356,4 +314,59 @@ public class CrateService : ICrateService
         return result;
     }
 
+
+    public async Task<Result> LeaveCrateAsync(Guid crateId, string userId)
+    {
+        var crate = await _context.Crates.Include(c => c.Members)
+            .FirstOrDefaultAsync(c => c.Id == crateId);
+
+        if (crate == null)
+            return Result.Failure(new NotFoundError("Crate not found"));
+
+        var member = crate.Members.FirstOrDefault(m => m.UserId == userId);
+        if (member == null)
+            return Result.Failure(new NotFoundError("Membership not found"));
+
+        if (member.Role == CrateRole.Owner)
+            return Result.Failure(new ValidationError("Owner cannot leave the crate"));
+
+        var transactionResult = await _transactionService.ExecuteAsync(async () =>
+        {
+            var leaveResult = await _batchMembershipService.LeaveCratesAsync(userId, new[] { crateId });
+
+            if (!leaveResult.IsSuccess)
+                throw new Exception(leaveResult.Error?.Message ?? "Failed to leave crate");
+        });
+
+        if (!transactionResult.IsSuccess)
+            return Result.Failure(transactionResult.Error);
+
+        _logger.LogInformation("User {UserId} left crate {CrateId}", userId, crateId);
+        return Result.Success();
+    }
+
+
+    public async Task<Result<int>> LeaveCratesAsync(IEnumerable<Guid> crateIds, string userId)
+    {
+        if (!crateIds.Any())
+            return Result<int>.Failure(new ValidationError("No crates provided"));
+
+        int leftCount = 0;
+
+        var transactionResult = await _transactionService.ExecuteAsync(async () =>
+        {
+            var leaveResult = await _batchMembershipService.LeaveCratesAsync(userId, crateIds);
+
+            if (!leaveResult.IsSuccess)
+                throw new Exception(leaveResult.Error?.Message ?? "Failed to leave crates");
+
+            leftCount = leaveResult.Value;
+        });
+
+        if (!transactionResult.IsSuccess)
+            return Result<int>.Failure(transactionResult.Error);
+
+        _logger.LogInformation("User {UserId} bulk-left {Count} crates", userId, leftCount);
+        return Result<int>.Success(leftCount);
+    }
 }

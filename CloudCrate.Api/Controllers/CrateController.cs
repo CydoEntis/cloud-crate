@@ -93,7 +93,7 @@ public class CrateController : BaseController
         if (request.CrateIds == null || !request.CrateIds.Any())
             return BadRequest("No crate IDs provided.");
 
-        var result = await _crateService.BulkLeaveCratesAsync(request.CrateIds, UserId!);
+        var result = await _crateService.LeaveCratesAsync(request.CrateIds, UserId!);
         return Response(ApiResponse<int>.FromResult(result, $"Left {result.Value} crates successfully", 200));
     }
 }

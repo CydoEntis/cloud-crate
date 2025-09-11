@@ -4,5 +4,5 @@ namespace CloudCrate.Application.Interfaces;
 
 public interface IBatchMembershipService
 {
-    Task<Result> LeaveCratesAsync(string userId, IEnumerable<Guid> crateIds);
+    Task<Result<int>> LeaveCratesAsync(string userId, IEnumerable<Guid> crateIds);
 }
