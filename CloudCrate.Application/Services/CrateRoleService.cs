@@ -32,7 +32,12 @@ public class CrateRoleService : ICrateRoleService
             : Result<bool>.Failure(new CrateUnauthorizedError());
     }
 
-
+    public async Task<bool> IsOwner(Guid crateId, string userId)
+    {
+        var member = await _crateMemberService.GetCrateMemberAsync(crateId, userId);
+        return member?.Role == CrateRole.Owner;
+    }
+    
     public Task<Result<bool>> CanManageCrate(Guid crateId, string userId) =>
         HasRoleAsync(crateId, userId, CrateRole.Owner);
 

@@ -4,6 +4,7 @@ namespace CloudCrate.Application.Interfaces.Permissions;
 
 public interface ICrateRoleService
 {
+    Task<bool> IsOwner(Guid crateId, string userId);
     Task<Result<bool>> CanManageCrate(Guid crateId, string userId);
     Task<Result<bool>> CanContribute(Guid crateId, string userId);
     Task<Result<bool>> CanUpload(Guid crateId, string userId);
