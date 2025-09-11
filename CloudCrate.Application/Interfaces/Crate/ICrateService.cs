@@ -20,6 +20,6 @@ public interface ICrateService
 
     Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor);
 
-    Task<Result> DeleteCrateAsync(Guid crateId);
-    Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds);
+    Task<Result> DeleteCrateAsync(Guid crateId, string userId);
+    Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId);
 }

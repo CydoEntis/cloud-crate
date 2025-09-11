@@ -314,10 +314,21 @@ public class CrateService : ICrateService
     }
 
 
-    public async Task<Result> DeleteCrateAsync(Guid crateId)
+
+    public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
-        var crate = await _context.Crates.AsNoTracking().FirstOrDefaultAsync(c => c.Id == crateId);
-        if (crate == null) return Result.Failure(new NotFoundError("Crate not found"));
+        var crate = await _context.Crates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == crateId);
+
+        if (crate == null)
+            return Result.Failure(new NotFoundError("Crate not found"));
+
+        var isOwner = await _context.CrateMembers
+            .AnyAsync(m => m.CrateId == crateId && m.UserId == userId && m.Role == CrateRole.Owner);
+
+        if (!isOwner)
+            return Result.Failure(new ForbiddenError("You do not have permission to delete this crate"));
 
         var result = await _batchDeleteService.DeleteCratesAsync(new[] { crate.Id });
         if (!result.IsSuccess)
@@ -326,10 +337,17 @@ public class CrateService : ICrateService
         return result;
     }
 
-    public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds)
+    public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
     {
-        var crates = await _context.Crates.Where(c => crateIds.Contains(c.Id)).Select(c => c.Id).ToListAsync();
-        if (!crates.Any()) return Result.Failure(new NotFoundError("No crates found to delete"));
+        var crates = await _context.CrateMembers
+            .Where(m => crateIds.Contains(m.CrateId) 
+                        && m.UserId == userId 
+                        && m.Role == CrateRole.Owner)
+            .Select(m => m.CrateId)
+            .ToListAsync();
+
+        if (!crates.Any()) 
+            return Result.Failure(new ForbiddenError("You do not have permission to delete these crates"));
 
         var result = await _batchDeleteService.DeleteCratesAsync(crates);
         if (!result.IsSuccess)
@@ -337,4 +355,5 @@ public class CrateService : ICrateService
 
         return result;
     }
+
 }
