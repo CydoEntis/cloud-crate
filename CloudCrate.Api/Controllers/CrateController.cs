@@ -65,7 +65,7 @@ public class CrateController : BaseController
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
     {
-        var result = await _crateService.DeleteCrateAsync(crateId);
+        var result = await _crateService.DeleteCrateAsync(crateId, UserId!);
         return Response(ApiResponse.FromResult(result, "Crate deleted successfully", 204));
     }
 
@@ -75,7 +75,7 @@ public class CrateController : BaseController
         if (request.CrateIds == null || !request.CrateIds.Any())
             return BadRequest("No crate IDs provided.");
 
-        var result = await _crateService.DeleteCratesAsync(request.CrateIds);
+        var result = await _crateService.DeleteCratesAsync(request.CrateIds, UserId!);
         return Response(ApiResponse.FromResult(result, $"{request.CrateIds.Count} crates deleted successfully", 200));
     }
 
