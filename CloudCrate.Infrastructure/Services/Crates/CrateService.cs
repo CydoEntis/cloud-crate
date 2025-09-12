@@ -7,20 +7,16 @@ using CloudCrate.Application.Errors;
 using CloudCrate.Application.Extensions;
 using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Interfaces.Crate;
-using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Interfaces.Permissions;
-using CloudCrate.Application.Interfaces.Transactions;
 using CloudCrate.Application.Mappers;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
-using CloudCrate.Domain.ValueObjects;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
-using CloudCrate.Infrastructure.Services.Files;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -33,7 +29,6 @@ public class CrateService : ICrateService
     private readonly IUserService _userService;
     private readonly IStorageService _storageService;
     private readonly ICrateRoleService _crateRoleService;
-    private readonly ITransactionService _transactionService;
     private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<CrateService> _logger;
 
@@ -43,115 +38,120 @@ public class CrateService : ICrateService
         IUserService userService,
         IStorageService storageService,
         ICrateRoleService crateRoleService,
-        ITransactionService transactionService,
         IBatchDeleteService batchDeleteService,
-        ILogger<CrateService> logger
-    )
+        ILogger<CrateService> logger)
     {
         _context = context;
         _userService = userService;
         _storageService = storageService;
         _crateRoleService = crateRoleService;
-        _transactionService = transactionService;
         _batchDeleteService = batchDeleteService;
         _logger = logger;
     }
 
     public async Task<Result<Guid>> CreateCrateAsync(CreateCrateRequest request)
     {
-        var requestedBytes = StorageSize.FromGigabytes(request.AllocatedStorageGb).Bytes;
-        var canAllocate = await _userService.CanConsumeStorageAsync(request.UserId, requestedBytes);
+        var validationResult = await _userService.CanAllocateStorageAsync(
+            request.UserId, request.AllocatedStorageGb);
+        if (validationResult.IsFailure) return Result<Guid>.Failure(validationResult.Error!);
 
-        if (!canAllocate.IsSuccess)
-        {
-            _logger.LogWarning("User {UserId} cannot allocate {RequestedBytes} bytes: {Error}",
-                request.UserId, requestedBytes, canAllocate.Error?.Message);
+        var bucketResult = await _storageService.EnsureBucketExistsAsync();
+        if (bucketResult.IsFailure) return Result<Guid>.Failure(bucketResult.Error!);
 
-            return Result<Guid>.Failure(
-                canAllocate.Error ?? new InternalError("Storage allocation check failed"));
-        }
-
-        Crate crateDomain;
         try
         {
-            crateDomain = Crate.Create(
-                name: request.Name,
-                userId: request.UserId,
-                allocatedGb: request.AllocatedStorageGb,
-                color: request.Color
-            );
+            var crate = Crate.Create(request.Name, request.UserId, request.AllocatedStorageGb, request.Color);
+            return await CreateCrateOrRollbackAsync(crate, request.UserId);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to create crate with name {CrateName}", request.Name);
-            return Result<Guid>.Failure(new ValidationError(
-                $"Invalid crate creation parameters: {ex.Message}"));
+            return Result<Guid>.Failure(new ValidationError(ex.Message));
         }
-
-        var bucketResult = await _storageService.EnsureBucketExistsAsync();
-        if (!bucketResult.IsSuccess)
-        {
-            _logger.LogError("Failed to ensure main bucket exists: {Error}", bucketResult.Error?.Message);
-            return Result<Guid>.Failure(bucketResult.Error);
-        }
-
-        var crateEntity = crateDomain.ToEntity();
-
-        var transactionResult = await _transactionService.ExecuteAsync(async () =>
-        {
-            _context.Crates.Add(crateEntity);
-            await _context.SaveChangesAsync();
-        });
-
-        if (!transactionResult.IsSuccess)
-        {
-            _logger.LogError("Failed to save crate {CrateId} in transaction: {Error}",
-                crateDomain.Id, transactionResult.Error?.Message);
-
-            await _storageService.DeleteAllFilesForCrateAsync(crateDomain.Id);
-
-            return Result<Guid>.Failure(transactionResult.Error ??
-                                        new InternalError("Failed to create crate in database"));
-        }
-
-        return Result<Guid>.Success(crateDomain.Id);
     }
 
-
-    public async Task<Result<bool>> AllocateCrateStorageAsync(string userId, Guid crateId, int requestedAllocationGB)
+    private async Task<Result<Guid>> CreateCrateOrRollbackAsync(Crate crate, string userId)
     {
-        if (requestedAllocationGB < 0)
-            return Result<bool>.Failure(new ValidationError("Requested allocation must be >= 0"));
+        var crateEntity = crate.ToEntity();
+        var requestedBytes = crate.AllocatedStorage.Bytes;
 
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var allocationResult = await _userService.AllocateStorageAsync(userId, requestedBytes);
+            if (!allocationResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result<Guid>.Failure(allocationResult.Error!);
+            }
+
+            _context.Crates.Add(crateEntity);
+            await _context.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            _logger.LogInformation("Successfully created crate {CrateId} for user {UserId}", crate.Id, userId);
+            return Result<Guid>.Success(crate.Id);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to create crate {CrateId}: {Error}", crate.Id, ex.Message);
+
+            await _storageService.DeleteAllFilesForCrateAsync(crate.Id);
+
+            return Result<Guid>.Failure(new InternalError($"Failed to create crate: {ex.Message}"));
+        }
+    }
+
+    public async Task<Result> UpdateCrateAsync(Guid crateId, string userId, UpdateCrateRequest request)
+    {
         var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
         if (!canManageResult.IsSuccess || !canManageResult.Value)
-            return Result<bool>.Failure(new ForbiddenError("User does not have required permissions"));
+            return Result.Failure(new ForbiddenError("User cannot update this crate"));
 
-        var crateEntity = await _context.Crates
-            .Include(c => c.Folders)
-            .Include(c => c.Files)
-            .Include(c => c.Members)
-            .FirstOrDefaultAsync(c => c.Id == crateId);
-
-        if (crateEntity == null)
-            return Result<bool>.Failure(new NotFoundError("Crate not found"));
+        var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
+        if (crateEntity is null)
+            return Result.Failure(new NotFoundError("Crate not found"));
 
         var crateDomain = crateEntity.ToDomain();
 
-        var requestedStorage = StorageSize.FromGigabytes(requestedAllocationGB);
-        var canAllocate = await _userService.CanConsumeStorageAsync(userId, requestedStorage.Bytes);
-        if (!canAllocate.IsSuccess)
-            return Result<bool>.Failure(canAllocate.Error ?? new StorageError("Failed to check quota"));
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            crateDomain.Rename(request.Name);
+            crateDomain.SetColor(request.Color);
 
-        if (!crateDomain.TryAllocateStorage(requestedAllocationGB, out var error))
-            return Result<bool>.Failure(new StorageError(error ?? "Failed to allocate storage"));
+            var currentAllocationGB = (int)Math.Round(crateDomain.AllocatedStorage.ToGigabytes());
+            if (request.StorageAllocationGb != currentAllocationGB)
+            {
+                var userAllocationResult = await _userService.ReallocateStorageAsync(
+                    userId, currentAllocationGB, request.StorageAllocationGb);
+                if (!userAllocationResult.IsSuccess)
+                {
+                    await transaction.RollbackAsync();
+                    return Result.Failure(userAllocationResult.Error!);
+                }
 
-        crateEntity.UpdateEntity(crateDomain);
+                if (!crateDomain.TryAllocateStorage(request.StorageAllocationGb, out var error))
+                {
+                    await transaction.RollbackAsync();
+                    return Result.Failure(new StorageError(error ?? "Failed to allocate storage"));
+                }
+            }
 
-        await _context.SaveChangesAsync();
-        return Result<bool>.Success(true);
+            crateEntity.UpdateEntity(crateDomain);
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to update crate {CrateId}", crateDomain.Id);
+            return Result.Failure(new InternalError($"Failed to update crate: {ex.Message}"));
+        }
     }
-
 
     public async Task<Result<PaginatedResult<CrateListItemResponse>>> GetCratesAsync(CrateQueryParameters parameters)
     {
@@ -264,93 +264,6 @@ public class CrateService : ICrateService
         return Result<CrateDetailsResponse>.Success(response);
     }
 
-
-    public async Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(Guid crateId, CrateMemberRequest request)
-    {
-        var canViewResult = await _crateRoleService.CanView(crateId, request.UserId);
-        if (!canViewResult.IsSuccess || !canViewResult.Value)
-            return Result<List<CrateMemberResponse>>.Failure(
-                canViewResult.Error ?? new ForbiddenError("User cannot view crate members"));
-
-        var crateEntity = await _context.Crates.AsNoTracking()
-            .Include(c => c.Members).ThenInclude(m => m.User)
-            .FirstOrDefaultAsync(c => c.Id == crateId);
-
-        if (crateEntity is null)
-            return Result<List<CrateMemberResponse>>.Failure(new NotFoundError("Crate not found"));
-
-        var crateDomain = crateEntity.ToDomain();
-
-        var userLookup = crateEntity.Members
-            .Where(m => m.User != null)
-            .Select(m => m.User!)
-            .DistinctBy(u => u.Id)
-            .ToDictionary(
-                u => u.Id,
-                u => new UserResponse
-                {
-                    Id = u.Id,
-                    DisplayName = u.DisplayName,
-                    Email = u.Email,
-                    ProfilePictureUrl = u.ProfilePictureUrl
-                });
-
-        var responses = crateDomain.Members
-            .Select(m => m.ToCrateMemberResponse(userLookup))
-            .ToList();
-
-        return Result<List<CrateMemberResponse>>.Success(responses);
-    }
-
-
-    public async Task<Result<CrateListItemResponse>> UpdateCrateAsync(
-        Guid crateId,
-        string userId,
-        string? newName,
-        string? newColor)
-    {
-        var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
-        if (!canManageResult.IsSuccess || !canManageResult.Value)
-            return Result<CrateListItemResponse>.Failure(
-                canManageResult.Error ?? new ForbiddenError("User cannot update this crate"));
-
-        var crateEntity = await _context.Crates
-            .Include(c => c.Members).ThenInclude(m => m.User)
-            .FirstOrDefaultAsync(c => c.Id == crateId);
-
-        if (crateEntity is null)
-            return Result<CrateListItemResponse>.Failure(new NotFoundError("Crate not found"));
-
-        var crateDomain = crateEntity.ToDomain();
-
-        if (!string.IsNullOrWhiteSpace(newName))
-            crateDomain.Rename(newName);
-
-        if (!string.IsNullOrWhiteSpace(newColor))
-            crateDomain.SetColor(newColor);
-
-        crateEntity.UpdateEntity(crateDomain);
-
-        await _context.SaveChangesAsync();
-
-        var userLookup = crateEntity.Members
-            .Where(m => m.User != null)
-            .Select(m => m.User!)
-            .DistinctBy(u => u.Id)
-            .ToDictionary(
-                u => u.Id,
-                u => new UserResponse
-                {
-                    Id = u.Id,
-                    DisplayName = u.DisplayName,
-                    Email = u.Email,
-                    ProfilePictureUrl = u.ProfilePictureUrl
-                });
-
-        var response = crateDomain.ToCrateListItemResponse(userId, userLookup);
-
-        return Result<CrateListItemResponse>.Success(response);
-    }
 
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)

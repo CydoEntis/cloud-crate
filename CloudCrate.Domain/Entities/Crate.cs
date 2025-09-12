@@ -18,13 +18,13 @@ public class Crate
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    private readonly List<CrateFolder> _folders;
+    private readonly List<CrateFolder> _folders = new();
     public IReadOnlyCollection<CrateFolder> Folders => _folders.AsReadOnly();
 
-    private readonly List<CrateFile> _files;
+    private readonly List<CrateFile> _files = new();
     public IReadOnlyCollection<CrateFile> Files => _files.AsReadOnly();
 
-    private readonly List<CrateMember> _members;
+    private readonly List<CrateMember> _members = new();
     public IReadOnlyCollection<CrateMember> Members => _members.AsReadOnly();
 
     private Crate()
@@ -76,9 +76,11 @@ public class Crate
     public static Crate Create(string name, string userId, long allocatedGb, string? color = null)
     {
         if (string.IsNullOrWhiteSpace(name))
-            throw new ValueEmptyException(nameof(Name));
+            throw new ValueEmptyException(nameof(name)); 
         if (string.IsNullOrWhiteSpace(userId))
             throw new ValueEmptyException(nameof(userId));
+        if (allocatedGb < 1) 
+            throw new MinimumAllocationException(1);
 
         var crate = new Crate
         {

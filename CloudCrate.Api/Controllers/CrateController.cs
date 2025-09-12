@@ -42,8 +42,8 @@ public class CrateController : BaseController
     [HttpPut("{crateId:guid}")]
     public async Task<IActionResult> UpdateCrate(Guid crateId, [FromBody] UpdateCrateRequest request)
     {
-        var result = await _crateService.UpdateCrateAsync(crateId, UserId!, request.Name, request.Color);
-        return Response(ApiResponse<CrateListItemResponse>.FromResult(result, "Crate updated successfully"));
+        var result = await _crateService.UpdateCrateAsync(crateId, UserId!, request);
+        return Response(ApiResponse.FromResult(result, "Crate updated successfully"));
     }
 
 
