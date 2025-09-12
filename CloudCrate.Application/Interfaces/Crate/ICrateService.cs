@@ -16,10 +16,9 @@ public interface ICrateService
 
     Task<Result<List<CrateMemberResponse>>> GetCrateMembersAsync(Guid crateId, CrateMemberRequest request);
 
-    Task<Result<CrateListItemResponse>> UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor);
+    Task<Result<CrateListItemResponse>>
+        UpdateCrateAsync(Guid crateId, string userId, string? newName, string? newColor);
 
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId);
-    Task<Result> LeaveCrateAsync(Guid crateId, string userId);
-    Task<Result<int>> LeaveCratesAsync(IEnumerable<Guid> crateIds, string userId);
 }

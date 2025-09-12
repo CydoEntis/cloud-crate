@@ -3,9 +3,10 @@ using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Models;
+using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Identity;
+using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.AspNetCore.Identity;
-using Stripe;
 
 namespace CloudCrate.Infrastructure.Services.Auth;
 
@@ -24,14 +25,16 @@ public class AuthService : IAuthService
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
     {
-        var user = ApplicationUser.Create(
+        var domainUser = UserAccount.Create(
+            id: Guid.NewGuid().ToString(),
             email: request.Email,
             displayName: request.DisplayName,
             profilePictureUrl: request.ProfilePictureUrl
         );
 
-        var identityResult = await _userManager.CreateAsync(user, request.Password);
+        var userEntity = domainUser.ToEntity();
 
+        var identityResult = await _userManager.CreateAsync(userEntity, request.Password);
         if (!identityResult.Succeeded)
         {
             var mappedErrors = identityResult.Errors
@@ -47,8 +50,8 @@ public class AuthService : IAuthService
 
         var token = _jwtTokenService.GenerateToken(new UserTokenInfo
         {
-            UserId = user.Id,
-            Email = user.Email!
+            UserId = userEntity.Id,
+            Email = userEntity.Email!
         });
 
         return Result<AuthResponse>.Success(new AuthResponse
@@ -57,21 +60,20 @@ public class AuthService : IAuthService
         });
     }
 
-
     public async Task<Result<AuthResponse>> LoginAsync(string email, string password)
     {
-        var user = await _userManager.FindByEmailAsync(email);
-
-        if (user == null || !await _userManager.CheckPasswordAsync(user, password))
+        var userEntity = await _userManager.FindByEmailAsync(email);
+        if (userEntity == null || !await _userManager.CheckPasswordAsync(userEntity, password))
         {
-            var error = new UnauthorizedError("Invalid credentials");
-            return Result<AuthResponse>.Failure(error);
+            return Result<AuthResponse>.Failure(new UnauthorizedError("Invalid credentials"));
         }
+
+        var domainUser = userEntity.ToDomain();
 
         var token = _jwtTokenService.GenerateToken(new UserTokenInfo
         {
-            UserId = user.Id,
-            Email = user.Email!
+            UserId = domainUser.Id,
+            Email = domainUser.Email
         });
 
         return Result<AuthResponse>.Success(new AuthResponse

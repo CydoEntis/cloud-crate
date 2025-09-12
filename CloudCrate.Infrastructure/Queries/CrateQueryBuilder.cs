@@ -1,14 +1,13 @@
 ﻿using CloudCrate.Application.DTOs.Crate.Request;
-using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
+using CloudCrate.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
-using System.Linq;
 
-namespace CloudCrate.Application.Queries;
+namespace CloudCrate.Infrastructure.Queries;
 
 public static class CrateQueryBuilder
 {
-    public static IQueryable<Crate> ApplySearch(this IQueryable<Crate> query, string? searchTerm)
+    public static IQueryable<CrateEntity> ApplySearch(this IQueryable<CrateEntity> query, string? searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm))
             return query;
@@ -19,15 +18,16 @@ public static class CrateQueryBuilder
     }
 
 
-    public static IQueryable<Crate> ApplyOrdering(this IQueryable<Crate> query, CrateQueryParameters parameters)
+    public static IQueryable<CrateEntity> ApplyOrdering(this IQueryable<CrateEntity> query,
+        CrateQueryParameters parameters)
     {
         return (parameters.SortBy, parameters.Ascending) switch
         {
             (CrateSortBy.Name, true) => query.OrderBy(c => c.Name),
             (CrateSortBy.Name, false) => query.OrderByDescending(c => c.Name),
 
-            (CrateSortBy.UsedStorage, true) => query.OrderBy(c => c.UsedStorage.Bytes),
-            (CrateSortBy.UsedStorage, false) => query.OrderByDescending(c => c.UsedStorage.Bytes),
+            (CrateSortBy.UsedStorage, true) => query.OrderBy(c => c.UsedStorageBytes),
+            (CrateSortBy.UsedStorage, false) => query.OrderByDescending(c => c.UsedStorageBytes),
 
             (CrateSortBy.JoinedAt, true) => query.OrderBy(c => c.Members
                 .Where(m => m.Role == CrateRole.Owner)

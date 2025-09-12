@@ -7,6 +7,7 @@ namespace CloudCrate.Application.Interfaces.User;
 public interface IUserService
 {
     Task<Result<UserResponse>> GetUserByIdAsync(string userId);
+    Task<Result<long>> GetRemainingStorageAsync(string userId);
     Task<Result> CanConsumeStorageAsync(string userId, long bytesToAdd);
     Task<Result> IncrementUsedStorageAsync(string userId, long bytesToAdd);
     Task<Result> DecrementUsedStorageAsync(string userId, long bytesToSubtract);

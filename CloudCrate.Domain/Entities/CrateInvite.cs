@@ -16,14 +16,37 @@ public class CrateInvite
     public DateTime CreatedAt { get; private set; }
     public DateTime? ExpiresAt { get; private set; }
     public DateTime? UpdatedAt { get; private set; }
-
     public InviteStatus Status { get; private set; }
 
-    public static CrateInvite Create(
-        Guid crateId,
-        string email,
-        string invitedByUserId,
+    private CrateInvite()
+    {
+    }
+
+    internal CrateInvite(Guid id, Guid crateId, string invitedUserEmail, string invitedByUserId, CrateRole role,
+        string token,
+        DateTime createdAt, DateTime? expiresAt, DateTime? updatedAt, InviteStatus status)
+    {
+        Id = id;
+        CrateId = crateId;
+        InvitedUserEmail = invitedUserEmail;
+        InvitedByUserId = invitedByUserId;
+        Role = role;
+        Token = token;
+        CreatedAt = createdAt;
+        ExpiresAt = expiresAt;
+        UpdatedAt = updatedAt;
+        Status = status;
+    }
+
+    public static CrateInvite Rehydrate(Guid id, Guid crateId, string invitedUserEmail, string invitedByUserId,
         CrateRole role,
+        string token, DateTime createdAt, DateTime? expiresAt, DateTime? updatedAt, InviteStatus status)
+    {
+        return new CrateInvite(id, crateId, invitedUserEmail, invitedByUserId, role, token, createdAt, expiresAt,
+            updatedAt, status);
+    }
+
+    public static CrateInvite Create(Guid crateId, string email, string invitedByUserId, CrateRole role,
         DateTime? expiresAt = null)
     {
         return new CrateInvite
@@ -36,14 +59,20 @@ public class CrateInvite
             Token = Guid.NewGuid().ToString(),
             CreatedAt = DateTime.UtcNow,
             ExpiresAt = expiresAt ?? DateTime.UtcNow.AddMinutes(15),
-            UpdatedAt = null,
             Status = InviteStatus.Pending
         };
     }
-
-    public void UpdateInviteStatus(InviteStatus status)
+    
+    public void UpdateInviteStatus(InviteStatus newStatus)
     {
-        Status = status;
+        if (Status == newStatus)
+            return;
+
+        if (Status != InviteStatus.Pending)
+            throw new InvalidOperationException("Cannot change status of a processed invite.");
+
+        Status = newStatus;
         UpdatedAt = DateTime.UtcNow;
     }
+
 }

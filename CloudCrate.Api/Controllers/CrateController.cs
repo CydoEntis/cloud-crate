@@ -54,13 +54,13 @@ public class CrateController : BaseController
         return Response(ApiResponse<CrateDetailsResponse>.FromResult(result, "Crate retrieved successfully"));
     }
 
-    [HttpGet("{crateId:guid}/members")]
-    public async Task<IActionResult> GetCrateMembers(Guid crateId, [FromQuery] CrateMemberRequest request)
-    {
-        var result = await _crateService.GetCrateMembersAsync(crateId, request);
-        return Response(
-            ApiResponse<List<CrateMemberResponse>>.FromResult(result, "Crate members retrieved successfully"));
-    }
+    // [HttpGet("{crateId:guid}/members")]
+    // public async Task<IActionResult> GetCrateMembers(Guid crateId, [FromQuery] CrateMemberRequest request)
+    // {
+    //     var result = await _crateService.GetCrateMembersAsync(crateId, request);
+    //     return Response(
+    //         ApiResponse<List<CrateMemberResponse>>.FromResult(result, "Crate members retrieved successfully"));
+    // }
 
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
@@ -77,23 +77,5 @@ public class CrateController : BaseController
 
         var result = await _crateService.DeleteCratesAsync(request.CrateIds, UserId!);
         return Response(ApiResponse.FromResult(result, $"{request.CrateIds.Count} crates deleted successfully", 200));
-    }
-
-    [HttpDelete("{crateId:guid}/leave")]
-    public async Task<IActionResult> LeaveCrate(Guid crateId)
-    {
-        var result = await _crateService.LeaveCrateAsync(crateId, UserId!);
-        return Response(ApiResponse.FromResult(result, "You have left the crate successfully", 204));
-    }
-
-
-    [HttpPost("bulk-leave")]
-    public async Task<IActionResult> BulkLeaveCrates([FromBody] BulkCrateActionRequest request)
-    {
-        if (request.CrateIds == null || !request.CrateIds.Any())
-            return BadRequest("No crate IDs provided.");
-
-        var result = await _crateService.LeaveCratesAsync(request.CrateIds, UserId!);
-        return Response(ApiResponse<int>.FromResult(result, $"Left {result.Value} crates successfully", 200));
     }
 }

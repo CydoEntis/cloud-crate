@@ -1,17 +1,17 @@
 ﻿using CloudCrate.Application.Errors;
-using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Transactions;
 using CloudCrate.Application.Models;
+using CloudCrate.Infrastructure.Persistence;
 using Microsoft.Extensions.Logging;
 
 namespace CloudCrate.Infrastructure.Services.Transactions;
 
 public class TransactionService : ITransactionService
 {
-    private readonly IAppDbContext _context;
+    private readonly AppDbContext _context;
     private readonly ILogger<TransactionService> _logger;
 
-    public TransactionService(IAppDbContext context, ILogger<TransactionService> logger)
+    public TransactionService(AppDbContext context, ILogger<TransactionService> logger)
     {
         _context = context;
         _logger = logger;

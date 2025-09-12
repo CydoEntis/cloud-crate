@@ -10,32 +10,73 @@ public class Crate
     public const string DefaultColor = "#4B9CED";
 
     public Guid Id { get; private set; }
-    public string Name { get; private set; } = string.Empty;
-    public string Color { get; private set; } = DefaultColor;
-
-    private readonly List<CrateFolder> _folders = new();
-    public IReadOnlyCollection<CrateFolder> Folders => _folders.AsReadOnly();
-
-    private readonly List<CrateFile> _files = new();
-    public IReadOnlyCollection<CrateFile> Files => _files.AsReadOnly();
-
-    private readonly List<CrateMember> _members = new();
-    public IReadOnlyCollection<CrateMember> Members => _members.AsReadOnly();
-
+    public string Name { get; private set; }
+    public string Color { get; private set; }
     public StorageSize AllocatedStorage { get; private set; }
     public StorageSize UsedStorage { get; private set; }
     public StorageSize RemainingStorage => StorageSize.FromBytes(AllocatedStorage.Bytes - UsedStorage.Bytes);
-
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    protected Crate() { } // EF Core
+    private readonly List<CrateFolder> _folders;
+    public IReadOnlyCollection<CrateFolder> Folders => _folders.AsReadOnly();
+
+    private readonly List<CrateFile> _files;
+    public IReadOnlyCollection<CrateFile> Files => _files.AsReadOnly();
+
+    private readonly List<CrateMember> _members;
+    public IReadOnlyCollection<CrateMember> Members => _members.AsReadOnly();
+
+    private Crate()
+    {
+    }
+
+    internal Crate(
+        Guid id,
+        string name,
+        string color,
+        StorageSize allocatedStorage,
+        StorageSize usedStorage,
+        DateTime createdAt,
+        DateTime updatedAt,
+        List<CrateFolder> folders,
+        List<CrateFile> files,
+        List<CrateMember> members)
+    {
+        Id = id;
+        Name = name;
+        Color = color;
+        AllocatedStorage = allocatedStorage;
+        UsedStorage = usedStorage;
+        CreatedAt = createdAt;
+        UpdatedAt = updatedAt;
+        _folders = folders ?? new List<CrateFolder>();
+        _files = files ?? new List<CrateFile>();
+        _members = members ?? new List<CrateMember>();
+    }
+
+    public static Crate Rehydrate(
+        Guid id,
+        string name,
+        string color,
+        StorageSize allocatedStorage,
+        StorageSize usedStorage,
+        DateTime createdAt,
+        DateTime updatedAt,
+        List<CrateFolder> folders,
+        List<CrateFile> files,
+        List<CrateMember> members)
+    {
+        return new Crate(
+            id, name, color, allocatedStorage, usedStorage,
+            createdAt, updatedAt, folders, files, members
+        );
+    }
 
     public static Crate Create(string name, string userId, long allocatedGb, string? color = null)
     {
         if (string.IsNullOrWhiteSpace(name))
             throw new ValueEmptyException(nameof(Name));
-
         if (string.IsNullOrWhiteSpace(userId))
             throw new ValueEmptyException(nameof(userId));
 
@@ -57,7 +98,6 @@ public class Crate
 
         return crate;
     }
-
 
     public void Rename(string newName)
     {
@@ -83,7 +123,6 @@ public class Crate
 
         if (newSize.Bytes < MinAllocation.Bytes)
             throw new MinimumAllocationException(1);
-
         if (UsedStorage.Bytes > newSize.Bytes)
             throw new InvalidOperationException("Cannot allocate less than already used storage.");
 
@@ -117,7 +156,6 @@ public class Crate
     {
         if (size.Bytes < 0)
             throw new NegativeValueException(nameof(size));
-
         if (UsedStorage.Bytes + size.Bytes > AllocatedStorage.Bytes)
             throw new InsufficientStorageException();
 

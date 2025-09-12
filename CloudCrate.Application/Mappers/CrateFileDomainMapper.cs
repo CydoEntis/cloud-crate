@@ -1,10 +1,10 @@
 ﻿using CloudCrate.Application.DTOs.File;
-using CloudCrate.Application.DTOs.User;
 using CloudCrate.Application.DTOs.User.Projections;
+using CloudCrate.Domain.Entities;
 
 namespace CloudCrate.Application.Mappers;
 
-public static class CrateFileMapper
+public static class CrateFileDomainMapper
 {
     public static SoftDeletedFile MapToSoftDeletedFile(CrateFile file)
     {
@@ -12,7 +12,7 @@ public static class CrateFileMapper
         {
             Id = file.Id,
             Name = file.Name,
-            SizeInBytes = file.SizeInBytes,
+            SizeInBytes = file.Size.Bytes,
             MimeType = file.MimeType,
             IsDeleted = file.IsDeleted,
             DeletedAt = file.DeletedAt
@@ -23,15 +23,15 @@ public static class CrateFileMapper
     {
         return new CrateFileResponse
         {
-            Id =  file.Id,
+            Id = file.Id,
             Name = file.Name,
-            SizeInBytes = file.SizeInBytes,
+            SizeInBytes = file.Size.Bytes,
             MimeType = file.MimeType,
             FileUrl = fileUrl,
             IsDeleted = file.IsDeleted,
             CrateId = file.CrateId,
             FolderId = file.CrateFolderId ?? null,
-            FolderName = file.CrateFolder?.Name,
+            FolderName = file.Folder?.Name,
             Uploader = uploader,
             CreatedAt = file.CreatedAt,
         };

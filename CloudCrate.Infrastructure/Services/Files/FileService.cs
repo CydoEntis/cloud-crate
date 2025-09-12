@@ -9,39 +9,45 @@ using CloudCrate.Application.Errors;
 using CloudCrate.Application.Extensions;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Permissions;
-using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Mappers;
 using CloudCrate.Application.Models;
+using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.ValueObjects;
+using CloudCrate.Infrastructure.Persistence;
+using CloudCrate.Infrastructure.Persistence.Entities;
+using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace CloudCrate.Infrastructure.Services.Files;
 
+public sealed record FileTooLargeError(string Message = "The uploaded file exceeds the maximum allowed size (10 MB)") : Error(Message);
+public sealed record VideoNotAllowedError(string Message = "Video files are not allowed") : Error(Message);
+public sealed record StorageQuotaExceededError(string Message = "Uploading this file would exceed your storage quota") : Error(Message);
+
 public class FileService : IFileService
 {
-    private readonly IAppDbContext _context;
+    private readonly AppDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ICrateRoleService _crateRoleService;
-    private readonly IFileValidatorService _fileValidatorService;
     private readonly IUserService _userService;
     private readonly ILogger<FileService> _logger;
 
+    private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
+
     public FileService(
-        IAppDbContext context,
+        AppDbContext context,
         IStorageService storageService,
         ICrateRoleService crateRoleService,
-        IFileValidatorService fileValidatorService,
         IUserService userService,
         ILogger<FileService> logger)
     {
         _context = context;
         _storageService = storageService;
         _crateRoleService = crateRoleService;
-        _fileValidatorService = fileValidatorService;
         _userService = userService;
         _logger = logger;
     }
@@ -76,7 +82,7 @@ public class FileService : IFileService
                 .Select(g => new FileTypeBreakdownDto
                 {
                     Type = g.Key,
-                    SizeMb = Math.Round(g.Sum(f => (long?)f.SizeInBytes ?? 0) / 1024.0 / 1024.0, 2)
+                    SizeMb = Math.Round(g.Sum(f => (long?)f.Size.Bytes ?? 0) / 1024.0 / 1024.0, 2)
                 })
                 .ToList();
         }
@@ -177,7 +183,7 @@ public class FileService : IFileService
     {
         try
         {
-            var allFiles = new List<CrateFile>();
+            var allFiles = new List<CrateFileEntity>();
             var foldersToProcess = new Queue<Guid>();
             foldersToProcess.Enqueue(folderId);
 
@@ -200,7 +206,7 @@ public class FileService : IFileService
                     foldersToProcess.Enqueue(subId);
             }
 
-            return allFiles;
+            return allFiles.Select(f => f.ToDomain()).ToList();
         }
         catch (Exception ex)
         {
@@ -233,8 +239,29 @@ public class FileService : IFileService
         if (request.Files == null || !request.Files.Any())
             return Result<List<Guid>>.Failure(Error.Validation("No files provided.", "Files"));
 
+        foreach (var fileReq in request.Files)
+        {
+            var validation = ValidateFileUpload(fileReq);
+            if (validation.IsFailure)
+                return Result<List<Guid>>.Failure(validation.Error!);
+        }
+
+        var crateId = request.Files.First().CrateId;
+        var permissionCheck = await _crateRoleService.CanUpload(crateId, userId);
+        if (permissionCheck.IsFailure)
+            return Result<List<Guid>>.Failure(permissionCheck.Error!);
+
+        var totalSize = request.Files.Sum(f => f.SizeInBytes);
+        var userResult = await _userService.GetUserByIdAsync(userId);
+        if (userResult.IsFailure || userResult.Value == null)
+            return Result<List<Guid>>.Failure(Error.NotFound("User not found"));
+
+        var user = userResult.Value;
+        if (user.UsedAccountStorageBytes + totalSize > user.AllocatedStorageLimitBytes)
+            return Result<List<Guid>>.Failure(new StorageQuotaExceededError());
+
         var storageResults = new List<Result<string>>();
-        var fileEntities = new List<CrateFile>();
+        var fileEntities = new List<CrateFileEntity>();
 
         try
         {
@@ -243,6 +270,11 @@ public class FileService : IFileService
                 if (req.FolderId == null || req.FolderId == Guid.Empty)
                     return Result<List<Guid>>.Failure(
                         Error.Validation($"FolderId is required for file {req.FileName}.", "FolderId"));
+
+                var folderExists = await _context.CrateFolders
+                    .AnyAsync(f => f.Id == req.FolderId.Value && f.CrateId == req.CrateId);
+                if (!folderExists)
+                    return Result<List<Guid>>.Failure(Error.NotFound($"Folder not found for file {req.FileName}"));
             }
 
             foreach (var fileReq in request.Files)
@@ -250,14 +282,7 @@ public class FileService : IFileService
                 var result = await _storageService.SaveFileAsync(fileReq);
                 if (result.IsFailure)
                 {
-                    foreach (var r in storageResults.Where(r => r.IsSuccess))
-                    {
-                        var idx = storageResults.IndexOf(r);
-                        var uploadedFile = request.Files[idx];
-                        await _storageService.DeleteFileAsync(uploadedFile.CrateId, uploadedFile.FolderId,
-                            uploadedFile.FileName);
-                    }
-
+                    await CleanupStorageFiles(storageResults, request.Files);
                     _logger.LogWarning("UploadFilesAsync storage failed: UserId {UserId}, Error {Error}", userId,
                         result.Error?.Message);
                     return Result<List<Guid>>.Failure(result.Error!);
@@ -269,28 +294,31 @@ public class FileService : IFileService
             for (int i = 0; i < request.Files.Count; i++)
             {
                 var req = request.Files[i];
-                var file = CrateFile.Create(req.FileName, req.SizeInBytes, req.MimeType, req.CrateId, userId,
+                var domainFile = CrateFile.Create(
+                    req.FileName, 
+                    StorageSize.FromBytes(req.SizeInBytes), 
+                    req.MimeType, 
+                    req.CrateId, 
+                    userId,
                     req.FolderId);
-                file.ObjectKey = storageResults[i].Value;
-                fileEntities.Add(file);
+                
+                domainFile.SetObjectKey(storageResults[i].Value!);
+                
+                var fileEntity = domainFile.ToEntity(req.CrateId);
+                fileEntities.Add(fileEntity);
             }
 
-            var crateId = request.Files.First().CrateId;
-            var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
-            if (crate == null)
+            var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
+            if (crateEntity == null)
+            {
+                await CleanupStorageFiles(storageResults, request.Files);
                 return Result<List<Guid>>.Failure(Error.NotFound("Crate not found."));
+            }
 
-            var totalSize = request.Files.Sum(f => f.SizeInBytes);
+            var crate = crateEntity.ToDomain();
             if (crate.RemainingStorage.Bytes < totalSize)
             {
-                foreach (var r in storageResults.Where(r => r.IsSuccess))
-                {
-                    var idx = storageResults.IndexOf(r);
-                    var uploadedFile = request.Files[idx];
-                    await _storageService.DeleteFileAsync(uploadedFile.CrateId, uploadedFile.FolderId,
-                        uploadedFile.FileName);
-                }
-
+                await CleanupStorageFiles(storageResults, request.Files);
                 return Result<List<Guid>>.Failure(Error.Validation("Crate storage limit exceeded.", "Storage"));
             }
 
@@ -300,17 +328,11 @@ public class FileService : IFileService
             if (incrementResult.IsFailure)
             {
                 crate.ReleaseStorage(StorageSize.FromBytes(totalSize));
-
-                foreach (var r in storageResults.Where(r => r.IsSuccess))
-                {
-                    var idx = storageResults.IndexOf(r);
-                    var uploadedFile = request.Files[idx];
-                    await _storageService.DeleteFileAsync(uploadedFile.CrateId, uploadedFile.FolderId,
-                        uploadedFile.FileName);
-                }
-
+                await CleanupStorageFiles(storageResults, request.Files);
                 return Result<List<Guid>>.Failure(incrementResult.Error!);
             }
+
+            crateEntity.UpdateEntity(crate);
 
             _context.CrateFiles.AddRange(fileEntities);
             await _context.SaveChangesAsync();
@@ -320,31 +342,42 @@ public class FileService : IFileService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception in UploadFilesAsync for UserId {UserId}", userId);
-
-            foreach (var r in storageResults.Where(r => r.IsSuccess))
-            {
-                var idx = storageResults.IndexOf(r);
-                var uploadedFile = request.Files[idx];
-                await _storageService.DeleteFileAsync(uploadedFile.CrateId, uploadedFile.FolderId,
-                    uploadedFile.FileName);
-            }
-
+            await CleanupStorageFiles(storageResults, request.Files);
             return Result<List<Guid>>.Failure(new InternalError(ex.Message));
         }
     }
-
 
     public async Task<Result<Guid>> UploadFileAsync(FileUploadRequest request, string userId)
     {
         try
         {
-            var validationResult = await _fileValidatorService.ValidateUploadAsync(request, userId);
-            if (validationResult.IsFailure)
+            var validation = ValidateFileUpload(request);
+            if (validation.IsFailure)
             {
                 _logger.LogWarning("UploadFileAsync validation failed: UserId {UserId}, Error {Error}", userId,
-                    validationResult.Error?.Message);
-                return Result<Guid>.Failure(validationResult.Error!);
+                    validation.Error?.Message);
+                return Result<Guid>.Failure(validation.Error!);
             }
+
+            var permissionCheck = await _crateRoleService.CanUpload(request.CrateId, userId);
+            if (permissionCheck.IsFailure)
+                return Result<Guid>.Failure(permissionCheck.Error!);
+
+            if (request.FolderId.HasValue)
+            {
+                var folderExists = await _context.CrateFolders
+                    .AnyAsync(f => f.Id == request.FolderId.Value && f.CrateId == request.CrateId);
+                if (!folderExists)
+                    return Result<Guid>.Failure(Error.NotFound("Folder not found"));
+            }
+
+            var userResult = await _userService.GetUserByIdAsync(userId);
+            if (userResult.IsFailure || userResult.Value == null)
+                return Result<Guid>.Failure(Error.NotFound("User not found"));
+
+            var user = userResult.Value;
+            if (user.UsedAccountStorageBytes + request.SizeInBytes > user.AllocatedStorageLimitBytes)
+                return Result<Guid>.Failure(new StorageQuotaExceededError());
 
             var saveResult = await _storageService.SaveFileAsync(request);
             if (saveResult.IsFailure)
@@ -354,20 +387,20 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(saveResult.Error!);
             }
 
-            var crateFile = CrateFile.Create(
+            var domainFile = CrateFile.Create(
                 request.FileName,
-                request.SizeInBytes,
+                StorageSize.FromBytes(request.SizeInBytes),
                 request.MimeType,
                 request.CrateId,
                 userId,
                 request.FolderId
             );
-            crateFile.ObjectKey = saveResult.Value!;
+            
+            domainFile.SetObjectKey(saveResult.Value!);
+            var fileEntity = domainFile.ToEntity(request.CrateId);
 
-            _context.CrateFiles.Add(crateFile);
-
-            var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.CrateId);
-            if (crate == null)
+            var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.CrateId);
+            if (crateEntity == null)
             {
                 await _storageService.DeleteFileAsync(request.CrateId, request.FolderId, request.FileName);
                 _logger.LogWarning("UploadFileAsync failed: Crate not found. CrateId {CrateId}, UserId {UserId}",
@@ -375,6 +408,7 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(Error.NotFound("Crate not found"));
             }
 
+            var crate = crateEntity.ToDomain();
             if (crate.RemainingStorage.Bytes < request.SizeInBytes)
             {
                 await _storageService.DeleteFileAsync(request.CrateId, request.FolderId, request.FileName);
@@ -397,9 +431,12 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(storageResult.Error!);
             }
 
+            crateEntity.UpdateEntity(crate);
+
+            _context.CrateFiles.Add(fileEntity);
             await _context.SaveChangesAsync();
 
-            return Result<Guid>.Success(crateFile.Id);
+            return Result<Guid>.Success(fileEntity.Id);
         }
         catch (Exception ex)
         {
@@ -409,7 +446,6 @@ public class FileService : IFileService
     }
 
     #endregion
-
 
     #region Delete / Restore / Move Files
 
@@ -445,17 +481,22 @@ public class FileService : IFileService
             var deletePermission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
             if (deletePermission.IsFailure) return Result.Failure(deletePermission.Error!);
 
-            var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
-            if (crate == null) return Result.Failure(Error.NotFound("Crate not found"));
+            var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
+            if (crateEntity == null) return Result.Failure(Error.NotFound("Crate not found"));
 
             var deleteResult =
                 await _storageService.DeleteFileAsync(file.CrateId, file.CrateFolderId, file.Name);
             if (deleteResult.IsFailure) return Result.Failure(deleteResult.Error!);
 
+            // Convert to domain to use business logic
+            var crate = crateEntity.ToDomain();
             crate.ReleaseStorage(StorageSize.FromBytes(file.SizeInBytes));
 
             var storageResult = await _userService.DecrementUsedStorageAsync(userId, file.SizeInBytes);
             if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
+
+            // Update EF entity with domain changes
+            crateEntity.UpdateEntity(crate);
 
             _context.CrateFiles.Remove(file);
             await _context.SaveChangesAsync();
@@ -469,7 +510,6 @@ public class FileService : IFileService
         }
     }
 
-
     public async Task<Result> SoftDeleteFileAsync(Guid fileId, string userId)
     {
         try
@@ -480,8 +520,14 @@ public class FileService : IFileService
             var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
             if (permission.IsFailure) return Result.Failure(permission.Error!);
 
-            file.IsDeleted = true;
-            file.UpdatedAt = DateTime.UtcNow;
+            var domainFile = file.ToDomain();
+            domainFile.SoftDelete(userId);
+
+            file.IsDeleted = domainFile.IsDeleted;
+            file.DeletedAt = domainFile.DeletedAt;
+            file.DeletedByUserId = domainFile.DeletedByUserId;
+            file.UpdatedAt = domainFile.UpdatedAt;
+
             await _context.SaveChangesAsync();
 
             return Result.Success();
@@ -520,8 +566,13 @@ public class FileService : IFileService
                 var storageResult = await _storageService.DeleteFileAsync(file.CrateId, file.CrateFolderId, file.Name);
                 if (storageResult.IsFailure) return Result.Failure(storageResult.Error!);
 
-                var crate = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
-                if (crate != null) crate.ReleaseStorage(StorageSize.FromBytes(file.SizeInBytes));
+                var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == file.CrateId);
+                if (crateEntity != null)
+                {
+                    var crate = crateEntity.ToDomain();
+                    crate.ReleaseStorage(StorageSize.FromBytes(file.SizeInBytes));
+                    crateEntity.UpdateEntity(crate);
+                }
 
                 var userStorageResult = await _userService.DecrementUsedStorageAsync(userId, file.SizeInBytes);
                 if (userStorageResult.IsFailure) return Result.Failure(userStorageResult.Error!);
@@ -539,7 +590,6 @@ public class FileService : IFileService
         await _context.SaveChangesAsync();
         return Result.Success();
     }
-
 
     public async Task<Result> DeleteFilesInFolderRecursivelyAsync(Guid folderId, string userId)
     {
@@ -597,7 +647,14 @@ public class FileService : IFileService
             );
             if (!storageResult.IsSuccess) return Result.Failure(storageResult.Error!);
 
-            file.CrateFolderId = newParentId;
+            // Convert to domain, apply business logic, then update entity
+            var domainFile = file.ToDomain();
+            domainFile.MoveTo(newParentId);
+
+            // Update EF entity properties
+            file.CrateFolderId = domainFile.CrateFolderId;
+            file.UpdatedAt = domainFile.UpdatedAt;
+
             await _context.SaveChangesAsync();
 
             return Result.Success();
@@ -608,7 +665,6 @@ public class FileService : IFileService
             return Result.Failure(new InternalError(ex.Message));
         }
     }
-
 
     public async Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId)
     {
@@ -639,8 +695,14 @@ public class FileService : IFileService
                     return Result.Failure(new FileError("Parent folder is deleted. Restore parent or move to root."));
             }
 
-            file.IsDeleted = false;
-            file.UpdatedAt = DateTime.UtcNow;
+            var domainFile = file.ToDomain();
+            domainFile.Restore(userId);
+
+            file.IsDeleted = domainFile.IsDeleted;
+            file.RestoredAt = domainFile.RestoredAt;
+            file.RestoredByUserId = domainFile.RestoredByUserId;
+            file.UpdatedAt = domainFile.UpdatedAt;
+
             await _context.SaveChangesAsync();
             return Result.Success();
         }
@@ -666,7 +728,31 @@ public class FileService : IFileService
 
     #region Helpers
 
-    private async Task<Result<CrateFile>> FetchAuthorizedFileAsync(Guid fileId, string userId)
+    private Result ValidateFileUpload(FileUploadRequest request)
+    {
+        if (request.SizeInBytes > MaxFileSize)
+            return Result.Failure(new FileTooLargeError());
+
+        if (request.MimeType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+            return Result.Failure(new VideoNotAllowedError());
+
+        return Result.Success();
+    }
+
+    private async Task CleanupStorageFiles(List<Result<string>> storageResults, List<FileUploadRequest> files)
+    {
+        for (int i = 0; i < storageResults.Count; i++)
+        {
+            if (storageResults[i].IsSuccess)
+            {
+                var uploadedFile = files[i];
+                await _storageService.DeleteFileAsync(uploadedFile.CrateId, uploadedFile.FolderId,
+                    uploadedFile.FileName);
+            }
+        }
+    }
+
+    private async Task<Result<CrateFileEntity>> FetchAuthorizedFileAsync(Guid fileId, string userId)
     {
         try
         {
@@ -675,7 +761,7 @@ public class FileService : IFileService
             {
                 _logger.LogWarning("FetchAuthorizedFileAsync: File not found. FileId {FileId}, UserId {UserId}", fileId,
                     userId);
-                return Result<CrateFile>.Failure(new FileNotFoundError());
+                return Result<CrateFileEntity>.Failure(new FileNotFoundError());
             }
 
             var permission = await _crateRoleService.CanView(file.CrateId, userId);
@@ -684,24 +770,24 @@ public class FileService : IFileService
                 _logger.LogWarning(
                     "FetchAuthorizedFileAsync: Permission denied. FileId {FileId}, UserId {UserId}, Error {Error}",
                     fileId, userId, permission.Error?.Message);
-                return Result<CrateFile>.Failure(permission.Error!);
+                return Result<CrateFileEntity>.Failure(permission.Error!);
             }
 
-            return Result<CrateFile>.Success(file);
+            return Result<CrateFileEntity>.Success(file);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception in FetchAuthorizedFileAsync for FileId {FileId}, UserId {UserId}", fileId,
                 userId);
-            return Result<CrateFile>.Failure(new InternalError(ex.Message));
+            return Result<CrateFileEntity>.Failure(new InternalError(ex.Message));
         }
     }
 
-    private async Task<CrateFileResponse> MapFileWithUploaderAsync(CrateFile file, string currentUserId)
+    private async Task<CrateFileResponse> MapFileWithUploaderAsync(CrateFileEntity file, string currentUserId)
     {
         try
         {
-            var userResult = await _userService.GetUserByIdAsync(file.UploaderId);
+            var userResult = await _userService.GetUserByIdAsync(file.UploadedByUserId);
             UserResponse? user = null;
             if (userResult.IsSuccess && userResult.Value != null)
             {
@@ -711,8 +797,10 @@ public class FileService : IFileService
             var urlResult =
                 await _storageService.GetFileUrlAsync(file.CrateId, file.CrateFolderId, file.Name);
 
-            return CrateFileMapper.ToCrateFileResponse(
-                file,
+            // Convert to domain entity first, then to response
+            var domainFile = file.ToDomain();
+            return CrateFileDomainMapper.ToCrateFileResponse(
+                domainFile,
                 user != null ? UserMapper.ToUploader(user) : null,
                 urlResult.IsSuccess ? urlResult.Value : null
             );
@@ -725,7 +813,7 @@ public class FileService : IFileService
         }
     }
 
-    private IQueryable<CrateFile> BuildFileQuery(FolderContentsParameters parameters)
+    private IQueryable<CrateFileEntity> BuildFileQuery(FolderContentsParameters parameters)
     {
         var query = _context.CrateFiles
             .Include(f => f.CrateFolder)
@@ -744,7 +832,7 @@ public class FileService : IFileService
         return ApplyOrdering(query, parameters.OrderBy, parameters.Ascending);
     }
 
-    private IQueryable<CrateFile> ApplyFilters(IQueryable<CrateFile> query, long? minSize, long? maxSize,
+    private IQueryable<CrateFileEntity> ApplyFilters(IQueryable<CrateFileEntity> query, long? minSize, long? maxSize,
         DateTime? createdAfter, DateTime? createdBefore)
     {
         if (minSize.HasValue) query = query.Where(f => f.SizeInBytes >= minSize.Value);
@@ -754,7 +842,7 @@ public class FileService : IFileService
         return query;
     }
 
-    private IQueryable<CrateFile> ApplyOrdering(IQueryable<CrateFile> query, OrderBy orderBy, bool ascending)
+    private IQueryable<CrateFileEntity> ApplyOrdering(IQueryable<CrateFileEntity> query, OrderBy orderBy, bool ascending)
     {
         return orderBy switch
         {

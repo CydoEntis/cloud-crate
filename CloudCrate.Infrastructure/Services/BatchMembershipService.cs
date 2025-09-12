@@ -1,7 +1,6 @@
 ﻿using CloudCrate.Application.Interfaces;
-using CloudCrate.Application.Interfaces.Permissions;
-using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Models;
+using CloudCrate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -9,18 +8,15 @@ namespace CloudCrate.Infrastructure.Services;
 
 public class BatchMembershipService : IBatchMembershipService
 {
-    private readonly IAppDbContext _context;
-    private readonly ICrateRoleService _crateRoleService;
+    private readonly AppDbContext _context;
     private readonly ILogger<BatchMembershipService> _logger;
     private const int BatchSize = 500;
 
     public BatchMembershipService(
-        IAppDbContext context,
-        ICrateRoleService crateRoleService,
+        AppDbContext context,
         ILogger<BatchMembershipService> logger)
     {
         _context = context;
-        _crateRoleService = crateRoleService;
         _logger = logger;
     }
 
@@ -40,7 +36,7 @@ public class BatchMembershipService : IBatchMembershipService
 
                 if (membership != null)
                 {
-                    if (await _crateRoleService.IsOwner(crateId, userId))
+                    if (membership.Role == Domain.Enums.CrateRole.Owner)
                     {
                         _logger.LogWarning(
                             "User {UserId} attempted to leave crate {CrateId} but is the owner",

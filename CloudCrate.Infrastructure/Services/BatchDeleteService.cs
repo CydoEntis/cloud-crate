@@ -1,8 +1,8 @@
 ﻿using CloudCrate.Application.Extensions;
 using CloudCrate.Application.Interfaces;
-using CloudCrate.Application.Interfaces.Persistence;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Models;
+using CloudCrate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -10,13 +10,13 @@ namespace CloudCrate.Infrastructure.Services;
 
 public class BatchDeleteService : IBatchDeleteService
 {
-    private readonly IAppDbContext _context;
+    private readonly AppDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ILogger<BatchDeleteService> _logger;
     private const int BatchSize = 500;
 
     public BatchDeleteService(
-        IAppDbContext context,
+        AppDbContext context,
         IStorageService storageService,
         ILogger<BatchDeleteService> logger)
     {
@@ -38,7 +38,6 @@ public class BatchDeleteService : IBatchDeleteService
                 .Select(f => new { f.Id, f.CrateId, f.CrateFolderId, f.Name })
                 .ToListAsync();
 
-            // Group by crate and folder for deletion
             foreach (var group in files.GroupBy(f => new { f.CrateId, f.CrateFolderId }))
             {
                 var result = await _storageService.DeleteFilesAsync(
