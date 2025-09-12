@@ -29,15 +29,11 @@ public class CrateStorageService
 
     public async Task<Result<long>> GetRemainingStorageAsync(string userId)
     {
-        var user = await _userService.GetUserByIdAsync(userId);
-        if (user.IsFailure)
-            return Result<long>.Failure(user.Error!);
+        var userResult = await _userService.GetUserByIdAsync(userId);
+        if (userResult.IsFailure)
+            return Result<long>.Failure(userResult.Error!);
 
-        var usedResult = await GetUsedStorageAsync(userId);
-        if (usedResult.IsFailure) return Result<long>.Failure(usedResult.Error!);
-
-        var remaining = Math.Max(0, user.Value.AllocatedStorageLimitBytes - usedResult.Value);
-        return Result<long>.Success(remaining);
+        return Result<long>.Success(userResult.Value.RemainingUsageBytes);
     }
 
 

@@ -1,5 +1,4 @@
 ﻿using CloudCrate.Domain.Entities;
-using CloudCrate.Infrastructure.Identity;
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
@@ -17,7 +16,8 @@ public static class UserAccountMapper
             DisplayName = user.DisplayName,
             ProfilePictureUrl = user.ProfilePictureUrl,
             Plan = user.Plan,
-            UsedAccountStorageBytes = user.UsedStorageBytes,
+            AllocatedStorageBytes = user.AllocatedStorageBytes,
+            UsedStorageBytes = user.UsedStorageBytes,
             CreatedAt = user.CreatedAt,
             UpdatedAt = user.UpdatedAt
         };
@@ -31,7 +31,8 @@ public static class UserAccountMapper
             entity.DisplayName,
             entity.ProfilePictureUrl,
             entity.Plan,
-            entity.UsedAccountStorageBytes,
+            entity.AllocatedStorageBytes,
+            entity.UsedStorageBytes,
             entity.CreatedAt,
             entity.UpdatedAt
         );

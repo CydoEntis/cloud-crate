@@ -13,6 +13,7 @@
   <ItemGroup>
     <Folder Include="Constants\" />
     <Folder Include="DTOs\User\Request\" />
+    <Folder Include="Services\" />
   </ItemGroup>
 
   <ItemGroup>
