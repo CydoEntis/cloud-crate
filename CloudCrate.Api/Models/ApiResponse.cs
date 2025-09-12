@@ -37,11 +37,11 @@ public class ApiResponse<T>
     /// Converts a Result<T> from the Application layer into a standardized ApiResponse.
     public static ApiResponse<T> FromResult(
         Result<T> result,
-        string? message = null,
+        string? successMessage = null,
         int successStatusCode = 200)
     {
         if (result.IsSuccess)
-            return Success(result.Value, message ?? "Operation succeeded", successStatusCode);
+            return Success(result.Value, successMessage ?? "Operation succeeded", successStatusCode);
 
         IReadOnlyList<Error>? errors = result.Error switch
         {
@@ -54,7 +54,7 @@ public class ApiResponse<T>
         return new ApiResponse<T>(
             isSuccess: false,
             value: default,
-            message: message ?? result.Error?.Message,
+            message: result.Error?.Message, 
             statusCode: statusCode,
             errors: errors
         );
@@ -84,14 +84,14 @@ public class ApiResponse
     private static ApiResponse Error(string? message, int statusCode = 400, IReadOnlyList<Error>? errors = null)
         => new ApiResponse(false, message, statusCode, errors);
 
-    public static ApiResponse FromResult(Result result, string? message = null, int successStatusCode = 200)
+    public static ApiResponse FromResult(Result result, string? successMessage = null, int successStatusCode = 200)
     {
         if (result.IsSuccess)
-            return Success(message ?? "Operation succeeded", successStatusCode);
+            return Success(successMessage ?? "Operation succeeded", successStatusCode);
 
         var errors = result.Error != null ? new List<Error> { result.Error } : null;
         int statusCode = result.Error != null ? ErrorStatusMapper.ToStatusCode(result.Error) : 400;
 
-        return Error(message ?? result.Error?.Message, statusCode, errors);
+        return Error(result.Error?.Message, statusCode, errors); // FIXED: Use error message
     }
 }
