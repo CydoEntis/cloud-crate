@@ -1,5 +1,7 @@
-﻿using CloudCrate.Application.Interfaces;
+﻿using CloudCrate.Application.Errors;
+using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Models;
+using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -22,43 +24,58 @@ public class BatchMembershipService : IBatchMembershipService
 
     public async Task<Result<int>> LeaveCratesAsync(string userId, IEnumerable<Guid> crateIds)
     {
-        var list = crateIds.ToList();
-        var leftCount = 0;
+        var crateIdList = crateIds.ToList();
+        var totalLeftCount = 0;
 
-        while (list.Any())
+        while (crateIdList.Any())
         {
-            var batch = list.Take(BatchSize).ToList();
+            var batch = crateIdList.Take(BatchSize).ToList();
 
-            foreach (var crateId in batch)
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                var membership = await _context.CrateMembers
-                    .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
+                var memberships = await _context.CrateMembers
+                    .Where(m => batch.Contains(m.CrateId) && m.UserId == userId)
+                    .ToListAsync();
 
-                if (membership != null)
+                var leavableMemberships = memberships
+                    .Where(m => m.Role != CrateRole.Owner)
+                    .ToList();
+
+                if (leavableMemberships.Any())
                 {
-                    if (membership.Role == Domain.Enums.CrateRole.Owner)
+                    _context.CrateMembers.RemoveRange(leavableMemberships);
+                    await _context.SaveChangesAsync();
+                    totalLeftCount += leavableMemberships.Count;
+
+                    foreach (var membership in leavableMemberships)
                     {
-                        _logger.LogWarning(
-                            "User {UserId} attempted to leave crate {CrateId} but is the owner",
-                            userId, crateId);
-                        continue;
+                        _logger.LogInformation("User {UserId} left crate {CrateId}", 
+                            userId, membership.CrateId);
                     }
+                }
 
-                    _context.CrateMembers.Remove(membership);
-                    leftCount++;
-                    _logger.LogInformation("User {UserId} left crate {CrateId}", userId, crateId);
-                }
-                else
+                var ownerMemberships = memberships
+                    .Where(m => m.Role == CrateRole.Owner).ToList();
+
+                foreach (var ownership in ownerMemberships)
                 {
-                    _logger.LogWarning(
-                        "User {UserId} is not a member of crate {CrateId}", userId, crateId);
+                    _logger.LogWarning("User {UserId} attempted to leave crate {CrateId} but is the owner",
+                        userId, ownership.CrateId);
                 }
+
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Failed to process batch for user {UserId}", userId);
+                return Result<int>.Failure(new InternalError($"Failed to leave crates: {ex.Message}"));
             }
 
-            await _context.SaveChangesAsync();
-            list = list.Skip(BatchSize).ToList();
+            crateIdList = crateIdList.Skip(BatchSize).ToList();
         }
 
-        return Result<int>.Success(leftCount);
+        return Result<int>.Success(totalLeftCount);
     }
 }
