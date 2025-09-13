@@ -72,14 +72,38 @@ public class MinioStorageService : IStorageService
     public async Task<Result<List<string>>> SaveFilesAsync(List<FileUploadRequest> requests)
     {
         var uploadedKeys = new List<string>();
-        foreach (var request in requests)
-        {
-            var result = await SaveFileAsync(request);
-            if (!result.IsSuccess) return Result<List<string>>.Failure(result.Error!);
-            uploadedKeys.Add(result.Value);
-        }
 
-        return Result<List<string>>.Success(uploadedKeys);
+        try
+        {
+            foreach (var request in requests)
+            {
+                var result = await SaveFileAsync(request);
+                if (!result.IsSuccess)
+                {
+                    if (uploadedKeys.Any())
+                    {
+                        _logger.LogWarning("Upload failed, cleaning up {Count} uploaded files", uploadedKeys.Count);
+                        await DeleteKeysAsync(uploadedKeys);
+                    }
+
+                    return Result<List<string>>.Failure(result.Error!);
+                }
+
+                uploadedKeys.Add(result.Value);
+            }
+
+            return Result<List<string>>.Success(uploadedKeys);
+        }
+        catch (Exception ex)
+        {
+            // Cleanup on exception
+            if (uploadedKeys.Any())
+            {
+                await DeleteKeysAsync(uploadedKeys);
+            }
+
+            return Result<List<string>>.Failure(new StorageError($"Bulk upload failed: {ex.Message}"));
+        }
     }
 
     public async Task<Result<byte[]>> ReadFileAsync(Guid crateId, Guid? folderId, string fileName)
@@ -137,26 +161,45 @@ public class MinioStorageService : IStorageService
 
     public async Task<Result> DeleteAllFilesForCrateAsync(Guid crateId)
     {
-        string? continuationToken = null;
-        var allKeys = new List<string>();
         var prefix = $"{crateId}/";
+        string? continuationToken = null;
 
         do
         {
-            var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
+            try
             {
-                BucketName = BucketName,
-                Prefix = prefix,
-                ContinuationToken = continuationToken,
-                MaxKeys = DeleteBatchSize
-            });
+                var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
+                {
+                    BucketName = BucketName,
+                    Prefix = prefix,
+                    ContinuationToken = continuationToken,
+                    MaxKeys = DeleteBatchSize
+                });
 
-            allKeys.AddRange(listResponse.S3Objects.Select(o => o.Key));
-            continuationToken =
-                listResponse.IsTruncated.GetValueOrDefault() ? listResponse.NextContinuationToken : null;
+                if (listResponse.S3Objects.Any())
+                {
+                    var keys = listResponse.S3Objects.Select(o => o.Key).ToList();
+                    var deleteResult = await DeleteKeysAsync(keys);
+                    if (!deleteResult.IsSuccess)
+                    {
+                        _logger.LogError("Failed to delete batch for crate {CrateId}: {Error}",
+                            crateId, deleteResult.Error?.Message);
+                        return deleteResult;
+                    }
+                }
+
+                continuationToken = listResponse.IsTruncated.GetValueOrDefault()
+                    ? listResponse.NextContinuationToken
+                    : null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to list objects for crate {CrateId}", crateId);
+                return Result.Failure(new StorageError($"Failed to list files for crate: {ex.Message}"));
+            }
         } while (continuationToken != null);
 
-        return await DeleteKeysAsync(allKeys);
+        return Result.Success();
     }
 
     private async Task<Result> DeleteKeysAsync(List<string> keys)
