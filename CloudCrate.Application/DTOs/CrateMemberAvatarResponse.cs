@@ -2,7 +2,7 @@
 
 namespace CloudCrate.Application.DTOs;
 
-public class CrateMemberPreviewResponse
+public class CrateMemberAvatarResponse
 {
     public CrateMemberResponse Owner { get; set; } = null!;
     public List<CrateMemberResponse> RecentMembers { get; set; } = new();
