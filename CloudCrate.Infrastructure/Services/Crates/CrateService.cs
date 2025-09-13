@@ -165,9 +165,30 @@ public class CrateService : ICrateService
             var query = BuildUserCratesQuery(parameters);
             var pagedEntities = await query.PaginateAsync(parameters.Page, parameters.PageSize);
 
-            var responses = pagedEntities.Items
-                .Select(e => e.ToDomain().ToCrateListItemResponse(parameters.UserId))
-                .ToList();
+            var responses = pagedEntities.Items.Select(entity =>
+            {
+                var ownerMember = entity.Members.First(m => m.Role == CrateRole.Owner);
+                var currentUserMember = entity.Members.First(m => m.UserId == parameters.UserId);
+
+                return new CrateListItemResponse
+                {
+                    Id = entity.Id,
+                    Name = entity.Name,
+                    Color = entity.Color,
+                    Owner = new CrateMemberResponse
+                    {
+                        UserId = ownerMember.UserId,
+                        DisplayName = ownerMember.User?.DisplayName ?? "Unknown",
+                        Email = ownerMember.User?.Email ?? string.Empty,
+                        Role = ownerMember.Role,
+                        ProfilePicture = ownerMember.User?.ProfilePictureUrl ?? string.Empty,
+                        JoinedAt = ownerMember.JoinedAt
+                    },
+                    UsedStorageBytes = entity.UsedStorageBytes,
+                    TotalStorageBytes = entity.AllocatedStorageBytes,
+                    CratedAt = currentUserMember.JoinedAt
+                };
+            }).ToList();
 
             return Result<PaginatedResult<CrateListItemResponse>>.Success(
                 PaginatedResult<CrateListItemResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
