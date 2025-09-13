@@ -8,8 +8,7 @@ public static class CrateMapper
 {
     public static CrateListItemResponse ToCrateListItemResponse(
         this Domain.Entities.Crate crate,
-        string userId,
-        Dictionary<string, UserResponse> users) 
+        string userId)
     {
         var owner = crate.Members.FirstOrDefault(m => m.Role == CrateRole.Owner);
         var joined = crate.Members.FirstOrDefault(m => m.UserId == userId);
@@ -19,14 +18,14 @@ public static class CrateMapper
             Id = crate.Id,
             Name = crate.Name,
             Color = crate.Color,
-            Owner = owner is null
+            Owner = owner?.User is null
                 ? null!
                 : new CrateMemberResponse
                 {
                     UserId = owner.UserId,
-                    DisplayName = users[owner.UserId].DisplayName,
-                    Email = users[owner.UserId].Email,
-                    ProfilePicture = users[owner.UserId].ProfilePictureUrl,
+                    DisplayName = owner.User.DisplayName,
+                    Email = owner.User.Email,
+                    ProfilePicture = owner.User.ProfilePictureUrl,
                     JoinedAt = owner.JoinedAt,
                     Role = CrateRole.Owner
                 },

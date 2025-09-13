@@ -15,6 +15,7 @@ using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence;
+using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
 using Microsoft.EntityFrameworkCore;
@@ -161,62 +162,41 @@ public class CrateService : ICrateService
 
         try
         {
-            var query = _context.Crates
-                .AsNoTracking()
-                .Include(c => c.Members).ThenInclude(m => m.User)
-                .Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
-
-            query = parameters.MemberType switch
-            {
-                CrateMemberType.Owner => query.Where(c =>
-                    c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner)),
-                CrateMemberType.Joined => query.Where(c =>
-                    c.Members.Any(m => m.UserId == parameters.UserId && m.Role != CrateRole.Owner)),
-                _ => query
-            };
-
-            query = query.ApplySearch(parameters.SearchTerm).ApplyOrdering(parameters);
-
+            var query = BuildUserCratesQuery(parameters);
             var pagedEntities = await query.PaginateAsync(parameters.Page, parameters.PageSize);
 
-            var domainCrates = pagedEntities.Items.Select(e => e.ToDomain()).ToList();
-
-            var userLookup = pagedEntities.Items
-                .SelectMany(c => c.Members)
-                .Where(m => m.User != null)
-                .Select(m => m.User!)
-                .DistinctBy(u => u.Id)
-                .ToDictionary(
-                    u => u.Id,
-                    u => new UserResponse
-                    {
-                        Id = u.Id,
-                        DisplayName = u.DisplayName,
-                        Email = u.Email,
-                        ProfilePictureUrl = u.ProfilePictureUrl
-                    });
-
-            var crateResponses = domainCrates
-                .Select(c => c.ToCrateListItemResponse(parameters.UserId, userLookup))
+            var responses = pagedEntities.Items
+                .Select(e => e.ToDomain().ToCrateListItemResponse(parameters.UserId))
                 .ToList();
 
-
             return Result<PaginatedResult<CrateListItemResponse>>.Success(
-                PaginatedResult<CrateListItemResponse>.Create(
-                    crateResponses,
-                    pagedEntities.TotalCount,
-                    parameters.Page,
-                    parameters.PageSize
-                )
-            );
+                PaginatedResult<CrateListItemResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
+                    parameters.PageSize));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to retrieve crates for user {UserId}", parameters.UserId);
-            return Result<PaginatedResult<CrateListItemResponse>>.Failure(
-                new InternalError("Could not fetch crates")
-            );
+            return Result<PaginatedResult<CrateListItemResponse>>.Failure(new InternalError("Could not fetch crates"));
         }
+    }
+
+    private IQueryable<CrateEntity> BuildUserCratesQuery(CrateQueryParameters parameters)
+    {
+        var query = _context.Crates
+            .AsNoTracking()
+            .Include(c => c.Members).ThenInclude(m => m.User)
+            .Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
+
+        query = parameters.MemberType switch
+        {
+            CrateMemberType.Owner => query.Where(c =>
+                c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner)),
+            CrateMemberType.Joined => query.Where(c =>
+                c.Members.Any(m => m.UserId == parameters.UserId && m.Role != CrateRole.Owner)),
+            _ => query
+        };
+
+        return query.ApplySearch(parameters.SearchTerm).ApplyOrdering(parameters);
     }
 
 
@@ -237,17 +217,12 @@ public class CrateService : ICrateService
 
         var crateDomain = crateEntity.ToDomain();
 
-        var member = crateDomain.Members.FirstOrDefault(m => m.UserId == userId);
-        if (member is null)
-            return Result<CrateDetailsResponse>.Failure(
-                new UnauthorizedError("User is not a member of this crate"));
+        // Since CanView already verified membership, this should never be null
+        var member = crateDomain.Members.First(m => m.UserId == userId);
 
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
         if (rootFolder is null)
-            return Result<CrateDetailsResponse>.Failure(
-                new InternalError("Root folder missing"));
-
-        var fileBreakdown = FileBreakdownHelper.GetFilesByMimeTypeInMemory(crateDomain.Files);
+            return Result<CrateDetailsResponse>.Failure(new InternalError("Root folder missing"));
 
         var response = new CrateDetailsResponse
         {
@@ -257,7 +232,7 @@ public class CrateService : ICrateService
             Role = member.Role,
             TotalUsedStorage = crateDomain.UsedStorage.Bytes,
             StorageLimit = crateDomain.AllocatedStorage.Bytes,
-            BreakdownByType = fileBreakdown,
+            BreakdownByType = FileBreakdownHelper.GetFilesByMimeTypeInMemory(crateDomain.Files),
             RootFolderId = rootFolder.Id
         };
 
@@ -265,54 +240,94 @@ public class CrateService : ICrateService
     }
 
 
-
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
-        var crateEntity = await _context.Crates
-            .Include(c => c.Members)
-            .FirstOrDefaultAsync(c => c.Id == crateId);
+        var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
+        if (!canManageResult.IsSuccess || !canManageResult.Value)
+            return Result.Failure(new ForbiddenError("You do not have permission to delete this crate"));
 
+        var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
         if (crateEntity is null)
             return Result.Failure(new NotFoundError("Crate not found"));
 
         var crateDomain = crateEntity.ToDomain();
 
-        var isOwner = crateDomain.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner);
-        if (!isOwner)
-            return Result.Failure(new ForbiddenError("You do not have permission to delete this crate"));
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var deallocationResult =
+                await _userService.DeallocateStorageAsync(userId, crateDomain.AllocatedStorage.Bytes);
+            if (!deallocationResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result.Failure(deallocationResult.Error!);
+            }
 
-        var result = await _batchDeleteService.DeleteCratesAsync(new[] { crateDomain.Id });
-        if (!result.IsSuccess)
-            _logger.LogWarning("Failed to delete crate {CrateId}", crateId);
+            var deleteResult = await _batchDeleteService.DeleteCratesAsync(new[] { crateDomain.Id });
+            if (!deleteResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result.Failure(deleteResult.Error!);
+            }
 
-        return result;
+            await transaction.CommitAsync();
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to delete crate {CrateId}", crateId);
+            return Result.Failure(new InternalError($"Failed to delete crate: {ex.Message}"));
+        }
     }
 
 
     public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
     {
+        var crateIdList = crateIds.ToList();
+
         var crateEntities = await _context.Crates
             .Include(c => c.Members)
-            .Where(c => crateIds.Contains(c.Id))
+            .Where(c => crateIdList.Contains(c.Id))
             .ToListAsync();
 
         if (!crateEntities.Any())
             return Result.Failure(new NotFoundError("No crates found"));
 
-        var domainCrates = crateEntities.Select(c => c.ToDomain()).ToList();
-
-        var ownedCrates = domainCrates
+        var ownedCrates = crateEntities
             .Where(c => c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner))
-            .Select(c => c.Id)
             .ToList();
 
         if (!ownedCrates.Any())
             return Result.Failure(new ForbiddenError("You do not have permission to delete these crates"));
 
-        var result = await _batchDeleteService.DeleteCratesAsync(ownedCrates);
-        if (!result.IsSuccess)
-            _logger.LogWarning("Failed to delete some crates: {CrateIds}", string.Join(", ", ownedCrates));
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            var totalStorageToFree = ownedCrates.Sum(c => c.AllocatedStorageBytes);
+            var deallocationResult = await _userService.DeallocateStorageAsync(userId, totalStorageToFree);
+            if (!deallocationResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result.Failure(deallocationResult.Error!);
+            }
 
-        return result;
+            var deleteResult = await _batchDeleteService.DeleteCratesAsync(ownedCrates.Select(c => c.Id));
+            if (!deleteResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result.Failure(deleteResult.Error!);
+            }
+
+            await transaction.CommitAsync();
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to delete crates: {CrateIds}",
+                string.Join(", ", ownedCrates.Select(c => c.Id)));
+            return Result.Failure(new InternalError("Failed to delete crates"));
+        }
     }
 }
