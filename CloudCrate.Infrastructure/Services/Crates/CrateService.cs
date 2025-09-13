@@ -351,4 +351,15 @@ public class CrateService : ICrateService
             return Result.Failure(new InternalError("Failed to delete crates"));
         }
     }
+
+    public async Task<Result<string>> GetCrateNameAsync(Guid crateId)
+    {
+        var crateEntity = await _context.Crates.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == crateId);
+
+        if (crateEntity is null)
+            return Result<string>.Failure(new NotFoundError("Crate not found"));
+
+        return Result<string>.Success(crateEntity.Name);
+    }
 }

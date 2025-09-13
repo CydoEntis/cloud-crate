@@ -8,8 +8,6 @@ namespace CloudCrate.Application.Interfaces.Crate;
 public interface ICrateService
 {
     Task<Result<Guid>> CreateCrateAsync(CreateCrateRequest request);
-
-
     Task<Result<PaginatedResult<CrateListItemResponse>>> GetCratesAsync(CrateQueryParameters parameters);
     Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId);
 
@@ -17,4 +15,5 @@ public interface ICrateService
 
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
     Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId);
+    Task<Result<string>> GetCrateNameAsync(Guid crateId);
 }

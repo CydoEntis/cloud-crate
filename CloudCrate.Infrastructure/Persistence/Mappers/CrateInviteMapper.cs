@@ -5,12 +5,12 @@ namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
 public static class CrateInviteMapper
 {
-    public static CrateInviteEntity ToEntity(this CrateInvite invite, Guid crateId)
+    public static CrateInviteEntity ToEntity(this CrateInvite invite)
     {
         return new CrateInviteEntity
         {
             Id = invite.Id,
-            CrateId = crateId,
+            CrateId = invite.CrateId,
             InvitedUserEmail = invite.InvitedUserEmail,
             InvitedByUserId = invite.InvitedByUserId,
             Role = invite.Role,
