@@ -32,7 +32,6 @@ using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
 using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using CloudCrate.Infrastructure.Services.Storage;
-using CloudCrate.Infrastructure.Services.Transactions;
 using CloudCrate.Infrastructure.Services.User;
 using RazorLight;
 using Resend;
@@ -144,7 +143,6 @@ builder.Services.AddScoped<IBulkService, BulkService>();
 builder.Services.AddScoped<IBatchDeleteService, BatchDeleteService>();
 builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
-builder.Services.AddTransient<ITransactionService, TransactionService>();
 
 
 // Registering Minio Storage
