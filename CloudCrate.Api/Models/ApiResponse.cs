@@ -6,92 +6,132 @@ namespace CloudCrate.Api.Models;
 public class ApiResponse<T>
 {
     public bool IsSuccess { get; init; }
-    public T? Value { get; init; }
+    public T? Data { get; init; }
     public string? Message { get; init; }
     public int StatusCode { get; init; }
     public IReadOnlyList<Error>? Errors { get; init; }
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
 
-    public ApiResponse(
+    private ApiResponse(
         bool isSuccess,
-        T? value,
+        T? data,
         string? message,
         int statusCode,
         IReadOnlyList<Error>? errors = null)
     {
         IsSuccess = isSuccess;
-        Value = value;
+        Data = data;
         Message = message;
         StatusCode = statusCode;
         Errors = errors;
     }
 
     public static ApiResponse<T> Success(
-        T? data = default,
-        string message = "Success",
+        T data,
+        string? message = null,
         int statusCode = 200)
     {
-        return new ApiResponse<T>(true, data, message, statusCode);
+        return new ApiResponse<T>(
+            isSuccess: true,
+            data: data,
+            message: message ?? "Operation successful",
+            statusCode: statusCode);
     }
 
-    /// Converts a Result<T> from the Application layer into a standardized ApiResponse.
+    public static ApiResponse<T> Success(
+        string? message = null,
+        int statusCode = 200)
+    {
+        return new ApiResponse<T>(
+            isSuccess: true,
+            data: default,
+            message: message ?? "Operation successful",
+            statusCode: statusCode);
+    }
+
+    public static ApiResponse<T> Failure(
+        string message,
+        int statusCode = 400,
+        IReadOnlyList<Error>? errors = null)
+    {
+        return new ApiResponse<T>(
+            isSuccess: false,
+            data: default,
+            message: message,
+            statusCode: statusCode,
+            errors: errors);
+    }
+
     public static ApiResponse<T> FromResult(
         Result<T> result,
         string? successMessage = null,
         int successStatusCode = 200)
     {
         if (result.IsSuccess)
-            return Success(result.Value, successMessage ?? "Operation succeeded", successStatusCode);
-
-        IReadOnlyList<Error>? errors = result.Error switch
         {
-            ValidationErrors ve => ve.ErrorList.Cast<Error>().ToList(),
-            _ => new List<Error> { result.Error! }
-        };
+            return Success(
+                data: result.GetValue(),
+                message: successMessage,
+                statusCode: successStatusCode);
+        }
 
-        int statusCode = ErrorStatusMapper.ToStatusCode(result.Error!);
+        var error = result.GetError();
+        var errors = CreateErrorList(error);
+        var statusCode = ErrorStatusMapper.ToStatusCode(error);
 
-        return new ApiResponse<T>(
-            isSuccess: false,
-            value: default,
-            message: result.Error?.Message, 
+        return Failure(
+            message: error.Message,
             statusCode: statusCode,
-            errors: errors
-        );
+            errors: errors);
+    }
+
+    public static ApiResponse<T> FromResult(
+        Result result,
+        string? successMessage = null,
+        int successStatusCode = 200)
+    {
+        if (result.IsSuccess)
+        {
+            return Success(
+                message: successMessage,
+                statusCode: successStatusCode);
+        }
+
+        var error = result.GetError();
+        var errors = CreateErrorList(error);
+        var statusCode = ErrorStatusMapper.ToStatusCode(error);
+
+        return Failure(
+            message: error.Message,
+            statusCode: statusCode,
+            errors: errors);
+    }
+
+    private static IReadOnlyList<Error> CreateErrorList(Error error)
+    {
+        return error switch
+        {
+            ValidationErrors validationErrors => validationErrors.ErrorList.Cast<Error>().ToList(),
+            _ => new List<Error> { error }
+        };
     }
 }
 
-
-public class ApiResponse
+public static class ApiResponseExtensions
 {
-    public bool IsSuccess { get; init; }
-    public string? Message { get; init; }
-    public int StatusCode { get; init; }
-    public IReadOnlyList<Error>? Errors { get; init; }
-    public DateTime Timestamp { get; init; } = DateTime.UtcNow;
-
-    private ApiResponse(bool isSuccess, string? message, int statusCode, IReadOnlyList<Error>? errors = null)
+    public static ApiResponse<T> ToApiResponse<T>(
+        this Result<T> result,
+        string? successMessage = null,
+        int successStatusCode = 200)
     {
-        IsSuccess = isSuccess;
-        Message = message;
-        StatusCode = statusCode;
-        Errors = errors;
+        return ApiResponse<T>.FromResult(result, successMessage, successStatusCode);
     }
 
-    private static ApiResponse Success(string? message = "Success", int statusCode = 200)
-        => new ApiResponse(true, message, statusCode);
-
-    private static ApiResponse Error(string? message, int statusCode = 400, IReadOnlyList<Error>? errors = null)
-        => new ApiResponse(false, message, statusCode, errors);
-
-    public static ApiResponse FromResult(Result result, string? successMessage = null, int successStatusCode = 200)
+    public static ApiResponse<object> ToApiResponse(
+        this Result result,
+        string? successMessage = null,
+        int successStatusCode = 200)
     {
-        if (result.IsSuccess)
-            return Success(successMessage ?? "Operation succeeded", successStatusCode);
-
-        var errors = result.Error != null ? new List<Error> { result.Error } : null;
-        int statusCode = result.Error != null ? ErrorStatusMapper.ToStatusCode(result.Error) : 400;
-
-        return Error(result.Error?.Message, statusCode, errors); // FIXED: Use error message
+        return ApiResponse<object>.FromResult(result, successMessage, successStatusCode);
     }
 }
