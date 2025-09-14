@@ -1,6 +1,7 @@
 ﻿using CloudCrate.Api.Models;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Api.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -21,10 +22,20 @@ public class UserController : BaseController
     [HttpGet]
     public async Task<IActionResult> GetCurrentUser()
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<UserResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _userService.GetUserByIdAsync(UserId!);
-        return Response(ApiResponse<UserResponse>.FromResult(result, "User profile retrieved successfully", 200));
+        var result = await _userService.GetUserByIdAsync(UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<UserResponse>.Success(
+                data: result.GetValue(),
+                message: "User profile retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<UserResponse>();
     }
 }

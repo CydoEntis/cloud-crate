@@ -3,7 +3,7 @@ using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Api.Models;
-using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Api.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -25,9 +25,17 @@ public class CrateController : BaseController
     public async Task<IActionResult> CreateCrate([FromBody] CreateCrateRequest request)
     {
         request.UserId = UserId;
-        var result =
-            await _crateService.CreateCrateAsync(request);
-        return Response(ApiResponse<Guid>.FromResult(result, "Crate created successfully", 201));
+        var result = await _crateService.CreateCrateAsync(request);
+
+        if (result.IsSuccess)
+        {
+            return Created("", ApiResponse<Guid>.Success(
+                data: result.GetValue(),
+                message: "Crate created successfully",
+                statusCode: 201));
+        }
+
+        return result.GetError().ToActionResult<Guid>();
     }
 
     [HttpGet]
@@ -35,47 +43,77 @@ public class CrateController : BaseController
     {
         queryParameters.UserId = UserId!;
         var result = await _crateService.GetCratesAsync(queryParameters);
-        return Response(
-            ApiResponse<PaginatedResult<CrateListItemResponse>>.FromResult(result, "Crates retrieved successfully"));
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<PaginatedResult<CrateListItemResponse>>.Success(
+                data: result.GetValue(),
+                message: "Crates retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<PaginatedResult<CrateListItemResponse>>();
     }
 
     [HttpPut("{crateId:guid}")]
     public async Task<IActionResult> UpdateCrate(Guid crateId, [FromBody] UpdateCrateRequest request)
     {
         var result = await _crateService.UpdateCrateAsync(crateId, UserId!, request);
-        return Response(ApiResponse.FromResult(result, "Crate updated successfully"));
-    }
 
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Crate updated successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
+    }
 
     [HttpGet("{crateId:guid}")]
     public async Task<IActionResult> GetCrate(Guid crateId)
     {
         var result = await _crateService.GetCrateAsync(crateId, UserId!);
-        return Response(ApiResponse<CrateDetailsResponse>.FromResult(result, "Crate retrieved successfully"));
-    }
 
-    // [HttpGet("{crateId:guid}/members")]
-    // public async Task<IActionResult> GetCrateMembers(Guid crateId, [FromQuery] CrateMemberRequest request)
-    // {
-    //     var result = await _crateService.GetCrateMembersAsync(crateId, request);
-    //     return Response(
-    //         ApiResponse<List<CrateMemberResponse>>.FromResult(result, "Crate members retrieved successfully"));
-    // }
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<CrateDetailsResponse>.Success(
+                data: result.GetValue(),
+                message: "Crate retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<CrateDetailsResponse>();
+    }
 
     [HttpDelete("{crateId:guid}")]
     public async Task<IActionResult> DeleteCrate(Guid crateId)
     {
         var result = await _crateService.DeleteCrateAsync(crateId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Crate deleted successfully", 204));
+
+        if (result.IsSuccess)
+        {
+            return NoContent();
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpPost("bulk-delete")]
     public async Task<IActionResult> BulkDeleteCrates([FromBody] BulkCrateActionRequest request)
     {
         if (request.CrateIds == null || !request.CrateIds.Any())
-            return BadRequest("No crate IDs provided.");
+        {
+            return BadRequest(ApiResponse<EmptyResponse>.Failure("No crate IDs provided", 400));
+        }
 
         var result = await _crateService.DeleteCratesAsync(request.CrateIds, UserId!);
-        return Response(ApiResponse.FromResult(result, $"{request.CrateIds.Count} crates deleted successfully", 200));
+
+        if (result.IsSuccess)
+        {
+            var deleteResult = result.GetValue();
+            return Ok(ApiResponse<BulkDeleteCrateResponse>.Success(
+                data: deleteResult,
+                message: $"Processed {deleteResult.RequestedCount} crates: " +
+                         $"{deleteResult.DeletedCount} deleted, {deleteResult.SkippedCrateIds.Count} skipped"));
+        }
+
+        return result.GetError().ToActionResult<BulkDeleteCrateResponse>();
     }
 }

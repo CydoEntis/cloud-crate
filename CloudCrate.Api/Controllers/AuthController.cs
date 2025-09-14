@@ -4,11 +4,13 @@ using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Api.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CloudCrate.Api.Controllers;
 
+[ApiController]
 [Route("api/auth")]
 public class AuthController : BaseController
 {
@@ -25,24 +27,52 @@ public class AuthController : BaseController
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
         var result = await _authService.RegisterAsync(request);
-        return Response(ApiResponse<AuthResponse>.FromResult(result, "User registered successfully", 201));
+
+        if (result.IsSuccess)
+        {
+            return Created("", ApiResponse<AuthResponse>.Success(
+                data: result.GetValue(),
+                message: "User registered successfully",
+                statusCode: 201));
+        }
+
+        return result.GetError().ToActionResult<AuthResponse>();
     }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await _authService.LoginAsync(request.Email, request.Password);
-        return Response(ApiResponse<AuthResponse>.FromResult(result, "Login successful", 200));
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<AuthResponse>.Success(
+                data: result.GetValue(),
+                message: "Login successful"));
+        }
+
+        return result.GetError().ToActionResult<AuthResponse>();
     }
 
     [Authorize]
     [HttpGet("user")]
     public async Task<IActionResult> GetCurrentUser()
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<UserResponse>.Failure(
+                "User is not authenticated", 401));
+        }
 
-        var result = await _userService.GetUserByIdAsync(UserId!);
-        return Response(ApiResponse<UserResponse>.FromResult(result, "User retrieved successfully", 200));
+        var result = await _userService.GetUserByIdAsync(UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<UserResponse>.Success(
+                data: result.GetValue(),
+                message: "User retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<UserResponse>();
     }
 }

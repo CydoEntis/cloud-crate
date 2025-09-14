@@ -5,6 +5,7 @@ using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
+using CloudCrate.Api.Common.Extensions;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -23,103 +24,187 @@ public class FolderController : BaseController
     [HttpPost]
     public async Task<IActionResult> CreateFolder(Guid crateId, [FromBody] CreateFolderRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<Guid>.Failure("User is not authenticated", 401));
+        }
 
-        var routeMismatch = EnsureRouteIdMatches(crateId, request.CrateId, "Crate");
-        if (routeMismatch != null) return routeMismatch;
+        if (crateId != request.CrateId)
+        {
+            return BadRequest(ApiResponse<Guid>.Failure("Crate ID in route and request body do not match", 400));
+        }
 
-        var result = await _folderService.CreateFolderAsync(request, UserId!);
-        return Response(ApiResponse<Guid>.FromResult(result, "Folder created successfully", 201));
+        var result = await _folderService.CreateFolderAsync(request, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Created("", ApiResponse<Guid>.Success(
+                data: result.GetValue(),
+                message: "Folder created successfully",
+                statusCode: 201));
+        }
+
+        return result.GetError().ToActionResult<Guid>();
     }
 
     [HttpPut("{folderId:guid}")]
-    public async Task<IActionResult> UpdateFolder(Guid crateId, Guid folderId, [FromBody] UpdateFolderRequest request)
+    public async Task<IActionResult> UpdateFolder(Guid folderId, [FromBody] UpdateFolderRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var routeMismatch = EnsureRouteIdMatches(folderId, request.FolderId, "Folder");
-        if (routeMismatch != null) return routeMismatch;
+        if (folderId != request.FolderId)
+        {
+            return BadRequest(
+                ApiResponse<EmptyResponse>.Failure("Folder ID in route and request body do not match", 400));
+        }
 
-        var result = await _folderService.UpdateFolderAsync(request.FolderId, request, UserId!);
-        return Response(ApiResponse.FromResult(result, "Folder updated successfully"));
+        var result = await _folderService.UpdateFolderAsync(request.FolderId, request, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Folder updated successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpDelete("{folderId:guid}")]
-    public async Task<IActionResult> DeleteFolder(Guid crateId, Guid folderId)
+    public async Task<IActionResult> DeleteFolder(Guid folderId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _folderService.DeleteFolderAsync(folderId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Folder deleted successfully (soft delete)"));
+        var result = await _folderService.DeleteFolderAsync(folderId, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Folder deleted successfully (soft delete)"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpDelete("{folderId:guid}/permanent")]
     public async Task<IActionResult> PermanentlyDeleteFolder(Guid folderId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Folder permanently deleted successfully"));
+        var result = await _folderService.PermanentlyDeleteFolderAsync(folderId, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Folder permanently deleted successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpPut("{folderId:guid}/move")]
-    public async Task<IActionResult> MoveFolder(Guid crateId, Guid folderId, [FromBody] MoveFolderRequest request)
+    public async Task<IActionResult> MoveFolder(Guid folderId, [FromBody] MoveFolderRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Folder moved successfully"));
+        var result = await _folderService.MoveFolderAsync(folderId, request.NewParentId, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Folder moved successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpGet("contents/{parentFolderId:guid?}")]
     public async Task<IActionResult> GetFolderContents(Guid crateId, Guid? parentFolderId,
         [FromQuery] FolderContentsParameters queryParameters)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<FolderContentsResponse>.Failure("User is not authenticated", 401));
+        }
 
         queryParameters.CrateId = crateId;
         queryParameters.FolderId = parentFolderId;
-        queryParameters.UserId = UserId!;
+        queryParameters.UserId = UserId;
 
         var result = await _folderService.GetFolderContentsAsync(queryParameters);
-        return Response(
-            ApiResponse<FolderContentsResponse>.FromResult(result, "Folder contents retrieved successfully"));
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<FolderContentsResponse>.Success(
+                data: result.GetValue(),
+                message: "Folder contents retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<FolderContentsResponse>();
     }
 
     [HttpGet("available-move-targets")]
     public async Task<IActionResult> GetAvailableMoveTargets(Guid crateId, Guid? excludeFolderId = null)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<List<FolderResponse>>.Failure("User is not authenticated", 401));
+        }
 
         var result = await _folderService.GetAvailableMoveFoldersAsync(crateId, excludeFolderId);
-        return Response(
-            ApiResponse<List<FolderResponse>>.FromResult(result, "Available move targets retrieved successfully"));
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<List<FolderResponse>>.Success(
+                data: result.GetValue(),
+                message: "Available move targets retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<List<FolderResponse>>();
     }
 
     [HttpGet("folders/{folderId}/download")]
     public async Task<IActionResult> DownloadFolder(Guid folderId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<FolderDownloadResult>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _folderService.DownloadFolderAsync(folderId, UserId!);
-        return Response(ApiResponse<FolderDownloadResult>.FromResult(result, "Folder downloaded successfully"));
+        var result = await _folderService.DownloadFolderAsync(folderId, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<FolderDownloadResult>.Success(
+                data: result.GetValue(),
+                message: "Folder downloaded successfully"));
+        }
+
+        return result.GetError().ToActionResult<FolderDownloadResult>();
     }
 
     [HttpPut("{folderId:guid}/restore")]
     public async Task<IActionResult> RestoreFolder(Guid crateId, Guid folderId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _folderService.RestoreFolderAsync(folderId, UserId!);
-        return Response(ApiResponse.FromResult(result, "Folder restored successfully"));
+        var result = await _folderService.RestoreFolderAsync(folderId, UserId);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Folder restored successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 }

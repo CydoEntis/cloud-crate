@@ -2,7 +2,7 @@
 using CloudCrate.Application.DTOs.Invite.Request;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.DTOs.Invite.Response;
-using CloudCrate.Application.Models;
+using CloudCrate.Api.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,51 +14,81 @@ namespace CloudCrate.Api.Controllers;
 public class CrateInviteController : BaseController
 {
     private readonly ICrateInviteService _inviteService;
-    private readonly ICrateMemberService _roleService;
 
-    public CrateInviteController(ICrateInviteService inviteService, ICrateMemberService roleService)
+    public CrateInviteController(ICrateInviteService inviteService)
     {
         _inviteService = inviteService;
-        _roleService = roleService;
     }
 
     [HttpPost]
     public async Task<IActionResult> SendInvite([FromBody] CrateInviteRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _inviteService.CreateInviteAsync(
-            request.CrateId, request.Email, UserId!, request.Role, request.ExpiresAt);
+        var result = await _inviteService.CreateInviteAsync(request);
+        
+        if (result.IsSuccess)
+        {
+            return Created("", ApiResponse<EmptyResponse>.Success(
+                message: "Invite sent successfully",
+                statusCode: 201));
+        }
 
-        return Response(ApiResponse<Result>.Success(result, "Invite sent", 201));
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpGet("token/{token}")]
     [AllowAnonymous]
     public async Task<IActionResult> GetInviteByToken(string token)
     {
-        var result = await _inviteService.GetInviteByTokenAsync(token);
-        return Response(ApiResponse<CrateInviteDetailsResponse>.FromResult(result, "Invite retrieved", 200));
+        var result = await _inviteService.GetInviteDetailsByTokenAsync(token);
+        
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<CrateInviteDetailsResponse>.Success(
+                data: result.GetValue(),
+                message: "Invite retrieved successfully"));
+        }
+        
+        return result.GetError().ToActionResult<CrateInviteDetailsResponse>();
     }
 
     [HttpPost("token/{token}/accept")]
     public async Task<IActionResult> AcceptInvite(string token)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
-        var result = await _inviteService.AcceptInviteAsync(token, UserId!, _roleService);
-        return Response(ApiResponse.FromResult(result, "Invite accepted", 200));
+        var result = await _inviteService.AcceptInviteAsync(token, UserId);
+        
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Invite accepted successfully"));
+        }
+        
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpPost("token/{token}/decline")]
     public async Task<IActionResult> DeclineInvite(string token)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
 
         var result = await _inviteService.DeclineInviteAsync(token);
-        return Response(ApiResponse.FromResult(result, "Invite declined", 200));
+        
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Invite declined successfully"));
+        }
+        
+        return result.GetError().ToActionResult<EmptyResponse>();
     }
 }
