@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.Invite.Request;
+using CloudCrate.Application.DTOs.Invite.Response;
 using CloudCrate.Application.Email.Models;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Crate;
@@ -18,7 +19,7 @@ public class CrateInviteService : ICrateInviteService
 {
     private readonly AppDbContext _context;
     private readonly ICrateService _crateService;
-    private readonly ICrateMemberService _crateMemberService; // Inject in constructor
+    private readonly ICrateMemberService _crateMemberService;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _config;
 
@@ -27,11 +28,11 @@ public class CrateInviteService : ICrateInviteService
         IEmailService emailService,
         IConfiguration config,
         ICrateService crateService,
-        ICrateMemberService crateMemberService) // Add this
+        ICrateMemberService crateMemberService)
     {
         _context = context;
         _crateService = crateService;
-        _crateMemberService = crateMemberService; // Add this
+        _crateMemberService = crateMemberService;
         _emailService = emailService;
         _config = config;
     }
@@ -46,7 +47,7 @@ public class CrateInviteService : ICrateInviteService
                 i.InvitedUserEmail == invitedEmail &&
                 i.Status == InviteStatus.Pending);
 
-        return existingInvite is not null; 
+        return existingInvite is not null;
     }
 
     public async Task<Result> CreateInviteAsync(CrateInviteRequest request)
@@ -57,7 +58,7 @@ public class CrateInviteService : ICrateInviteService
 
         var crateNameResult = await _crateService.GetCrateNameAsync(request.CrateId);
         if (crateNameResult.IsFailure)
-            return Result.Failure(crateNameResult.Error!);
+            return Result.Failure(crateNameResult.GetError());
 
         var inviteDomain = CrateInvite.Create(request.CrateId, request.InvitedEmail, request.InvitedByUserId,
             request.Role, request.ExpiresAt);
@@ -67,7 +68,7 @@ public class CrateInviteService : ICrateInviteService
         await _context.SaveChangesAsync();
 
         var emailResult =
-            await SendInviteEmailAsync(inviteDomain.InvitedUserEmail, crateNameResult.Value, inviteDomain.Token);
+            await SendInviteEmailAsync(inviteDomain.InvitedUserEmail, crateNameResult.GetValue(), inviteDomain.Token);
         if (emailResult.IsFailure)
             return Result.Failure(
                 new EmailSendError($"Failed to send invite email to {inviteDomain.InvitedUserEmail}"));
@@ -77,7 +78,7 @@ public class CrateInviteService : ICrateInviteService
 
     public async Task<Result> AcceptInviteAsync(string token, string userId)
     {
-        var inviteEntity = await GetInviteByTokenAsync(token);
+        var inviteEntity = await GetInviteEntityByTokenAsync(token);
         if (inviteEntity == null)
             return Result.Failure(new NotFoundError("Invite not found", nameof(CrateInvite)));
 
@@ -89,7 +90,6 @@ public class CrateInviteService : ICrateInviteService
         if (inviteDomain.ExpiresAt.HasValue && inviteDomain.ExpiresAt.Value < DateTime.UtcNow)
             return Result.Failure(new BusinessRuleError("Invite has expired"));
 
-        // FIXED: Add transaction management for atomic operations
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -122,7 +122,7 @@ public class CrateInviteService : ICrateInviteService
 
     public async Task<Result> DeclineInviteAsync(string token)
     {
-        var inviteEntity = await GetInviteByTokenAsync(token);
+        var inviteEntity = await GetInviteEntityByTokenAsync(token);
         if (inviteEntity == null)
             return Result.Failure(new NotFoundError("Invite not found", nameof(CrateInvite)));
 
@@ -140,8 +140,30 @@ public class CrateInviteService : ICrateInviteService
 
         return Result.Success();
     }
+    
+    public async Task<Result<CrateInviteDetailsResponse>> GetInviteDetailsByTokenAsync(string token)
+    {
+        var inviteEntity = await GetInviteEntityByTokenAsync(token);
+        if (inviteEntity == null)
+            return Result<CrateInviteDetailsResponse>.Failure(new NotFoundError("Invite not found"));
 
-    private async Task<CrateInviteEntity?> GetInviteByTokenAsync(string token)
+        var inviteDomain = inviteEntity.ToDomain();
+
+        var response = new CrateInviteDetailsResponse
+        {
+            Id = inviteDomain.Id,
+            CrateId = inviteDomain.CrateId,
+            InvitedUserEmail = inviteDomain.InvitedUserEmail, 
+            Role = inviteDomain.Role,
+            Status = inviteDomain.Status, 
+            Token = inviteDomain.Token,
+            ExpiresAt = inviteDomain.ExpiresAt,
+        };
+
+        return Result<CrateInviteDetailsResponse>.Success(response);
+    }
+
+    private async Task<CrateInviteEntity?> GetInviteEntityByTokenAsync(string token)
     {
         return await _context.CrateInvites.FirstOrDefaultAsync(i => i.Token == token);
     }

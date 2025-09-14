@@ -37,7 +37,7 @@ public class BatchDeleteService : IBatchDeleteService
                     if (!storageResult.IsSuccess)
                     {
                         _logger.LogWarning("Failed to delete files for crate {CrateId}: {Error}",
-                            crateId, storageResult.Error?.Message);
+                            crateId, storageResult.GetError().Message);
                     }
 
                     await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
@@ -82,7 +82,7 @@ public class BatchDeleteService : IBatchDeleteService
                     if (!result.IsSuccess)
                         _logger.LogWarning(
                             "Failed to delete files for crate {CrateId}, folder {FolderId}: {Error}",
-                            group.Key.CrateId, group.Key.CrateFolderId, result.Error?.Message);
+                            group.Key.CrateId, group.Key.CrateFolderId, result.GetError().Message);
                 }
 
                 await _context.CrateFiles.Where(f => batch.Contains(f.Id)).ExecuteDeleteAsync();
@@ -118,7 +118,7 @@ public class BatchDeleteService : IBatchDeleteService
                     group.Key, folderId, group.Select(f => f.Name));
                 if (!result.IsSuccess)
                     _logger.LogWarning("Failed to delete files for crate {CrateId}, folder {FolderId}: {Error}",
-                        group.Key, folderId, result.Error?.Message);
+                        group.Key, folderId, result.GetError().Message);
             }
 
             await _context.CrateFiles.Where(f => f.CrateFolderId == folderId).ExecuteDeleteAsync();

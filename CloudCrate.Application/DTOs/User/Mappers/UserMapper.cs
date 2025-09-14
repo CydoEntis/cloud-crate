@@ -1,11 +1,12 @@
 ﻿using CloudCrate.Application.DTOs.User.Projections;
 using CloudCrate.Application.DTOs.User.Response;
+using CloudCrate.Domain.Entities;
 
 namespace CloudCrate.Application.DTOs.User.Mappers;
 
 public static class UserMapper
 {
-    public static Uploader ToUploader(UserResponse user) =>
+    public static Uploader ToUploader(UserAccount user) =>
         new Uploader
         {
             UserId = user.Id,

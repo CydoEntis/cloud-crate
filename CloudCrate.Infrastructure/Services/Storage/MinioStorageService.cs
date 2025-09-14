@@ -47,7 +47,7 @@ public class MinioStorageService : IStorageService
     public async Task<Result<string>> SaveFileAsync(FileUploadRequest request)
     {
         var bucketResult = await EnsureBucketExistsAsync();
-        if (!bucketResult.IsSuccess) return Result<string>.Failure(bucketResult.Error!);
+        if (!bucketResult.IsSuccess) return Result<string>.Failure(bucketResult.GetError());
 
         var key = GetObjectKey(request.CrateId, request.FolderId, request.FileName);
 
@@ -86,10 +86,10 @@ public class MinioStorageService : IStorageService
                         await DeleteKeysAsync(uploadedKeys);
                     }
 
-                    return Result<List<string>>.Failure(result.Error!);
+                    return Result<List<string>>.Failure(result.GetError());
                 }
 
-                uploadedKeys.Add(result.Value);
+                uploadedKeys.Add(result.GetValue());
             }
 
             return Result<List<string>>.Success(uploadedKeys);
@@ -158,7 +158,6 @@ public class MinioStorageService : IStorageService
         return await DeleteKeysAsync(keys);
     }
 
-
     public async Task<Result> DeleteAllFilesForCrateAsync(Guid crateId)
     {
         var prefix = $"{crateId}/";
@@ -183,7 +182,7 @@ public class MinioStorageService : IStorageService
                     if (!deleteResult.IsSuccess)
                     {
                         _logger.LogError("Failed to delete batch for crate {CrateId}: {Error}",
-                            crateId, deleteResult.Error?.Message);
+                            crateId, deleteResult.GetError().Message);
                         return deleteResult;
                     }
                 }
@@ -320,7 +319,6 @@ public class MinioStorageService : IStorageService
 
         return await DeleteKeysAsync(allKeys);
     }
-
 
     private static string GetObjectKey(Guid crateId, Guid? folderId, string fileName)
     {

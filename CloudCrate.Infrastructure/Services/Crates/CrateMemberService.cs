@@ -37,13 +37,13 @@ public class CrateMemberService : ICrateMemberService
     }
 
     public async Task<Result<PaginatedResult<CrateMemberResponse>>> GetCrateMembersAsync(
-        Guid crateId, 
-        string requestingUserId, 
+        Guid crateId,
+        string requestingUserId,
         CrateMemberQueryParameters parameters)
     {
         var canViewResult = await _roleService.CanView(crateId, requestingUserId);
         if (!canViewResult.IsSuccess)
-            return Result<PaginatedResult<CrateMemberResponse>>.Failure(canViewResult.Error!);
+            return Result<PaginatedResult<CrateMemberResponse>>.Failure(canViewResult.GetError());
 
         var query = _context.CrateMembers
             .Include(m => m.User)
@@ -65,14 +65,15 @@ public class CrateMemberService : ICrateMemberService
         }).ToList();
 
         return Result<PaginatedResult<CrateMemberResponse>>.Success(
-            PaginatedResult<CrateMemberResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page, parameters.PageSize));
+            PaginatedResult<CrateMemberResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
+                parameters.PageSize));
     }
 
     public async Task<Result<CrateMemberAvatarResponse>> GetMemberAvatarsAsync(Guid crateId, string requestingUserId)
     {
         var canViewResult = await _roleService.CanView(crateId, requestingUserId);
         if (!canViewResult.IsSuccess)
-            return Result<CrateMemberAvatarResponse>.Failure(canViewResult.Error!);
+            return Result<CrateMemberAvatarResponse>.Failure(canViewResult.GetError());
 
         var ownerEntity = await _context.CrateMembers
             .Include(m => m.User)
@@ -120,7 +121,7 @@ public class CrateMemberService : ICrateMemberService
     public async Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role, string requestingUserId)
     {
         var canManageResult = await _roleService.CanManageCrate(crateId, requestingUserId);
-        if (!canManageResult.IsSuccess || !canManageResult.Value)
+        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
             return Result.Failure(new ForbiddenError("Only crate owners can assign roles"));
 
         var memberEntity = await _context.CrateMembers
@@ -196,7 +197,6 @@ public class CrateMemberService : ICrateMemberService
             return Result.Failure(new InternalError($"Failed to remove member: {ex.Message}"));
         }
     }
-
 
     public async Task<Result> LeaveCrateAsync(Guid crateId, string userId)
     {

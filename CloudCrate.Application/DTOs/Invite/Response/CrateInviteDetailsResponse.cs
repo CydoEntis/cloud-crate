@@ -6,11 +6,12 @@ namespace CloudCrate.Application.DTOs.Invite.Response;
 public class CrateInviteDetailsResponse
 {
     public Guid Id { get; set; }
-    public Guid CrateId { get; private set; }
+    public Guid CrateId { get; set; }
     public string CrateName { get; set; }
     public string CrateColor { get; set; }
     public string InvitedUserEmail { get; set; }
     public CrateRole Role { get; set; }
+    public InviteStatus Status { get; set; }
     public string Token { get; set; }
     public DateTime? ExpiresAt { get; set; }
 

@@ -21,7 +21,6 @@ using CloudCrate.Infrastructure.Queries;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-
 namespace CloudCrate.Infrastructure.Services.Crates;
 
 public class CrateService : ICrateService
@@ -32,7 +31,6 @@ public class CrateService : ICrateService
     private readonly ICrateRoleService _crateRoleService;
     private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<CrateService> _logger;
-
 
     public CrateService(
         AppDbContext context,
@@ -54,10 +52,10 @@ public class CrateService : ICrateService
     {
         var validationResult = await _userService.CanAllocateStorageAsync(
             request.UserId, request.AllocatedStorageGb);
-        if (validationResult.IsFailure) return Result<Guid>.Failure(validationResult.Error!);
+        if (validationResult.IsFailure) return Result<Guid>.Failure(validationResult.GetError());
 
         var bucketResult = await _storageService.EnsureBucketExistsAsync();
-        if (bucketResult.IsFailure) return Result<Guid>.Failure(bucketResult.Error!);
+        if (bucketResult.IsFailure) return Result<Guid>.Failure(bucketResult.GetError());
 
         try
         {
@@ -82,7 +80,7 @@ public class CrateService : ICrateService
             if (!allocationResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
-                return Result<Guid>.Failure(allocationResult.Error!);
+                return Result<Guid>.Failure(allocationResult.GetError());
             }
 
             _context.Crates.Add(crateEntity);
@@ -107,7 +105,7 @@ public class CrateService : ICrateService
     public async Task<Result> UpdateCrateAsync(Guid crateId, string userId, UpdateCrateRequest request)
     {
         var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
-        if (!canManageResult.IsSuccess || !canManageResult.Value)
+        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
             return Result.Failure(new ForbiddenError("User cannot update this crate"));
 
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
@@ -130,7 +128,7 @@ public class CrateService : ICrateService
                 if (!userAllocationResult.IsSuccess)
                 {
                     await transaction.RollbackAsync();
-                    return Result.Failure(userAllocationResult.Error!);
+                    return Result.Failure(userAllocationResult.GetError());
                 }
 
                 if (!crateDomain.TryAllocateStorage(request.StorageAllocationGb, out var error))
@@ -220,12 +218,11 @@ public class CrateService : ICrateService
         return query.ApplySearch(parameters.SearchTerm).ApplyOrdering(parameters);
     }
 
-
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
         var canViewResult = await _crateRoleService.CanView(crateId, userId);
         if (!canViewResult.IsSuccess)
-            return Result<CrateDetailsResponse>.Failure(canViewResult.Error);
+            return Result<CrateDetailsResponse>.Failure(canViewResult.GetError());
 
         var crateEntity = await _context.Crates.AsNoTracking()
             .Include(c => c.Members)
@@ -260,11 +257,10 @@ public class CrateService : ICrateService
         return Result<CrateDetailsResponse>.Success(response);
     }
 
-
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
         var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
-        if (!canManageResult.IsSuccess || !canManageResult.Value)
+        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
             return Result.Failure(new ForbiddenError("You do not have permission to delete this crate"));
 
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
@@ -281,14 +277,14 @@ public class CrateService : ICrateService
             if (!deallocationResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
-                return Result.Failure(deallocationResult.Error!);
+                return Result.Failure(deallocationResult.GetError());
             }
 
             var deleteResult = await _batchDeleteService.DeleteCratesAsync(new[] { crateDomain.Id });
             if (!deleteResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
-                return Result.Failure(deleteResult.Error!);
+                return Result.Failure(deleteResult.GetError());
             }
 
             await transaction.CommitAsync();
@@ -302,26 +298,40 @@ public class CrateService : ICrateService
         }
     }
 
-
-    public async Task<Result> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
+    public async Task<Result<BulkDeleteCrateResponse>> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
     {
         var crateIdList = crateIds.ToList();
+
+        if (!crateIdList.Any())
+            return Result<BulkDeleteCrateResponse>.Failure(new ValidationError("No crate IDs provided"));
 
         var crateEntities = await _context.Crates
             .Include(c => c.Members)
             .Where(c => crateIdList.Contains(c.Id))
             .ToListAsync();
 
-        if (!crateEntities.Any())
-            return Result.Failure(new NotFoundError("No crates found"));
+        // Figure out what we can and can't delete
+        var existingIds = crateEntities.Select(c => c.Id).ToHashSet();
+        var notFoundIds = crateIdList.Where(id => !existingIds.Contains(id)).ToList();
 
         var ownedCrates = crateEntities
             .Where(c => c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner))
             .ToList();
 
-        if (!ownedCrates.Any())
-            return Result.Failure(new ForbiddenError("You do not have permission to delete these crates"));
+        var ownedIds = ownedCrates.Select(c => c.Id).ToHashSet();
+        var unauthorizedIds = crateEntities
+            .Where(c => !ownedIds.Contains(c.Id))
+            .Select(c => c.Id)
+            .ToList();
 
+        // If we can't delete anything, that's an error
+        if (!ownedCrates.Any())
+        {
+            return Result<BulkDeleteCrateResponse>.Failure(
+                new ForbiddenError("You do not have permission to delete any of the specified crates"));
+        }
+
+        // Proceed with deletion
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -330,25 +340,39 @@ public class CrateService : ICrateService
             if (!deallocationResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
-                return Result.Failure(deallocationResult.Error!);
+                return Result<BulkDeleteCrateResponse>.Failure(deallocationResult.GetError());
             }
 
             var deleteResult = await _batchDeleteService.DeleteCratesAsync(ownedCrates.Select(c => c.Id));
             if (!deleteResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
-                return Result.Failure(deleteResult.Error!);
+                return Result<BulkDeleteCrateResponse>.Failure(deleteResult.GetError());
             }
 
             await transaction.CommitAsync();
-            return Result.Success();
+
+            var deletedIds = ownedCrates.Select(c => c.Id).ToList();
+            var skippedIds = notFoundIds.Concat(unauthorizedIds).ToList();
+
+            var response = new BulkDeleteCrateResponse
+            {
+                DeletedCount = deletedIds.Count,
+                RequestedCount = crateIdList.Count,
+                DeletedCrateIds = deletedIds,
+                SkippedCrateIds = skippedIds,
+                Message = BuildBulkDeleteMessage(deletedIds.Count, skippedIds.Count, notFoundIds.Count,
+                    unauthorizedIds.Count)
+            };
+
+            return Result<BulkDeleteCrateResponse>.Success(response);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
             _logger.LogError(ex, "Failed to delete crates: {CrateIds}",
                 string.Join(", ", ownedCrates.Select(c => c.Id)));
-            return Result.Failure(new InternalError("Failed to delete crates"));
+            return Result<BulkDeleteCrateResponse>.Failure(new InternalError("Failed to delete crates"));
         }
     }
 
@@ -361,5 +385,18 @@ public class CrateService : ICrateService
             return Result<string>.Failure(new NotFoundError("Crate not found"));
 
         return Result<string>.Success(crateEntity.Name);
+    }
+
+    private static string BuildBulkDeleteMessage(int deleted, int skipped, int notFound, int unauthorized)
+    {
+        var parts = new List<string> { $"{deleted} crate(s) deleted successfully" };
+
+        if (notFound > 0)
+            parts.Add($"{notFound} crate(s) not found");
+
+        if (unauthorized > 0)
+            parts.Add($"{unauthorized} crate(s) skipped (insufficient permissions)");
+
+        return string.Join(". ", parts) + ".";
     }
 }

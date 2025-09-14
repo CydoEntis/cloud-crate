@@ -1,11 +1,11 @@
-﻿using CloudCrate.Application.DTOs.User.Response;
+﻿using CloudCrate.Application.DTOs.User.Mappers;
+using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.ValueObjects;
-using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.AspNetCore.Identity;
@@ -40,8 +40,8 @@ public class UserService : IUserService
             if (userEntity == null)
                 return Result<UserResponse>.Failure(new NotFoundError("User not found"));
 
-            // FIXED: No longer calculating from crates - use tracked field
             var domainUser = userEntity.ToDomain();
+            // TODO: Move this into a separate mapper.
             var response = MapToUserResponse(domainUser);
 
             return Result<UserResponse>.Success(response);
@@ -55,21 +55,21 @@ public class UserService : IUserService
 
     public async Task<Result> ReallocateStorageAsync(string userId, int currentCrateAllocationGB, int newCrateAllocationGB)
     {
-        var allocationDifferenceGB = newCrateAllocationGB - currentCrateAllocationGB;
+        var allocationDifferenceGb = newCrateAllocationGB - currentCrateAllocationGB;
     
-        if (allocationDifferenceGB == 0)
+        if (allocationDifferenceGb == 0)
             return Result.Success(); 
 
-        if (allocationDifferenceGB > 0)
+        if (allocationDifferenceGb > 0)
         {
-            var canAllocate = await CanAllocateStorageAsync(userId, allocationDifferenceGB);
+            var canAllocate = await CanAllocateStorageAsync(userId, allocationDifferenceGb);
             if (!canAllocate.IsSuccess)
-                return Result.Failure(canAllocate.Error!);
+                return Result.Failure(canAllocate.GetError());
 
-            return await AllocateStorageAsync(userId, StorageSize.FromGigabytes(allocationDifferenceGB).Bytes);
+            return await AllocateStorageAsync(userId, StorageSize.FromGigabytes(allocationDifferenceGb).Bytes);
         }
 
-        return await DeallocateStorageAsync(userId, StorageSize.FromGigabytes(Math.Abs(allocationDifferenceGB)).Bytes);
+        return await DeallocateStorageAsync(userId, StorageSize.FromGigabytes(Math.Abs(allocationDifferenceGb)).Bytes);
     }
     
     public async Task<Result<long>> GetRemainingStorageAsync(string userId)
@@ -81,7 +81,6 @@ public class UserService : IUserService
                 return Result<long>.Failure(new NotFoundError("User not found"));
 
             var domainUser = userEntity.ToDomain();
-            // FIXED: Return usage remaining, not allocation remaining
             return Result<long>.Success(domainUser.RemainingUsageBytes);
         }
         catch (Exception ex)
@@ -114,7 +113,6 @@ public class UserService : IUserService
                 return Result.Failure(new StorageError(ex.Message));
             }
 
-            // FIXED: Update correct field name
             userEntity.UsedStorageBytes = domainUser.UsedStorageBytes;
             userEntity.UpdatedAt = domainUser.UpdatedAt;
 
@@ -153,7 +151,6 @@ public class UserService : IUserService
                 return Result.Failure(new StorageError(ex.Message));
             }
 
-            // FIXED: Update correct field name
             userEntity.UsedStorageBytes = domainUser.UsedStorageBytes;
             userEntity.UpdatedAt = domainUser.UpdatedAt;
 
@@ -287,10 +284,9 @@ public class UserService : IUserService
         {
             var userResult = await GetUserByIdAsync(userId);
             if (userResult.IsFailure)
-                return Result.Failure(userResult.Error!);
+                return Result.Failure(userResult.GetError());
 
-            var user = userResult.Value!;
-            // FIXED: Use correct property names
+            var user = userResult.GetValue();
             if (user.UsedStorageBytes + bytesToAdd > user.AccountStorageLimitBytes)
                 return Result.Failure(new StorageError("Insufficient storage available"));
 
@@ -314,7 +310,6 @@ public class UserService : IUserService
             var responses = new List<UserResponse>();
             foreach (var userEntity in userEntities)
             {
-                // FIXED: No longer calculating from crates
                 var domainUser = userEntity.ToDomain();
                 var response = MapToUserResponse(domainUser);
                 responses.Add(response);
@@ -382,6 +377,7 @@ public class UserService : IUserService
         }
     }
 
+    // TODO: Move this into a separate mapper.
     private static UserResponse MapToUserResponse(UserAccount domainUser)
     {
         return new UserResponse
@@ -390,11 +386,11 @@ public class UserService : IUserService
             Email = domainUser.Email,
             DisplayName = domainUser.DisplayName,
             ProfilePictureUrl = domainUser.ProfilePictureUrl,
-            UsedStorageBytes = domainUser.UsedStorageBytes, // FIXED
-            AllocatedStorageBytes = domainUser.AllocatedStorageBytes, // FIXED
-            AccountStorageLimitBytes = domainUser.AccountStorageLimitBytes, // FIXED
-            RemainingAllocationBytes = domainUser.RemainingAllocationBytes, // FIXED
-            RemainingUsageBytes = domainUser.RemainingUsageBytes, // FIXED
+            UsedStorageBytes = domainUser.UsedStorageBytes,
+            AllocatedStorageBytes = domainUser.AllocatedStorageBytes,
+            AccountStorageLimitBytes = domainUser.AccountStorageLimitBytes,
+            RemainingAllocationBytes = domainUser.RemainingAllocationBytes,
+            RemainingUsageBytes = domainUser.RemainingUsageBytes,
             CreatedAt = domainUser.CreatedAt,
             UpdatedAt = domainUser.UpdatedAt
         };
