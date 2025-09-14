@@ -35,25 +35,27 @@ public class ExceptionHandlingMiddleware
                 throw;
             }
 
-            context.Response.Clear();
-            context.Response.ContentType = "application/json";
-            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-
-            var errorMessage = _env.IsDevelopment()
-                ? $"{ex.Message} — {ex.GetType().Name}"
-                : "An unexpected error occurred.";
-
-            var error = new InternalError(errorMessage);
-
-            var response = new ApiResponse<object>(
-                isSuccess: false,
-                value: null,
-                message: "Unhandled exception",
-                statusCode: StatusCodes.Status500InternalServerError,
-                errors: new List<Error> { error }
-            );
-
-            await context.Response.WriteAsJsonAsync(response);
+            await HandleExceptionAsync(context, ex);
         }
+    }
+
+    private async Task HandleExceptionAsync(HttpContext context, Exception ex)
+    {
+        context.Response.Clear();
+        context.Response.ContentType = "application/json";
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+        var errorMessage = _env.IsDevelopment()
+            ? $"{ex.Message} — {ex.GetType().Name}"
+            : "An unexpected error occurred.";
+
+        var error = new InternalError(errorMessage);
+
+        var response = ApiResponse<EmptyResponse>.Failure(
+            message: "An internal server error occurred.",
+            statusCode: StatusCodes.Status500InternalServerError,
+            errors: new List<Error> { error });
+
+        await context.Response.WriteAsJsonAsync(response);
     }
 }
