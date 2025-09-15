@@ -3,7 +3,7 @@ using CloudCrate.Infrastructure.Persistence.Entities;
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
-public static class CrateInviteMapper
+public static class CrateInviteEntityMapper
 {
     public static CrateInviteEntity ToEntity(this CrateInvite invite)
     {

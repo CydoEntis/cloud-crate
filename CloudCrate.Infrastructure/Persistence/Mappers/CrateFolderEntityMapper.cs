@@ -3,7 +3,7 @@ using CloudCrate.Infrastructure.Persistence.Entities;
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
-public static class CrateFolderMapper
+public static class CrateFolderEntityMapper
 {
     public static CrateFolderEntity ToEntity(this CrateFolder folder, Guid crateId)
     {

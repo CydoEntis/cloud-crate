@@ -4,7 +4,7 @@ using CloudCrate.Infrastructure.Persistence.Entities;
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers
 {
-    public static class CrateFileMapper
+    public static class CrateFileEntityMapper
     {
         public static CrateFileEntity ToEntity(this CrateFile file, Guid crateId)
         {

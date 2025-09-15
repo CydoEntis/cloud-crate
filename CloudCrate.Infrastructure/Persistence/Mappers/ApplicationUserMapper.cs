@@ -2,7 +2,7 @@
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
-public static class UserAccountMapper
+public static class ApplicationUserMapper
 {
     public static ApplicationUser ToEntity(this UserAccount user)
     {
