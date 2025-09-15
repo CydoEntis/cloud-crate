@@ -13,11 +13,13 @@ public interface IFileService
     Task<Result<List<Guid>>> UploadFilesAsync(MultiFileUploadRequest request, string userId);
 
     Task<Result<CrateFileResponse>> GetFileAsync(Guid fileId, string userId);
-    Task<Result<byte[]>> GetFileBytesAsync(Guid fileId, string userId);
     Task<Result<PaginatedResult<CrateFileResponse>>> GetFilesAsync(FolderContentsParameters parameters);
     Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId);
     Task<Result<long>> GetTotalFileSizeInFolderAsync(Guid folderId);
-
+    
+    Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);
+    Task<Result<byte[]>> DownloadMultipleFilesAsZipAsync(List<Guid> fileIds, string userId);
+    
     Task<Result> DeleteFileAsync(Guid fileId, string userId);
     Task<Result> SoftDeleteFileAsync(Guid fileId, string userId);
     Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);

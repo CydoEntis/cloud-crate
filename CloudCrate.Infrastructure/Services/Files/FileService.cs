@@ -301,7 +301,7 @@ public class FileService : IFileService
         }
     }
 
-    public async Task<Result<byte[]>> GetFileBytesAsync(Guid fileId, string userId)
+    public async Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId)
     {
         var file = await _context.CrateFiles.FirstOrDefaultAsync(f => f.Id == fileId);
         if (file == null)
@@ -312,6 +312,53 @@ public class FileService : IFileService
             return Result<byte[]>.Failure(permission.GetError());
 
         return await _storageService.ReadFileAsync(file.CrateId, file.CrateFolderId, file.Name);
+    }
+
+    public async Task<Result<byte[]>> DownloadMultipleFilesAsZipAsync(List<Guid> fileIds, string userId)
+    {
+        var files = new List<CrateFileEntity>();
+
+        foreach (var fileId in fileIds)
+        {
+            var file = await _context.CrateFiles
+                .FirstOrDefaultAsync(f => f.Id == fileId && !f.IsDeleted);
+
+            if (file == null)
+                return Result<byte[]>.Failure(new FileNotFoundError($"File {fileId} not found"));
+
+            var permission = await _crateRoleService.CanDownload(file.CrateId, userId);
+            if (permission.IsFailure)
+                return Result<byte[]>.Failure(permission.GetError());
+
+            files.Add(file);
+        }
+
+        try
+        {
+            using var zipStream = new MemoryStream();
+            using (var archive =
+                   new System.IO.Compression.ZipArchive(zipStream, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                foreach (var file in files)
+                {
+                    var fileContentResult =
+                        await _storageService.ReadFileAsync(file.CrateId, file.CrateFolderId, file.Name);
+                    if (fileContentResult.IsFailure)
+                        return Result<byte[]>.Failure(fileContentResult.GetError());
+
+                    var entry = archive.CreateEntry(file.Name);
+                    using var entryStream = entry.Open();
+                    await entryStream.WriteAsync(fileContentResult.GetValue());
+                }
+            }
+
+            return Result<byte[]>.Success(zipStream.ToArray());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception creating zip for user {UserId}", userId);
+            return Result<byte[]>.Failure(new InternalError(ex.Message));
+        }
     }
 
     public async Task<Result<PaginatedResult<CrateFileResponse>>> GetFilesAsync(FolderContentsParameters parameters)
@@ -413,6 +460,7 @@ public class FileService : IFileService
     }
 
     #endregion
+
 
     #region File Operations
 
@@ -560,14 +608,14 @@ public class FileService : IFileService
         var files = await _context.CrateFiles
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
-    
+
         var crateIds = files.Select(f => f.CrateId).Distinct();
         foreach (var crateId in crateIds)
         {
             var permission = await _crateRoleService.CanManageCrate(crateId, userId);
             if (permission.IsFailure) return Result.Failure(permission.GetError());
         }
-    
+
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
@@ -576,7 +624,7 @@ public class FileService : IFileService
                 var domainFile = file.ToDomain();
                 domainFile.SoftDelete(userId);
             }
-        
+
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
             return Result.Success();

@@ -2,12 +2,9 @@
 using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
-using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.File;
-using CloudCrate.Application.Models;
-using CloudCrate.Infrastructure.Identity;
+using CloudCrate.Api.Common.Extensions;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CloudCrate.Api.Controllers;
@@ -18,30 +15,20 @@ namespace CloudCrate.Api.Controllers;
 public class FilesController : BaseController
 {
     private readonly IFileService _fileService;
-    private readonly UserManager<ApplicationUser> _userManager;
 
-    public FilesController(IFileService fileService, UserManager<ApplicationUser> userManager)
+    public FilesController(IFileService fileService)
     {
         _fileService = fileService;
-        _userManager = userManager;
     }
 
     [HttpPost]
     public async Task<IActionResult> UploadFile(Guid crateId, [FromForm] UploadFileRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<Guid>.Failure("User is not authenticated", 401));
 
         if (request.File == null || request.File.Length == 0)
-        {
-            var failureResult = Result<Guid>.Failure(
-                Error.Validation("No file uploaded.", "File")
-            );
-
-            var errorResponse = ApiResponse<Guid>.FromResult(failureResult);
-
-            return Response(errorResponse);
-        }
+            return BadRequest(ApiResponse<Guid>.Failure("No file uploaded", 400));
 
         await using var stream = request.File.OpenReadStream();
 
@@ -55,108 +42,188 @@ public class FilesController : BaseController
             Content = stream
         };
 
-        var result = await _fileService.UploadFileAsync(uploadRequest, UserId!);
+        var result = await _fileService.UploadFileAsync(uploadRequest, UserId);
 
-        return Response(ApiResponse<Guid>.FromResult(result, "File uploaded successfully", 201));
+        return result.IsSuccess 
+            ? Created($"/api/crates/{crateId}/files/{result.GetValue()}", 
+                ApiResponse<Guid>.Success(result.GetValue(), "File uploaded successfully", 201))
+            : result.GetError().ToActionResult<Guid>();
     }
 
     [HttpPost("upload-multiple")]
     public async Task<IActionResult> UploadMultipleFiles(Guid crateId, [FromForm] UploadMultipleFilesRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<List<Guid>>.Failure("User is not authenticated", 401));
 
         if (request.Files == null || !request.Files.Any())
+            return BadRequest(ApiResponse<List<Guid>>.Failure("No files uploaded", 400));
+
+        var uploadRequests = new List<FileUploadRequest>();
+        try
         {
-            var failureResult = Result<List<Guid>>.Failure(Error.Validation("No files uploaded.", "Files"));
-            return Response(ApiResponse<List<Guid>>.FromResult(failureResult));
+            foreach (var file in request.Files)
+            {
+                var stream = file.OpenReadStream();
+                uploadRequests.Add(new FileUploadRequest
+                {
+                    CrateId = crateId,
+                    FolderId = request.FolderId,
+                    FileName = file.FileName,
+                    MimeType = file.ContentType,
+                    SizeInBytes = file.Length,
+                    Content = stream
+                });
+            }
+
+            var multiUploadRequest = new MultiFileUploadRequest
+            {
+                Files = uploadRequests
+            };
+
+            var result = await _fileService.UploadFilesAsync(multiUploadRequest, UserId);
+
+            return result.IsSuccess
+                ? Created("", ApiResponse<List<Guid>>.Success(result.GetValue(), "Files uploaded successfully", 201))
+                : result.GetError().ToActionResult<List<Guid>>();
         }
-
-        var uploadRequests = request.Files.Select(file => new FileUploadRequest
+        finally
         {
-            CrateId = crateId,
-            FolderId = request.FolderId,
-            FileName = file.FileName,
-            MimeType = file.ContentType,
-            SizeInBytes = file.Length,
-            Content = file.OpenReadStream() 
-        }).ToList();
-
-        var multiUploadRequest = new MultiFileUploadRequest
-        {
-            CrateId = crateId,
-            FolderId = request.FolderId,
-            Files = uploadRequests
-        };
-
-        var result = await _fileService.UploadFilesAsync(multiUploadRequest, UserId!);
-
-        return Response(ApiResponse<List<Guid>>.FromResult(result, "Files uploaded successfully", 201));
+            foreach (var req in uploadRequests)
+                req.Content?.Dispose();
+        }
     }
 
-
-
     [HttpGet("{fileId}")]
-    public async Task<IActionResult> GetFileMetadata(Guid crateId, Guid fileId)
+    public async Task<IActionResult> GetFileMetadata(Guid fileId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<CrateFileResponse>.Failure("User is not authenticated", 401));
 
-        var result = await _fileService.FetchFileResponseAsync(fileId, UserId!);
-        return Response(
-            ApiResponse<CrateFileResponse>.FromResult(result, "File metadata retrieved successfully"));
+        var result = await _fileService.GetFileAsync(fileId, UserId);
+
+        return result.IsSuccess
+            ? Ok(ApiResponse<CrateFileResponse>.Success(result.GetValue(), "File metadata retrieved successfully"))
+            : result.GetError().ToActionResult<CrateFileResponse>();
     }
 
     [HttpGet("{fileId}/download")]
-    public async Task<IActionResult> DownloadFile(Guid crateId, Guid fileId)
+    public async Task<IActionResult> DownloadFile(Guid fileId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized();
 
-        var fileResult = await _fileService.FetchFileResponseAsync(fileId, UserId!);
+        // Get file metadata
+        var fileResult = await _fileService.GetFileAsync(fileId, UserId);
         if (fileResult.IsFailure)
-            return Response(
-                ApiResponse<CrateFileResponse>.FromResult(fileResult));
+            return fileResult.GetError().ToActionResult<CrateFileResponse>();
 
-        var contentResult = await _fileService.DownloadFileAsync(fileId, UserId!);
+        // Get file content
+        var contentResult = await _fileService.DownloadFileAsync(fileId, UserId);
         if (contentResult.IsFailure)
-            return Response(ApiResponse<byte[]>.FromResult(contentResult));
+            return contentResult.GetError().ToActionResult<byte[]>();
 
-        var file = fileResult.Value!;
-        HttpContext.Response.Headers.Append("Content-Disposition", $"attachment; filename=\"{file.Name}\"");
+        var file = fileResult.GetValue();
+        var content = contentResult.GetValue();
 
-        return File(contentResult.Value!, file.MimeType, file.Name);
+        return File(content, file.MimeType, file.Name);
     }
 
-
-    [HttpDelete("{fileId}")]
-    public async Task<IActionResult> DeleteFile(Guid crateId, Guid fileId)
+    [HttpPost("bulk-download")]
+    public async Task<IActionResult> BulkDownloadFiles([FromBody] BulkDownloadRequest request)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized();
 
-        var result = await _fileService.DeleteFileAsync(fileId, UserId!);
-        return Response(ApiResponse.FromResult(result, "File deleted successfully", 204));
+        if (request.FileIds == null || !request.FileIds.Any())
+            return BadRequest(ApiResponse<object>.Failure("No files specified", 400));
+
+        var result = await _fileService.DownloadMultipleFilesAsZipAsync(request.FileIds, UserId);
+    
+        if (result.IsFailure)
+            return result.GetError().ToActionResult<object>();
+
+        var zipContent = result.GetValue();
+        var fileName = request.ArchiveName ?? "files.zip";
+
+        return File(zipContent, "application/zip", fileName);
+    }
+    
+    [HttpDelete("{fileId}")]
+    public async Task<IActionResult> DeleteFile(Guid fileId)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+
+        var result = await _fileService.DeleteFileAsync(fileId, UserId);
+
+        return result.IsSuccess 
+            ? NoContent() 
+            : result.GetError().ToActionResult<EmptyResponse>();
     }
 
     [HttpPut("{fileId}/trash")]
-    public async Task<IActionResult> SoftDeleteFile(Guid crateId, Guid fileId)
+    public async Task<IActionResult> SoftDeleteFile(Guid fileId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
 
-        var result = await _fileService.SoftDeleteFileAsync(fileId, UserId!);
-        return Response(ApiResponse.FromResult(result, "File moved to trash", 200));
+        var result = await _fileService.SoftDeleteFileAsync(fileId, UserId);
+
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "File moved to trash"))
+            : result.GetError().ToActionResult<EmptyResponse>();
     }
 
-
-    [HttpPut("{fileId:guid}/move")]
-    public async Task<IActionResult> MoveFile(Guid crateId, Guid fileId, [FromBody] MoveFileRequest request)
+    [HttpPut("{fileId}/restore")]
+    public async Task<IActionResult> RestoreFile(Guid fileId)
     {
-        var unauthorized = EnsureUserAuthenticated();
-        if (unauthorized != null) return unauthorized;
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
 
-        var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, UserId!);
-        return Response(ApiResponse.FromResult(result, "File moved successfully", 200));
+        var result = await _fileService.RestoreFileAsync(fileId, UserId);
+
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "File restored successfully"))
+            : result.GetError().ToActionResult<EmptyResponse>();
+    }
+
+    [HttpPut("{fileId}/move")]
+    public async Task<IActionResult> MoveFile(Guid fileId, [FromBody] MoveFileRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+
+        var result = await _fileService.MoveFileAsync(fileId, request.NewParentId, UserId);
+
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "File moved successfully"))
+            : result.GetError().ToActionResult<EmptyResponse>();
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDeleteFiles([FromBody] BulkOperationRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized();
+
+        var result = await _fileService.PermanentlyDeleteFilesAsync(request.FileIds, UserId);
+        
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "Files deleted successfully"))
+            : result.GetError().ToActionResult<EmptyResponse>();
+    }
+
+    [HttpPost("bulk-trash")]
+    public async Task<IActionResult> BulkSoftDeleteFiles([FromBody] BulkOperationRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized();
+
+        var result = await _fileService.SoftDeleteFilesAsync(request.FileIds, UserId);
+        
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "Files moved to trash"))
+            : result.GetError().ToActionResult<EmptyResponse>();
     }
 }
