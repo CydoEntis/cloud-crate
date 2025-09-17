@@ -28,6 +28,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
+        // Keep your enum conversion - this is useful
         foreach (var entityType in builder.Model.GetEntityTypes())
         {
             foreach (var property in entityType.ClrType.GetProperties())
@@ -42,102 +43,43 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             }
         }
 
-        builder.Entity<CrateFolderEntity>(b =>
-        {
-            b.HasIndex(x => new { x.CrateId })
-                .HasFilter("\"IsRoot\" = TRUE")
-                .IsUnique();
-
-            b.Property(x => x.IsRoot).HasDefaultValue(false);
-
-            b.HasOne(f => f.CreatedByUser)
-                .WithMany()
-                .HasForeignKey(f => f.CreatedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.DeletedByUser)
-                .WithMany()
-                .HasForeignKey(f => f.DeletedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.RestoredByUser)
-                .WithMany()
-                .HasForeignKey(f => f.RestoredByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.ParentFolder)
-                .WithMany(f => f.Subfolders)
-                .HasForeignKey(f => f.ParentFolderId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.Crate)
-                .WithMany()
-                .HasForeignKey(f => f.CrateId)
-                .OnDelete(DeleteBehavior.Cascade);
-        });
-
+        // ESSENTIAL: Fix navigation properties for includes to work
         builder.Entity<CrateFileEntity>(b =>
         {
             b.HasQueryFilter(f => !f.IsDeleted);
-
-            b.HasOne(f => f.UploadedByUser)
-                .WithMany()
-                .HasForeignKey(f => f.UploadedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.DeletedByUser)
-                .WithMany()
-                .HasForeignKey(f => f.DeletedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            b.HasOne(f => f.RestoredByUser)
-                .WithMany()
-                .HasForeignKey(f => f.RestoredByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
             b.HasOne(f => f.Crate)
-                .WithMany()
-                .HasForeignKey(f => f.CrateId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(c => c.Files)
+                .HasForeignKey(f => f.CrateId);
+        });
 
-            b.HasOne(f => f.CrateFolder)
-                .WithMany(f => f.Files)
-                .HasForeignKey(f => f.CrateFolderId)
-                .OnDelete(DeleteBehavior.SetNull);
+        builder.Entity<CrateFolderEntity>(b =>
+        {
+            b.HasOne(f => f.Crate)
+                .WithMany(c => c.Folders)
+                .HasForeignKey(f => f.CrateId);
         });
 
         builder.Entity<CrateMemberEntity>(b =>
         {
-            b.HasOne(m => m.User)
-                .WithMany()
-                .HasForeignKey(m => m.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
-
             b.HasOne(m => m.Crate)
-                .WithMany()
-                .HasForeignKey(m => m.CrateId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(c => c.Members)
+                .HasForeignKey(m => m.CrateId);
 
+            // Keep this - prevents duplicate members
             b.HasIndex(m => new { m.UserId, m.CrateId }).IsUnique();
         });
 
         builder.Entity<CrateInviteEntity>(b =>
         {
-            b.HasOne(i => i.InvitedByUser)
-                .WithMany()
-                .HasForeignKey(i => i.InvitedByUserId)
-                .OnDelete(DeleteBehavior.Restrict);
-
             b.HasOne(i => i.Crate)
-                .WithMany()
-                .HasForeignKey(i => i.CrateId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .WithMany(c => c.Invites)
+                .HasForeignKey(i => i.CrateId);
         });
 
-        builder.Entity<CrateEntity>(b =>
-        {
-            b.Property(c => c.AllocatedStorageBytes).IsRequired();
-            b.Property(c => c.UsedStorageBytes).IsRequired();
-        });
+        // ESSENTIAL: Ensure only one root folder per crate
+        builder.Entity<CrateFolderEntity>()
+            .HasIndex(x => x.CrateId)
+            .HasFilter("\"IsRoot\" = TRUE")
+            .IsUnique();
     }
 }

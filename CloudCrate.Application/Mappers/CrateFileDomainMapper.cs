@@ -6,18 +6,18 @@ namespace CloudCrate.Application.Mappers;
 
 public static class CrateFileDomainMapper
 {
-    public static SoftDeletedFile MapToSoftDeletedFile(CrateFile file)
-    {
-        return new SoftDeletedFile
-        {
-            Id = file.Id,
-            Name = file.Name,
-            SizeInBytes = file.Size.Bytes,
-            MimeType = file.MimeType,
-            IsDeleted = file.IsDeleted,
-            DeletedAt = file.DeletedAt
-        };
-    }
+    // public static SoftDeletedFile MapToSoftDeletedFile(CrateFile file)
+    // {
+    //     return new SoftDeletedFile
+    //     {
+    //         Id = file.Id,
+    //         Name = file.Name,
+    //         SizeInBytes = file.Size.Bytes,
+    //         MimeType = file.MimeType,
+    //         IsDeleted = file.IsDeleted,
+    //         DeletedAt = file.DeletedAt
+    //     };
+    // }
 
     public static CrateFileResponse ToCrateFileResponse(CrateFile file, Uploader uploader, string fileUrl)
     {

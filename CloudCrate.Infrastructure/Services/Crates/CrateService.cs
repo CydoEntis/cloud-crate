@@ -235,7 +235,6 @@ public class CrateService : ICrateService
 
         var crateDomain = crateEntity.ToDomain();
 
-        // Since CanView already verified membership, this should never be null
         var member = crateDomain.Members.First(m => m.UserId == userId);
 
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
