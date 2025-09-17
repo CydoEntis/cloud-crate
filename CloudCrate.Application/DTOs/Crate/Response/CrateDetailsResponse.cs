@@ -8,12 +8,12 @@ public class CrateDetailsResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
-    public CrateRole Role { get; set; }
     public string Color { get; set; } = string.Empty;
-    public long TotalUsedStorage { get; set; }
-    public long StorageLimit { get; set; }
+    public long AllocatedStorageBytes { get; set; }
+    public long UsedStorageBytes { get; set; }
+    public long RemainingStorageBytes => AllocatedStorageBytes - UsedStorageBytes;
+    public CrateRole Role { get; set; }
     public List<FileTypeBreakdownResponse> BreakdownByType { get; set; } = [];
-    public long RemainingStorage => StorageLimit - TotalUsedStorage;
 
     public Guid RootFolderId { get; set; }
 }

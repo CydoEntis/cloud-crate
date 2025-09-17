@@ -20,7 +20,7 @@ public static class CrateMemberEntityMapper
 
     public static CrateMember ToDomain(this CrateMemberEntity entity)
     {
-        return CrateMember.Rehydrate(
+        var member = CrateMember.Rehydrate(
             entity.Id,
             entity.CrateId,
             entity.UserId,
@@ -28,5 +28,13 @@ public static class CrateMemberEntityMapper
             entity.JoinedAt,
             entity.UpdatedAt
         );
+
+        // Use ApplicationUserMapper to map EF User -> Domain UserAccount
+        if (entity.User != null)
+        {
+            member.User = entity.User.ToDomain(); // <-- reuse the mapper
+        }
+
+        return member;
     }
 }

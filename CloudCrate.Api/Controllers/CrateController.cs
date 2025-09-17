@@ -41,17 +41,16 @@ public class CrateController : BaseController
     [HttpGet]
     public async Task<IActionResult> GetCrates([FromQuery] CrateQueryParameters queryParameters)
     {
-        queryParameters.UserId = UserId!;
-        var result = await _crateService.GetCratesAsync(queryParameters);
+        var result = await _crateService.GetCratesAsync(UserId, queryParameters);
 
         if (result.IsSuccess)
         {
-            return Ok(ApiResponse<PaginatedResult<CrateListItemResponse>>.Success(
+            return Ok(ApiResponse<PaginatedResult<CrateSummaryResponse>>.Success(
                 data: result.GetValue(),
                 message: "Crates retrieved successfully"));
         }
 
-        return result.GetError().ToActionResult<PaginatedResult<CrateListItemResponse>>();
+        return result.GetError().ToActionResult<PaginatedResult<CrateSummaryResponse>>();
     }
 
     [HttpPut("{crateId:guid}")]

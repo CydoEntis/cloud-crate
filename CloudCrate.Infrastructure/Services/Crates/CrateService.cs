@@ -152,66 +152,47 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<PaginatedResult<CrateListItemResponse>>> GetCratesAsync(CrateQueryParameters parameters)
+    public async Task<Result<PaginatedResult<CrateSummaryResponse>>> GetCratesAsync(string userId,
+        CrateQueryParameters parameters)
     {
-        if (string.IsNullOrEmpty(parameters.UserId))
-            return Result<PaginatedResult<CrateListItemResponse>>.Failure(
+        if (string.IsNullOrEmpty(userId))
+            return Result<PaginatedResult<CrateSummaryResponse>>.Failure(
                 new UnauthorizedError("User must be logged in"));
 
         try
         {
-            var query = BuildUserCratesQuery(parameters);
+            var query = BuildUserCratesQuery(userId, parameters);
             var pagedEntities = await query.PaginateAsync(parameters.Page, parameters.PageSize);
 
             var responses = pagedEntities.Items.Select(entity =>
             {
-                var ownerMember = entity.Members.First(m => m.Role == CrateRole.Owner);
-                var currentUserMember = entity.Members.First(m => m.UserId == parameters.UserId);
-
-                return new CrateListItemResponse
-                {
-                    Id = entity.Id,
-                    Name = entity.Name,
-                    Color = entity.Color,
-                    Owner = new CrateMemberResponse
-                    {
-                        UserId = ownerMember.UserId,
-                        DisplayName = ownerMember.User?.DisplayName ?? "Unknown",
-                        Email = ownerMember.User?.Email ?? string.Empty,
-                        Role = ownerMember.Role,
-                        ProfilePicture = ownerMember.User?.ProfilePictureUrl ?? string.Empty,
-                        JoinedAt = ownerMember.JoinedAt
-                    },
-                    UsedStorageBytes = entity.UsedStorageBytes,
-                    TotalStorageBytes = entity.AllocatedStorageBytes,
-                    CratedAt = currentUserMember.JoinedAt
-                };
+                return CrateSummaryMapper.ToCrateSummaryResponse(entity.ToDomain(), userId);
             }).ToList();
 
-            return Result<PaginatedResult<CrateListItemResponse>>.Success(
-                PaginatedResult<CrateListItemResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
+            return Result<PaginatedResult<CrateSummaryResponse>>.Success(
+                PaginatedResult<CrateSummaryResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
                     parameters.PageSize));
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve crates for user {UserId}", parameters.UserId);
-            return Result<PaginatedResult<CrateListItemResponse>>.Failure(new InternalError("Could not fetch crates"));
+            _logger.LogError(ex, "Failed to retrieve crates for user {UserId}", userId);
+            return Result<PaginatedResult<CrateSummaryResponse>>.Failure(new InternalError("Could not fetch crates"));
         }
     }
 
-    private IQueryable<CrateEntity> BuildUserCratesQuery(CrateQueryParameters parameters)
+    private IQueryable<CrateEntity> BuildUserCratesQuery(string userId, CrateQueryParameters parameters)
     {
         var query = _context.Crates
             .AsNoTracking()
             .Include(c => c.Members).ThenInclude(m => m.User)
-            .Where(c => c.Members.Any(m => m.UserId == parameters.UserId));
+            .Where(c => c.Members.Any(m => m.UserId == userId));
 
         query = parameters.MemberType switch
         {
             CrateMemberType.Owner => query.Where(c =>
-                c.Members.Any(m => m.UserId == parameters.UserId && m.Role == CrateRole.Owner)),
+                c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner)),
             CrateMemberType.Joined => query.Where(c =>
-                c.Members.Any(m => m.UserId == parameters.UserId && m.Role != CrateRole.Owner)),
+                c.Members.Any(m => m.UserId == userId && m.Role != CrateRole.Owner)),
             _ => query
         };
 
@@ -247,8 +228,8 @@ public class CrateService : ICrateService
             Name = crateDomain.Name,
             Color = crateDomain.Color,
             Role = member.Role,
-            TotalUsedStorage = crateDomain.UsedStorage.Bytes,
-            StorageLimit = crateDomain.AllocatedStorage.Bytes,
+            UsedStorageBytes = crateDomain.UsedStorage.Bytes,
+            AllocatedStorageBytes = crateDomain.AllocatedStorage.Bytes,
             BreakdownByType = FileBreakdownHelper.GetFilesByMimeTypeInMemory(crateDomain.Files),
             RootFolderId = rootFolder.Id
         };

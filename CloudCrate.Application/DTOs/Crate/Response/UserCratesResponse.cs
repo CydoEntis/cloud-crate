@@ -2,6 +2,6 @@
 
 public class UserCratesResponse
 {
-    public List<CrateListItemResponse> Owned { get; set; } = new();
-    public List<CrateListItemResponse> Joined { get; set; } = new();
+    public List<CrateSummaryResponse> Owned { get; set; } = new();
+    public List<CrateSummaryResponse> Joined { get; set; } = new();
 }
