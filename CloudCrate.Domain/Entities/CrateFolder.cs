@@ -4,7 +4,7 @@ public class CrateFolder
 {
     public Guid Id { get; private set; }
     public string Name { get; private set; } = string.Empty;
-    public string Color { get; private set; } = "#EAAC00";
+    public string Color { get; private set; } = "#374151";
 
     public Guid? ParentFolderId { get; private set; }
     public CrateFolder? ParentFolder { get; set; }
