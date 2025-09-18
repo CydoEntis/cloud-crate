@@ -1,17 +1,15 @@
-﻿using CloudCrate.Application.DTOs;
-using CloudCrate.Application.DTOs.Crate.Response;
+﻿using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.CrateMember.Request;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Errors;
-using CloudCrate.Application.Extensions;
 using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Permissions;
-using CloudCrate.Application.Mappers;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence;
+using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
 using Microsoft.EntityFrameworkCore;
@@ -20,18 +18,18 @@ using Microsoft.Extensions.Logging;
 public class CrateMemberService : ICrateMemberService
 {
     private readonly AppDbContext _context;
-    private readonly ICrateRoleService _roleService;
+    private readonly ICrateRoleService _crateRoleService;
     private readonly IBatchMembershipService _batchMembershipService;
     private readonly ILogger<CrateMemberService> _logger;
 
     public CrateMemberService(
         AppDbContext context,
-        ICrateRoleService roleService,
+        ICrateRoleService crateRoleService,
         IBatchMembershipService batchMembershipService,
         ILogger<CrateMemberService> logger)
     {
         _context = context;
-        _roleService = roleService;
+        _crateRoleService = crateRoleService;
         _batchMembershipService = batchMembershipService;
         _logger = logger;
     }
@@ -41,20 +39,42 @@ public class CrateMemberService : ICrateMemberService
         string requestingUserId,
         CrateMemberQueryParameters parameters)
     {
-        var canViewResult = await _roleService.CanView(crateId, requestingUserId);
+        var canViewResult = await _crateRoleService.CanView(crateId, requestingUserId);
         if (!canViewResult.IsSuccess)
             return Result<PaginatedResult<CrateMemberResponse>>.Failure(canViewResult.GetError());
 
         var query = _context.CrateMembers
+            .AsNoTracking()
             .Include(m => m.User)
             .Where(m => m.CrateId == crateId);
 
-        query = query.ApplyMemberSearch(parameters.SearchTerm)
+        query = query
+            .ApplyMemberSearch(parameters.SearchTerm)
+            .ApplyMemberFiltering(parameters)
             .ApplyMemberOrdering(parameters);
 
-        var pagedEntities = await query.PaginateAsync(parameters.Page, parameters.PageSize);
+        var totalCount = await query.CountAsync();
 
-        var responses = pagedEntities.Items.Select(entity => new CrateMemberResponse
+        List<CrateMemberEntity> entities;
+        int page, pageSize;
+
+        if (parameters.Limit.HasValue)
+        {
+            entities = await query.Take(parameters.Limit.Value).ToListAsync();
+            page = 1;
+            pageSize = parameters.Limit.Value;
+        }
+        else
+        {
+            entities = await query
+                .Skip((parameters.Page - 1) * parameters.PageSize)
+                .Take(parameters.PageSize)
+                .ToListAsync();
+            page = parameters.Page;
+            pageSize = parameters.PageSize;
+        }
+
+        var responses = entities.Select(entity => new CrateMemberResponse
         {
             UserId = entity.UserId,
             DisplayName = entity.User?.DisplayName ?? "Unknown",
@@ -64,63 +84,14 @@ public class CrateMemberService : ICrateMemberService
             JoinedAt = entity.JoinedAt
         }).ToList();
 
-        return Result<PaginatedResult<CrateMemberResponse>>.Success(
-            PaginatedResult<CrateMemberResponse>.Create(responses, pagedEntities.TotalCount, parameters.Page,
-                parameters.PageSize));
-    }
+        var result = PaginatedResult<CrateMemberResponse>.Create(responses, totalCount, page, pageSize);
 
-    public async Task<Result<CrateMemberAvatarResponse>> GetMemberAvatarsAsync(Guid crateId, string requestingUserId)
-    {
-        var canViewResult = await _roleService.CanView(crateId, requestingUserId);
-        if (!canViewResult.IsSuccess)
-            return Result<CrateMemberAvatarResponse>.Failure(canViewResult.GetError());
-
-        var ownerEntity = await _context.CrateMembers
-            .Include(m => m.User)
-            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.Role == CrateRole.Owner);
-
-        if (ownerEntity == null)
-            return Result<CrateMemberAvatarResponse>.Failure(new ValidationError("Crate has no owner"));
-
-        var recentMemberEntities = await _context.CrateMembers
-            .Include(m => m.User)
-            .Where(m => m.CrateId == crateId && m.Role != CrateRole.Owner)
-            .OrderByDescending(m => m.JoinedAt)
-            .Take(4)
-            .ToListAsync();
-
-        var totalMemberCount = await _context.CrateMembers.CountAsync(m => m.CrateId == crateId);
-        var remainingCount = Math.Max(0, totalMemberCount - 1 - recentMemberEntities.Count);
-
-        var response = new CrateMemberAvatarResponse()
-        {
-            Owner = new CrateMemberResponse
-            {
-                UserId = ownerEntity.UserId,
-                DisplayName = ownerEntity.User?.DisplayName ?? "Unknown",
-                Email = ownerEntity.User?.Email ?? string.Empty,
-                Role = ownerEntity.Role,
-                ProfilePicture = ownerEntity.User?.ProfilePictureUrl ?? string.Empty,
-                JoinedAt = ownerEntity.JoinedAt
-            },
-            RecentMembers = recentMemberEntities.Select(entity => new CrateMemberResponse
-            {
-                UserId = entity.UserId,
-                DisplayName = entity.User?.DisplayName ?? "Unknown",
-                Email = entity.User?.Email ?? string.Empty,
-                Role = entity.Role,
-                ProfilePicture = entity.User?.ProfilePictureUrl ?? string.Empty,
-                JoinedAt = entity.JoinedAt
-            }).ToList(),
-            RemainingCount = remainingCount
-        };
-
-        return Result<CrateMemberAvatarResponse>.Success(response);
+        return Result<PaginatedResult<CrateMemberResponse>>.Success(result);
     }
 
     public async Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role, string requestingUserId)
     {
-        var canManageResult = await _roleService.CanManageCrate(crateId, requestingUserId);
+        var canManageResult = await _crateRoleService.CanManageCrate(crateId, requestingUserId);
         if (!canManageResult.IsSuccess || !canManageResult.GetValue())
             return Result.Failure(new ForbiddenError("Only crate owners can assign roles"));
 

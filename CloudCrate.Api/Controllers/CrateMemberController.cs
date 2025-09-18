@@ -3,6 +3,7 @@ using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.Roles.Request;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Application.DTOs;
 using CloudCrate.Application.DTOs.CrateMember.Request;
 using CloudCrate.Application.DTOs.Pagination;
 using Microsoft.AspNetCore.Authorization;
@@ -23,23 +24,23 @@ public class CrateMemberController : BaseController
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetMembers(Guid crateId, CrateMemberQueryParameters queryParameters)
+    public async Task<IActionResult> GetMembers(Guid crateId, [FromQuery] CrateMemberQueryParameters queryParameters)
     {
         if (string.IsNullOrWhiteSpace(UserId))
         {
             return Unauthorized(ApiResponse<PaginatedResult<CrateMemberResponse>>.Failure(
                 "User is not authenticated", 401));
         }
-    
+
         var result = await _crateMemberService.GetCrateMembersAsync(crateId, UserId, queryParameters);
-    
+
         if (result.IsSuccess)
         {
             return Ok(ApiResponse<PaginatedResult<CrateMemberResponse>>.Success(
                 data: result.GetValue(),
                 message: "Members retrieved successfully"));
         }
-    
+
         return result.GetError().ToActionResult<PaginatedResult<CrateMemberResponse>>();
     }
 
