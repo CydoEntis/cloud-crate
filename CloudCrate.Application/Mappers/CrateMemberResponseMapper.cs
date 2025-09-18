@@ -5,15 +5,15 @@ namespace CloudCrate.Application.Mappers;
 
 public static class CrateMemberResponseMapper
 {
-    public static CrateMemberResponse ToResponse(this CrateMember member, UserAccount user)
+    public static CrateMemberResponse ToResponse(this CrateMember member)
     {
         return new CrateMemberResponse
         {
             UserId = member.UserId,
-            DisplayName = user.DisplayName,
-            Email = user.Email,
+            DisplayName = member.User.DisplayName,
+            Email = member.User.Email,
             Role = member.Role,
-            ProfilePicture = user.ProfilePictureUrl,
+            ProfilePicture = member.User.ProfilePictureUrl,
             JoinedAt = member.JoinedAt
         };
     }

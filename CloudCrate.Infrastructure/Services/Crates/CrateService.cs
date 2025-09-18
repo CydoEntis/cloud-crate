@@ -207,6 +207,7 @@ public class CrateService : ICrateService
 
         var crateEntity = await _context.Crates.AsNoTracking()
             .Include(c => c.Members)
+            .ThenInclude(m => m.User)
             .Include(c => c.Files)
             .Include(c => c.Folders)
             .FirstOrDefaultAsync(c => c.Id == crateId);
@@ -215,9 +216,7 @@ public class CrateService : ICrateService
             return Result<CrateDetailsResponse>.Failure(new NotFoundError("Crate not found"));
 
         var crateDomain = crateEntity.ToDomain();
-
-        var member = crateDomain.Members.First(m => m.UserId == userId);
-
+        var currentMember = crateDomain.Members.First(m => m.UserId == userId);
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
         if (rootFolder is null)
             return Result<CrateDetailsResponse>.Failure(new InternalError("Root folder missing"));
@@ -227,7 +226,7 @@ public class CrateService : ICrateService
             Id = crateDomain.Id,
             Name = crateDomain.Name,
             Color = crateDomain.Color,
-            Role = member.Role,
+            CurrentMember = CrateMemberResponseMapper.ToResponse(currentMember),
             UsedStorageBytes = crateDomain.UsedStorage.Bytes,
             AllocatedStorageBytes = crateDomain.AllocatedStorage.Bytes,
             BreakdownByType = FileBreakdownHelper.GetFilesByMimeTypeInMemory(crateDomain.Files),
