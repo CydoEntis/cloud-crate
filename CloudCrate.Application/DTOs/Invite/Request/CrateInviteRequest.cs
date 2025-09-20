@@ -9,8 +9,4 @@ public class CrateInviteRequest
     public string InvitedByUserId { get; set; } = string.Empty!;
 
     public CrateRole Role { get; set; }
-
-    public DateTime? ExpiresAt { get; set; }
-    
-    
 }

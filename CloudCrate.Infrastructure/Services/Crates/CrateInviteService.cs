@@ -60,8 +60,10 @@ public class CrateInviteService : ICrateInviteService
         if (crateNameResult.IsFailure)
             return Result.Failure(crateNameResult.GetError());
 
+        var expirationDate = DateTime.UtcNow.AddMinutes(15);
+
         var inviteDomain = CrateInvite.Create(request.CrateId, request.InvitedEmail, request.InvitedByUserId,
-            request.Role, request.ExpiresAt);
+            request.Role, expirationDate);
         var inviteEntity = inviteDomain.ToEntity();
 
         _context.CrateInvites.Add(inviteEntity);
@@ -140,7 +142,7 @@ public class CrateInviteService : ICrateInviteService
 
         return Result.Success();
     }
-    
+
     public async Task<Result<CrateInviteDetailsResponse>> GetInviteDetailsByTokenAsync(string token)
     {
         var inviteEntity = await GetInviteEntityByTokenAsync(token);
@@ -153,9 +155,9 @@ public class CrateInviteService : ICrateInviteService
         {
             Id = inviteDomain.Id,
             CrateId = inviteDomain.CrateId,
-            InvitedUserEmail = inviteDomain.InvitedUserEmail, 
+            InvitedUserEmail = inviteDomain.InvitedUserEmail,
             Role = inviteDomain.Role,
-            Status = inviteDomain.Status, 
+            Status = inviteDomain.Status,
             Token = inviteDomain.Token,
             ExpiresAt = inviteDomain.ExpiresAt,
         };
