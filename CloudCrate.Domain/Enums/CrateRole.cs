@@ -1,11 +1,6 @@
-﻿namespace CloudCrate.Domain.Enums;
-
-
-public enum CrateRole
+﻿public enum CrateRole
 {
-    Owner,        // Full control: folders, files, permissions
-    Contributor,  // Upload, move, view, edit files/folders, create folders
-    Uploader,     // Upload and view files only
-    Downloader,   // View and download only
-    Viewer,       // View only
+    Owner, // Full control: delete crate, manage members, all file/folder operations
+    Manager, // Manage files/folders, invite/remove users, no crate deletion
+    Member, // Upload, create folders, manage own files only
 }

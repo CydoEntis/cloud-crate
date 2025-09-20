@@ -1,7 +1,5 @@
 ﻿using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Permissions;
-using CloudCrate.Application.Models;
-using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,48 +16,14 @@ public class CrateRoleService : ICrateRoleService
         _context = context;
     }
 
-    private async Task<Result<bool>> HasRoleAsync(
-        Guid crateId,
-        string userId,
-        CrateRole[] allowedRoles,
-        Error? error = null)
+    public async Task<CrateRole?> GetUserRole(Guid crateId, string userId)
     {
         var member = await _context.CrateMembers
             .AsNoTracking()
             .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
-
-        if (member == null || !allowedRoles.Contains(member.Role))
-            return Result<bool>.Failure(error ?? new CrateUnauthorizedError());
-
-        return Result<bool>.Success(true);
+            
+        return member?.Role;
     }
 
-    public Task<Result<bool>> IsOwner(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId, new[] { CrateRole.Owner }, new CrateUnauthorizedError("User is not the owner"));
-
-    public Task<Result<bool>> CanManageCrate(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId, new[] { CrateRole.Owner },
-            new CrateUnauthorizedError("Cannot manage this crate"));
-
-    public Task<Result<bool>> CanContribute(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId,
-            new[] { CrateRole.Owner, CrateRole.Contributor },
-            new CrateUnauthorizedError("Cannot contribute to this crate"));
-
-    public Task<Result<bool>> CanUpload(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId, new[] { CrateRole.Owner, CrateRole.Contributor, CrateRole.Uploader },
-            new CrateUnauthorizedError("Cannot upload to this crate"));
-
-    public Task<Result<bool>> CanView(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId,
-            new[] { CrateRole.Owner, CrateRole.Contributor, CrateRole.Uploader, CrateRole.Viewer },
-            new CrateUnauthorizedError("Cannot view this crate"));
-
-    public Task<Result<bool>> CanDownload(Guid crateId, string userId) =>
-        HasRoleAsync(crateId, userId,
-            new[]
-            {
-                CrateRole.Owner, CrateRole.Contributor, CrateRole.Uploader, CrateRole.Viewer, CrateRole.Downloader
-            },
-            new CrateUnauthorizedError("Cannot download this crate"));
+    
 }
