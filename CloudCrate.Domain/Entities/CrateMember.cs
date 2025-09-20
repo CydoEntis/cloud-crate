@@ -1,5 +1,4 @@
-﻿using CloudCrate.Domain.Enums;
-using CloudCrate.Domain.Exceptions;
+﻿using CloudCrate.Domain.Exceptions;
 
 namespace CloudCrate.Domain.Entities;
 
@@ -17,19 +16,11 @@ public class CrateMember
     public DateTime UpdatedAt { get; private set; }
 
     public bool IsOwner => Role == CrateRole.Owner;
+    public bool IsManager => Role == CrateRole.Manager;
+    public bool IsMember => Role == CrateRole.Member;
+
     public TimeSpan MembershipDuration => DateTime.UtcNow - JoinedAt;
     public bool IsRecentMember => MembershipDuration < TimeSpan.FromDays(7);
-
-    public bool CanUpload => Role is CrateRole.Owner or CrateRole.Contributor or CrateRole.Uploader;
-
-    public bool CanDownload =>
-        Role is CrateRole.Owner or CrateRole.Contributor or CrateRole.Uploader or CrateRole.Downloader;
-
-    public bool CanEdit => Role is CrateRole.Owner or CrateRole.Contributor;
-    public bool CanManageMembers => Role == CrateRole.Owner;
-    public bool CanManageSettings => Role == CrateRole.Owner;
-    public bool CanDelete => Role == CrateRole.Owner;
-    public bool CanView => true;
 
     private CrateMember()
     {
@@ -71,13 +62,11 @@ public class CrateMember
 
     public bool CanUpdateRole(CrateRole newRole, CrateMember requestingMember)
     {
-        if (!requestingMember.IsOwner)
+        if (requestingMember.Role is not (CrateRole.Owner or CrateRole.Manager))
             return false;
 
         if (IsOwner && requestingMember.UserId == UserId && newRole != CrateRole.Owner)
-        {
             return false;
-        }
 
         return true;
     }
@@ -96,7 +85,7 @@ public class CrateMember
     public void PromoteToOwner(CrateMember requestingMember)
     {
         if (!requestingMember.IsOwner)
-            throw new DomainValidationException("Only owners can promote members");
+            throw new DomainValidationException("Only owners can promote members to owner");
 
         if (IsOwner)
             throw new DomainValidationException("Member is already an owner");
@@ -105,10 +94,10 @@ public class CrateMember
         UpdatedAt = DateTime.UtcNow;
     }
 
-    public void DemoteFromOwner(CrateMember requestingMember, CrateRole newRole = CrateRole.Contributor)
+    public void DemoteFromOwner(CrateMember requestingMember, CrateRole newRole = CrateRole.Manager)
     {
         if (!requestingMember.IsOwner)
-            throw new DomainValidationException("Only owners can demote members");
+            throw new DomainValidationException("Only owners can demote other owners");
 
         if (!IsOwner)
             throw new DomainValidationException("Member is not an owner");
@@ -125,7 +114,7 @@ public class CrateMember
         if (IsOwner)
             return false;
 
-        if (!requestingMember.IsOwner)
+        if (requestingMember.Role is not (CrateRole.Owner or CrateRole.Manager))
             return false;
 
         return true;
@@ -143,7 +132,7 @@ public class CrateMember
             if (IsOwner)
                 throw new DomainValidationException("Owners cannot be removed. Transfer ownership first.");
             else
-                throw new DomainValidationException("Only owners can remove members");
+                throw new DomainValidationException("Only owners and managers can remove members");
         }
     }
 
