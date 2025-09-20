@@ -28,7 +28,7 @@ public class CrateInviteController : BaseController
             return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
         }
 
-        var result = await _inviteService.CreateInviteAsync(request);
+        var result = await _inviteService.CreateInviteAsync(UserId, request);
         
         if (result.IsSuccess)
         {

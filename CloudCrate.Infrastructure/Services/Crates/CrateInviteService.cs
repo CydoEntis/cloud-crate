@@ -50,7 +50,7 @@ public class CrateInviteService : ICrateInviteService
         return existingInvite is not null;
     }
 
-    public async Task<Result> CreateInviteAsync(CrateInviteRequest request)
+    public async Task<Result> CreateInviteAsync(string userId, CrateInviteRequest request)
     {
         var hasPendingInvite = await HasPendingInvite(request.CrateId, request.InvitedEmail);
         if (hasPendingInvite)
@@ -62,7 +62,7 @@ public class CrateInviteService : ICrateInviteService
 
         var expirationDate = DateTime.UtcNow.AddMinutes(15);
 
-        var inviteDomain = CrateInvite.Create(request.CrateId, request.InvitedEmail, request.InvitedByUserId,
+        var inviteDomain = CrateInvite.Create(request.CrateId, request.InvitedEmail, userId,
             request.Role, expirationDate);
         var inviteEntity = inviteDomain.ToEntity();
 
@@ -149,17 +149,28 @@ public class CrateInviteService : ICrateInviteService
         if (inviteEntity == null)
             return Result<CrateInviteDetailsResponse>.Failure(new NotFoundError("Invite not found"));
 
-        var inviteDomain = inviteEntity.ToDomain();
+        if (inviteEntity.Status == InviteStatus.Pending &&
+            inviteEntity.ExpiresAt.HasValue &&
+            inviteEntity.ExpiresAt.Value < DateTime.UtcNow)
+        {
+            inviteEntity.Status = InviteStatus.Expired;
+            inviteEntity.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Result<CrateInviteDetailsResponse>.Failure(new BusinessRuleError("Invite has expired"));
+        }
 
         var response = new CrateInviteDetailsResponse
         {
-            Id = inviteDomain.Id,
-            CrateId = inviteDomain.CrateId,
-            InvitedUserEmail = inviteDomain.InvitedUserEmail,
-            Role = inviteDomain.Role,
-            Status = inviteDomain.Status,
-            Token = inviteDomain.Token,
-            ExpiresAt = inviteDomain.ExpiresAt,
+            Id = inviteEntity.Id,
+            CrateId = inviteEntity.CrateId,
+            CrateName = inviteEntity.Crate?.Name ?? "Unknown Crate",
+            CrateColor = inviteEntity.Crate?.Color ?? "#6366f1",
+            InvitedUserEmail = inviteEntity.InvitedUserEmail,
+            Role = inviteEntity.Role,
+            Status = inviteEntity.Status,
+            Token = inviteEntity.Token,
+            ExpiresAt = inviteEntity.ExpiresAt,
         };
 
         return Result<CrateInviteDetailsResponse>.Success(response);
@@ -167,7 +178,7 @@ public class CrateInviteService : ICrateInviteService
 
     private async Task<CrateInviteEntity?> GetInviteEntityByTokenAsync(string token)
     {
-        return await _context.CrateInvites.FirstOrDefaultAsync(i => i.Token == token);
+        return await _context.CrateInvites.Include(ci => ci.Crate).FirstOrDefaultAsync(i => i.Token == token);
     }
 
     private string BuildInviteLink(string token)
