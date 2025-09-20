@@ -15,6 +15,7 @@ using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
+using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.Extensions.Logging;
 
 namespace CloudCrate.Infrastructure.Services.Folder;
@@ -41,7 +42,6 @@ public class FolderService : IFolderService
         _logger = logger;
     }
 
-    #region Get Folders and Contents
 
     public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(FolderContentsParameters parameters)
     {
@@ -50,9 +50,9 @@ public class FolderService : IFolderService
             if (string.IsNullOrWhiteSpace(parameters.UserId))
                 return Result<FolderContentsResponse>.Failure(new UnauthorizedError("UserId is required"));
 
-            var permission = await _crateRoleService.CanView(parameters.CrateId, parameters.UserId);
-            if (permission.IsFailure)
-                return Result<FolderContentsResponse>.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(parameters.CrateId, parameters.UserId);
+            if (role == null)
+                return Result<FolderContentsResponse>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
             bool searchMode = !string.IsNullOrWhiteSpace(parameters.SearchTerm);
             var searchTerm = parameters.SearchTerm?.Trim().ToLower() ?? "";
@@ -63,7 +63,6 @@ public class FolderService : IFolderService
 
             await AddParentFolderIfNeeded(parameters.FolderId, folders);
 
-            // Fixed: Use the correct method from FileService
             var filesResult = await _fileService.GetFilesAsync(parameters);
             if (filesResult.IsFailure)
                 return Result<FolderContentsResponse>.Failure(filesResult.GetError());
@@ -117,17 +116,13 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Create Folders
-
     public async Task<Result<Guid>> CreateFolderAsync(CreateFolderRequest request, string userId)
     {
         try
         {
-            var permission = await _crateRoleService.CanUpload(request.CrateId, userId);
-            if (permission.IsFailure)
-                return Result<Guid>.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(request.CrateId, userId);
+            if (role == null)
+                return Result<Guid>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
             if (request.ParentFolderId.HasValue)
             {
@@ -160,10 +155,6 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Update Folders
-
     public async Task<Result> UpdateFolderAsync(Guid folderId, UpdateFolderRequest request, string userId)
     {
         try
@@ -172,9 +163,20 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanUpload(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canUpdate = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canUpdate)
+                return Result.Failure(new CrateUnauthorizedError("Cannot update this folder"));
 
             folderEntity.Name = request.NewName ?? folderEntity.Name;
             folderEntity.Color = request.NewColor ?? folderEntity.Color;
@@ -191,10 +193,6 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Delete Folders
-
     public async Task<Result> DeleteFolderAsync(Guid folderId, string userId)
     {
         try
@@ -206,9 +204,20 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanManageCrate(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
 
             await SoftDeleteFolderRecursiveAsync(folderEntity, userId);
             await _context.SaveChangesAsync();
@@ -235,9 +244,20 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanManageCrate(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
 
             return await SoftDeleteFolderRecursiveAsync(folderEntity, userId);
         }
@@ -255,16 +275,25 @@ public class FolderService : IFolderService
 
         try
         {
-            // Validate folder exists and check permissions
             var rootFolder = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == folderId);
             if (rootFolder == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanManageCrate(rootFolder.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(rootFolder.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-            // Get all folders to delete (including descendants)
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => rootFolder.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
+
             var allFolders = await _context.CrateFolders
                 .Where(f => f.CrateId == rootFolder.CrateId)
                 .ToListAsync();
@@ -272,7 +301,6 @@ public class FolderService : IFolderService
             var folderIdsToDelete = GetDescendantFolderIds(allFolders, folderId);
             folderIdsToDelete.Add(folderId);
 
-            // Delegate file deletion to FileService
             var fileDeleteResult = await DeleteFilesInFoldersAsync(folderIdsToDelete, userId);
             if (fileDeleteResult.IsFailure)
             {
@@ -280,7 +308,6 @@ public class FolderService : IFolderService
                 return fileDeleteResult;
             }
 
-            // Delete folder records (leaf folders first)
             var foldersToDelete = allFolders
                 .Where(f => folderIdsToDelete.Contains(f.Id))
                 .OrderByDescending(f => GetFolderDepth(f, allFolders))
@@ -304,7 +331,6 @@ public class FolderService : IFolderService
 
     private async Task<Result> DeleteFilesInFoldersAsync(List<Guid> folderIds, string userId)
     {
-        // Get all file IDs in these folders
         var fileIds = await _context.CrateFiles
             .Where(f => f.CrateFolderId != null && folderIds.Contains(f.CrateFolderId.Value))
             .Select(f => f.Id)
@@ -313,7 +339,6 @@ public class FolderService : IFolderService
         if (!fileIds.Any())
             return Result.Success();
 
-        // Delegate to FileService - it handles storage, quotas, and cleanup
         return await _fileService.PermanentlyDeleteFilesAsync(fileIds, userId);
     }
 
@@ -335,7 +360,6 @@ public class FolderService : IFolderService
     {
         try
         {
-            // Handle file deletions first (already delegated properly)
             if (request.FileIds.Any())
             {
                 var fileResult = request.Permanent
@@ -346,7 +370,6 @@ public class FolderService : IFolderService
                     return Result.Failure(fileResult.GetError());
             }
 
-            // Handle folder deletions
             foreach (var folderId in request.FolderIds)
             {
                 var folderResult = request.Permanent
@@ -371,13 +394,11 @@ public class FolderService : IFolderService
     {
         try
         {
-            // Soft delete the current folder
             folderEntity.IsDeleted = true;
             folderEntity.DeletedAt = DateTime.UtcNow;
             folderEntity.DeletedByUserId = userId;
             folderEntity.UpdatedAt = DateTime.UtcNow;
 
-            // Soft delete all files in this folder and subfolders
             var filesResult = await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id);
             if (filesResult.IsFailure)
                 return Result.Failure(filesResult.GetError());
@@ -390,7 +411,6 @@ public class FolderService : IFolderService
                     return Result.Failure(fileResult.GetError());
             }
 
-            // Recursively soft delete all subfolders
             foreach (var subfolder in folderEntity.Subfolders)
             {
                 var subResult = await SoftDeleteFolderRecursiveAsync(subfolder, userId);
@@ -408,9 +428,6 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Move Folders
 
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
@@ -420,22 +437,30 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanUpload(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-            // Validate move destination
+            var canMove = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canMove)
+                return Result.Failure(new CrateUnauthorizedError("Cannot move this folder"));
+
             var validationResult = await ValidateMoveDestinationAsync(folderEntity, newParentId);
             if (validationResult.IsFailure)
                 return validationResult;
 
-            // Perform storage move
             var storageResult =
                 await _storageService.MoveFolderAsync(folderEntity.CrateId, folderEntity.Id, newParentId);
             if (storageResult.IsFailure)
                 return storageResult;
 
-            // Update database
             folderEntity.ParentFolderId = newParentId;
             folderEntity.UpdatedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync();
@@ -453,7 +478,7 @@ public class FolderService : IFolderService
     private async Task<Result> ValidateMoveDestinationAsync(CrateFolderEntity folderEntity, Guid? newParentId)
     {
         if (!newParentId.HasValue)
-            return Result.Success(); // Moving to root is always valid
+            return Result.Success(); 
 
         var newParent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == newParentId.Value && !f.IsDeleted);
         if (newParent == null || newParent.CrateId != folderEntity.CrateId)
@@ -462,7 +487,6 @@ public class FolderService : IFolderService
         if (newParentId == folderEntity.Id)
             return Result.Failure(new AlreadyExistsError("Cannot move folder into itself"));
 
-        // Check for circular reference (moving into descendant)
         Guid? current = newParentId;
         while (current != null)
         {
@@ -489,7 +513,6 @@ public class FolderService : IFolderService
                 .Where(f => f.CrateId == crateId && !f.IsDeleted)
                 .ToListAsync();
 
-            // Filter out the folder being moved and its descendants
             if (excludeFolderId.HasValue)
             {
                 var excludedIds = GetDescendantFolderIds(allFolders, excludeFolderId.Value);
@@ -499,10 +522,8 @@ public class FolderService : IFolderService
                     .ToList();
             }
 
-            // Convert Entity → Domain first
             var domainFolders = allFolders.Select(f => f.ToDomain()).ToList();
 
-            // Then Domain → Application DTO (this should happen in Application layer)
             var response = domainFolders.Select(CrateFolderMapper.ToFolderResponse).ToList();
 
             return Result<List<FolderResponse>>.Success(response);
@@ -514,9 +535,6 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Download Folders
 
     public async Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId)
     {
@@ -526,11 +544,10 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result<FolderDownloadResult>.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanDownload(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result<FolderDownloadResult>.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result<FolderDownloadResult>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-            // Get all folders and files needed for zip creation
             var allFolders = await _context.CrateFolders
                 .Where(f => f.CrateId == folderEntity.CrateId && !f.IsDeleted)
                 .ToListAsync();
@@ -541,7 +558,6 @@ public class FolderService : IFolderService
 
             var allFiles = filesResult.GetValue();
 
-            // Create zip archive
             using var memoryStream = new MemoryStream();
             using (var zip = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
             {
@@ -564,9 +580,6 @@ public class FolderService : IFolderService
         }
     }
 
-    #endregion
-
-    #region Restore Folders
 
     public async Task<Result> RestoreFolderAsync(Guid folderId, string userId)
     {
@@ -579,22 +592,30 @@ public class FolderService : IFolderService
             if (folderEntity == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
-            var permission = await _crateRoleService.CanManageCrate(folderEntity.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-            // Validate parent chain is not deleted
+            var canRestore = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canRestore)
+                return Result.Failure(new CrateUnauthorizedError("Cannot restore this folder"));
+
             var parentValidationResult = await ValidateParentChainNotDeletedAsync(folderEntity.ParentFolderId);
             if (parentValidationResult.IsFailure)
                 return parentValidationResult;
 
-            // Restore the folder
             folderEntity.IsDeleted = false;
             folderEntity.RestoredAt = DateTime.UtcNow;
             folderEntity.RestoredByUserId = userId;
             folderEntity.UpdatedAt = DateTime.UtcNow;
 
-            // Restore files in this folder and subfolders
             var filesResult = await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id);
             if (filesResult.IsFailure)
                 return Result.Failure(filesResult.GetError());
@@ -607,7 +628,6 @@ public class FolderService : IFolderService
                     return fileRestoreResult;
             }
 
-            // Recursively restore subfolders
             foreach (var subfolder in folderEntity.Subfolders)
             {
                 var subfolderResult = await RestoreFolderAsync(subfolder.Id, userId);
@@ -643,9 +663,6 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    #endregion
-
-    #region Private Helpers
 
     private List<Guid> GetDescendantFolderIds(List<CrateFolderEntity> allFolders, Guid parentId)
     {
@@ -708,10 +725,8 @@ public class FolderService : IFolderService
 
         var folderEntities = await query.OrderBy(f => f.Name).ToListAsync();
 
-        // Convert Entity → Domain first
         var domainFolders = folderEntities.Select(f => f.ToDomain()).ToList();
 
-        // Then Domain → Application DTO (using Application layer mapper)
         return domainFolders.Select(CrateFolderMapper.ToCrateFolderResponse).ToList();
     }
 
@@ -753,6 +768,4 @@ public class FolderService : IFolderService
 
         return breadcrumbs;
     }
-
-    #endregion
 }

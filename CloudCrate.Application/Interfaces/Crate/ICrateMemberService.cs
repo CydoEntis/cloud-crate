@@ -22,5 +22,7 @@ namespace CloudCrate.Application.Interfaces.Crate
 
         Task<Result> LeaveCrateAsync(Guid crateId, string userId);
         Task<Result<int>> LeaveCratesAsync(IEnumerable<Guid> crateIds, string userId);
+
+        Task<Result> AcceptInviteRoleAsync(Guid crateId, string userId, CrateRole role, string invitingUserId);
     }
 }

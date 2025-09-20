@@ -7,11 +7,11 @@ using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
-using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
+using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -39,9 +39,10 @@ public class CrateMemberService : ICrateMemberService
         string requestingUserId,
         CrateMemberQueryParameters parameters)
     {
-        var canViewResult = await _crateRoleService.CanView(crateId, requestingUserId);
-        if (!canViewResult.IsSuccess)
-            return Result<PaginatedResult<CrateMemberResponse>>.Failure(canViewResult.GetError());
+        var role = await _crateRoleService.GetUserRole(crateId, requestingUserId);
+        if (role == null)
+            return Result<PaginatedResult<CrateMemberResponse>>.Failure(
+                new CrateUnauthorizedError("Not a member of this crate"));
 
         var query = _context.CrateMembers
             .AsNoTracking()
@@ -91,9 +92,20 @@ public class CrateMemberService : ICrateMemberService
 
     public async Task<Result> AssignRoleAsync(Guid crateId, string userId, CrateRole role, string requestingUserId)
     {
-        var canManageResult = await _crateRoleService.CanManageCrate(crateId, requestingUserId);
-        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
-            return Result.Failure(new ForbiddenError("Only crate owners can assign roles"));
+        var requestingRole = await _crateRoleService.GetUserRole(crateId, requestingUserId);
+        if (requestingRole == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canAssignRoles = requestingRole switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => false,
+            _ => false
+        };
+
+        if (!canAssignRoles)
+            return Result.Failure(new ForbiddenError("Only owners and managers can assign roles"));
 
         var memberEntity = await _context.CrateMembers
             .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
@@ -220,5 +232,42 @@ public class CrateMemberService : ICrateMemberService
             .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
 
         return entity?.ToDomain();
+    }
+
+    public async Task<Result> AcceptInviteRoleAsync(Guid crateId, string userId, CrateRole role, string invitingUserId)
+    {
+        var invitingRole = await _crateRoleService.GetUserRole(crateId, invitingUserId);
+        if (invitingRole == null)
+            return Result.Failure(new CrateUnauthorizedError("Inviting user is not a member of this crate"));
+
+        var canInvite = invitingRole switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => false,
+            _ => false
+        };
+
+        if (!canInvite)
+            return Result.Failure(new ForbiddenError("Invite creator no longer has permission to add members"));
+
+        var memberEntity = await _context.CrateMembers
+            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.UserId == userId);
+
+        if (memberEntity != null)
+            return Result.Failure(new BusinessRuleError("User is already a member of this crate"));
+
+        try
+        {
+            var newMember = CrateMember.Create(crateId, userId, role);
+            _context.CrateMembers.Add(newMember.ToEntity(crateId));
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to accept invite for user {UserId} in crate {CrateId}", userId, crateId);
+            return Result.Failure(new InternalError($"Failed to accept invite: {ex.Message}"));
+        }
     }
 }

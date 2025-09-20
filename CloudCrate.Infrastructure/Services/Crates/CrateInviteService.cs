@@ -87,7 +87,7 @@ public class CrateInviteService : ICrateInviteService
         var inviteDomain = inviteEntity.ToDomain();
 
         if (inviteDomain.Status != InviteStatus.Pending)
-            return Result.Failure(new BusinessRuleError("Invite is not pending"));
+            return Result.Failure(new BusinessRuleError("Invite has expired or does not exist"));
 
         if (inviteDomain.ExpiresAt.HasValue && inviteDomain.ExpiresAt.Value < DateTime.UtcNow)
             return Result.Failure(new BusinessRuleError("Invite has expired"));
@@ -95,7 +95,7 @@ public class CrateInviteService : ICrateInviteService
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            var roleResult = await _crateMemberService.AssignRoleAsync(
+            var roleResult = await _crateMemberService.AcceptInviteRoleAsync(
                 inviteDomain.CrateId,
                 userId,
                 inviteDomain.Role,
@@ -105,11 +105,14 @@ public class CrateInviteService : ICrateInviteService
             if (roleResult.IsFailure)
             {
                 await transaction.RollbackAsync();
-                return Result.Failure(new InternalError("Failed to assign crate role to user"));
+                return Result.Failure(roleResult.GetError());
             }
 
             inviteDomain.UpdateInviteStatus(InviteStatus.Accepted);
-            _context.CrateInvites.Update(inviteDomain.ToEntity());
+
+            inviteEntity.Status = inviteDomain.Status;
+            inviteEntity.UpdatedAt = inviteDomain.UpdatedAt;
+
             await _context.SaveChangesAsync();
 
             await transaction.CommitAsync();

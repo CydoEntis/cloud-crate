@@ -18,6 +18,7 @@ using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
+using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -104,8 +105,19 @@ public class CrateService : ICrateService
 
     public async Task<Result> UpdateCrateAsync(Guid crateId, string userId, UpdateCrateRequest request)
     {
-        var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
-        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
+        var role = await _crateRoleService.GetUserRole(crateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canUpdate = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => false,
+            _ => false
+        };
+
+        if (!canUpdate)
             return Result.Failure(new ForbiddenError("User cannot update this crate"));
 
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
@@ -201,9 +213,9 @@ public class CrateService : ICrateService
 
     public async Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId)
     {
-        var canViewResult = await _crateRoleService.CanView(crateId, userId);
-        if (!canViewResult.IsSuccess)
-            return Result<CrateDetailsResponse>.Failure(canViewResult.GetError());
+        var role = await _crateRoleService.GetUserRole(crateId, userId);
+        if (role == null)
+            return Result<CrateDetailsResponse>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
         var crateEntity = await _context.Crates.AsNoTracking()
             .Include(c => c.Members)
@@ -238,9 +250,12 @@ public class CrateService : ICrateService
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
     {
-        var canManageResult = await _crateRoleService.CanManageCrate(crateId, userId);
-        if (!canManageResult.IsSuccess || !canManageResult.GetValue())
-            return Result.Failure(new ForbiddenError("You do not have permission to delete this crate"));
+        var role = await _crateRoleService.GetUserRole(crateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        if (role != CrateRole.Owner)
+            return Result.Failure(new ForbiddenError("Only the owner can delete this crate"));
 
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
         if (crateEntity is null)

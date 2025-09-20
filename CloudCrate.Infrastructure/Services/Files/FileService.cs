@@ -20,6 +20,7 @@ using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using CloudCrate.Infrastructure.Queries;
+using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
@@ -71,18 +72,16 @@ public class FileService : IFileService
 
     public async Task<Result<Guid>> UploadFileAsync(FileUploadRequest request, string userId)
     {
-        // Simple validation inline
         if (request.SizeInBytes > MaxFileSize)
             return Result<Guid>.Failure(new FileTooLargeError());
 
         if (request.MimeType.StartsWith(VIDEO_MIME_PREFIX, StringComparison.OrdinalIgnoreCase))
             return Result<Guid>.Failure(new VideoNotAllowedError());
 
-        var permissionResult = await _crateRoleService.CanUpload(request.CrateId, userId);
-        if (permissionResult.IsFailure)
-            return Result<Guid>.Failure(permissionResult.GetError());
+        var role = await _crateRoleService.GetUserRole(request.CrateId, userId);
+        if (role == null)
+            return Result<Guid>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-        // Check folder exists if specified
         if (request.FolderId.HasValue)
         {
             var folderExists = await _context.CrateFolders
@@ -91,12 +90,10 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(Error.NotFound(FOLDER_NOT_FOUND_MESSAGE));
         }
 
-        // Check user storage quota
         var userCanConsume = await _userService.CanConsumeStorageAsync(userId, request.SizeInBytes);
         if (userCanConsume.IsFailure)
             return Result<Guid>.Failure(userCanConsume.GetError());
 
-        // Check crate exists and has space
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.CrateId);
         if (crateEntity == null)
             return Result<Guid>.Failure(Error.NotFound(CRATE_NOT_FOUND_MESSAGE));
@@ -108,7 +105,6 @@ public class FileService : IFileService
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // Save to storage
             var storageResult = await _storageService.SaveFileAsync(request);
             if (storageResult.IsFailure)
             {
@@ -116,7 +112,6 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(storageResult.GetError());
             }
 
-            // Create domain entity
             var domainFile = CrateFile.Create(
                 request.FileName,
                 StorageSize.FromBytes(request.SizeInBytes),
@@ -127,11 +122,9 @@ public class FileService : IFileService
 
             domainFile.SetObjectKey(storageResult.GetValue());
 
-            // Update crate storage
             crate.ConsumeStorage(StorageSize.FromBytes(request.SizeInBytes));
             crateEntity.UpdateEntity(crate);
 
-            // Update user storage
             var userStorageResult = await _userService.IncrementUsedStorageAsync(userId, request.SizeInBytes);
             if (userStorageResult.IsFailure)
             {
@@ -140,7 +133,6 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(userStorageResult.GetError());
             }
 
-            // Save to database
             var fileEntity = domainFile.ToEntity(request.CrateId);
             _context.CrateFiles.Add(fileEntity);
             await _context.SaveChangesAsync();
@@ -162,7 +154,6 @@ public class FileService : IFileService
         if (request.Files == null || !request.Files.Any())
             return Result<List<Guid>>.Failure(Error.Validation("No files provided.", "Files"));
 
-        // Validate all files inline
         foreach (var fileReq in request.Files)
         {
             if (fileReq.SizeInBytes > MaxFileSize)
@@ -173,13 +164,12 @@ public class FileService : IFileService
         }
 
         var crateId = request.Files.First().CrateId;
-        var permissionResult = await _crateRoleService.CanUpload(crateId, userId);
-        if (permissionResult.IsFailure)
-            return Result<List<Guid>>.Failure(permissionResult.GetError());
+        var role = await _crateRoleService.GetUserRole(crateId, userId);
+        if (role == null)
+            return Result<List<Guid>>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
         var totalSize = request.Files.Sum(f => f.SizeInBytes);
 
-        // Check all folders exist
         foreach (var req in request.Files)
         {
             if (req.FolderId == null || req.FolderId == Guid.Empty)
@@ -192,7 +182,6 @@ public class FileService : IFileService
                 return Result<List<Guid>>.Failure(Error.NotFound($"Folder not found for file {req.FileName}"));
         }
 
-        // Check storage quotas
         var userCanConsume = await _userService.CanConsumeStorageAsync(userId, totalSize);
         if (userCanConsume.IsFailure)
             return Result<List<Guid>>.Failure(userCanConsume.GetError());
@@ -208,7 +197,6 @@ public class FileService : IFileService
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // Use storage service bulk upload
             var storageResult = await _storageService.SaveFilesAsync(request.Files);
             if (storageResult.IsFailure)
             {
@@ -218,7 +206,6 @@ public class FileService : IFileService
 
             var uploadedKeys = storageResult.GetValue();
 
-            // Create domain entities
             var fileEntities = new List<CrateFileEntity>();
             for (int i = 0; i < request.Files.Count; i++)
             {
@@ -235,11 +222,9 @@ public class FileService : IFileService
                 fileEntities.Add(domainFile.ToEntity(req.CrateId));
             }
 
-            // Update crate storage
             crate.ConsumeStorage(StorageSize.FromBytes(totalSize));
             crateEntity.UpdateEntity(crate);
 
-            // Update user storage
             var userStorageResult = await _userService.IncrementUsedStorageAsync(userId, totalSize);
             if (userStorageResult.IsFailure)
             {
@@ -247,7 +232,6 @@ public class FileService : IFileService
                 return Result<List<Guid>>.Failure(userStorageResult.GetError());
             }
 
-            // Save to database
             _context.CrateFiles.AddRange(fileEntities);
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -277,9 +261,9 @@ public class FileService : IFileService
         if (file == null)
             return Result<CrateFileResponse>.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanView(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result<CrateFileResponse>.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result<CrateFileResponse>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
         try
         {
@@ -307,9 +291,9 @@ public class FileService : IFileService
         if (file == null)
             return Result<byte[]>.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanDownload(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result<byte[]>.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result<byte[]>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
         return await _storageService.ReadFileAsync(file.CrateId, file.CrateFolderId, file.Name);
     }
@@ -326,9 +310,9 @@ public class FileService : IFileService
             if (file == null)
                 return Result<byte[]>.Failure(new FileNotFoundError($"File {fileId} not found"));
 
-            var permission = await _crateRoleService.CanDownload(file.CrateId, userId);
-            if (permission.IsFailure)
-                return Result<byte[]>.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+            if (role == null)
+                return Result<byte[]>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
             files.Add(file);
         }
@@ -470,9 +454,20 @@ public class FileService : IFileService
         if (file == null)
             return Result.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canDelete = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => file.UploadedByUserId == userId,
+            _ => false
+        };
+
+        if (!canDelete)
+            return Result.Failure(new CrateUnauthorizedError("Cannot delete this file"));
 
         return await _batchDeleteService.DeleteFilesAsync(new[] { fileId });
     }
@@ -483,9 +478,20 @@ public class FileService : IFileService
         if (file == null)
             return Result.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canDelete = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => file.UploadedByUserId == userId,
+            _ => false
+        };
+
+        if (!canDelete)
+            return Result.Failure(new CrateUnauthorizedError("Cannot delete this file"));
 
         try
         {
@@ -513,11 +519,21 @@ public class FileService : IFileService
         if (file == null)
             return Result.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-        // Validate destination folder
+        var canMove = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => file.UploadedByUserId == userId,
+            _ => false
+        };
+
+        if (!canMove)
+            return Result.Failure(new CrateUnauthorizedError("Cannot move this file"));
+
         if (newParentId.HasValue && newParentId.Value != Guid.Empty)
         {
             var folderExists = await _context.CrateFolders
@@ -566,9 +582,20 @@ public class FileService : IFileService
         if (file == null)
             return Result.Failure(new FileNotFoundError());
 
-        var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
-        if (permission.IsFailure)
-            return Result.Failure(permission.GetError());
+        var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canRestore = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => file.UploadedByUserId == userId,
+            _ => false
+        };
+
+        if (!canRestore)
+            return Result.Failure(new CrateUnauthorizedError("Cannot restore this file"));
 
         if (file.CrateFolderId.HasValue)
         {
@@ -609,11 +636,22 @@ public class FileService : IFileService
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 
-        var crateIds = files.Select(f => f.CrateId).Distinct();
-        foreach (var crateId in crateIds)
+        foreach (var file in files)
         {
-            var permission = await _crateRoleService.CanManageCrate(crateId, userId);
-            if (permission.IsFailure) return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => file.UploadedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError($"Cannot delete file {file.Name}"));
         }
 
         using var transaction = await _context.Database.BeginTransactionAsync();
@@ -644,9 +682,20 @@ public class FileService : IFileService
             if (file == null)
                 return Result.Failure(new FileNotFoundError());
 
-            var permission = await _crateRoleService.CanManageCrate(file.CrateId, userId);
-            if (permission.IsFailure)
-                return Result.Failure(permission.GetError());
+            var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => file.UploadedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError("Cannot delete this file"));
         }
 
         return await _batchDeleteService.DeleteFilesAsync(fileIds);
