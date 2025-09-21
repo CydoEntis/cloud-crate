@@ -41,13 +41,11 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
-
 Console.WriteLine("🚀 App starting...");
 
 // DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
-
 
 // Identity setup
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
@@ -76,7 +74,6 @@ builder.Services.AddSingleton(sp =>
         .UseMemoryCachingProvider()
         .Build());
 
-
 // === Authentication & JWT Setup ===
 builder.Services.AddAuthentication(options =>
     {
@@ -97,7 +94,6 @@ builder.Services.AddAuthentication(options =>
             NameClaimType = ClaimTypes.NameIdentifier,
             RoleClaimType = ClaimTypes.Role,
         };
-
         options.Events = new JwtBearerEvents
         {
             OnAuthenticationFailed = context =>
@@ -126,10 +122,9 @@ builder.Services.AddControllers()
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
 
-// OpenAPI (Swagger)
 builder.Services.AddOpenApi();
 
-// Your app services
+// App services
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -144,54 +139,57 @@ builder.Services.AddScoped<IBatchDeleteService, BatchDeleteService>();
 builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
 
-
 // Registering Minio Storage
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var config = builder.Configuration.GetSection("Storage").Get<StorageSettings>();
-
     var s3Config = new AmazonS3Config
     {
         ServiceURL = config.Endpoint,
         ForcePathStyle = true, // required for MinIO
         UseHttp = config.Endpoint.StartsWith("http://")
     };
-
     return new AmazonS3Client(config.AccessKey, config.SecretKey, s3Config);
 });
 builder.Services.AddScoped<IStorageService, MinioStorageService>();
 
-
-// CORS
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("https://localhost:5173", "http://localhost:5173")
+        policy.WithOrigins(
+                "https://localhost:5173", 
+                "http://localhost:5173" 
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials()
+            .AllowCredentials() 
             .WithExposedHeaders("Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy");
     });
 });
 
 var app = builder.Build();
 
-// Dev tools
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
-// Middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-app.UseCors("AllowAll");
+
+// Cookie policy for HTTPS cookies
+app.UseCookiePolicy(new CookiePolicyOptions
+{
+    MinimumSameSitePolicy = SameSiteMode.Strict,
+    Secure = app.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always
+});
+
+app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
 app.Run();
