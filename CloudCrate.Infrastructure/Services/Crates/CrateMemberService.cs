@@ -130,6 +130,7 @@ public class CrateMemberService : ICrateMemberService
                 var requestingMemberDomain = requestingMemberEntity.ToDomain();
 
                 memberDomain.UpdateRole(role, requestingMemberDomain);
+                _context.Entry(memberEntity).State = EntityState.Detached;
                 _context.CrateMembers.Update(memberDomain.ToEntity(crateId));
             }
 
