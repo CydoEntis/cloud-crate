@@ -9,4 +9,5 @@ public class CrateSummaryResponse
     public long UsedStorageBytes { get; set; }
     public long AllocatedStorageBytes { get; set; }
     public DateTime JoinedAt { get; set; }
+    public CrateRole CurrentUserRole { get; set; }
 }

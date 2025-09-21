@@ -31,7 +31,8 @@ public static class CrateSummaryMapper
                 },
             UsedStorageBytes = crate.UsedStorage.Bytes,
             AllocatedStorageBytes = crate.AllocatedStorage.Bytes,
-            JoinedAt = joined?.JoinedAt ?? DateTime.MinValue
+            JoinedAt = joined?.JoinedAt ?? DateTime.MinValue,
+            CurrentUserRole = joined?.Role ?? CrateRole.Member
         };
     }
 }
