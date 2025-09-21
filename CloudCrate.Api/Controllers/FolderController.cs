@@ -170,7 +170,7 @@ public class FolderController : BaseController
         return result.GetError().ToActionResult<List<FolderResponse>>();
     }
 
-    [HttpGet("folders/{folderId}/download")]
+    [HttpGet("{folderId:guid}/download")]
     public async Task<IActionResult> DownloadFolder(Guid folderId)
     {
         if (string.IsNullOrWhiteSpace(UserId))
@@ -182,16 +182,20 @@ public class FolderController : BaseController
 
         if (result.IsSuccess)
         {
-            return Ok(ApiResponse<FolderDownloadResult>.Success(
-                data: result.GetValue(),
-                message: "Folder downloaded successfully"));
+            var downloadResult = result.GetValue();
+
+            return File(
+                downloadResult.FileBytes,
+                "application/zip",
+                $"{downloadResult.FileName}.zip"
+            );
         }
 
         return result.GetError().ToActionResult<FolderDownloadResult>();
     }
 
     [HttpPut("{folderId:guid}/restore")]
-    public async Task<IActionResult> RestoreFolder(Guid crateId, Guid folderId)
+    public async Task<IActionResult> RestoreFolder(Guid folderId)
     {
         if (string.IsNullOrWhiteSpace(UserId))
         {
