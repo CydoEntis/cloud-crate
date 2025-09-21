@@ -44,7 +44,7 @@ public class CrateMemberController : BaseController
         return result.GetError().ToActionResult<PaginatedResult<CrateMemberResponse>>();
     }
 
-    [HttpPut("{userId:guid}/role")]
+    [HttpPut("{userId}/role")]
     public async Task<IActionResult> AssignRole(Guid crateId, string userId, [FromBody] AssignRoleRequest request)
     {
         if (string.IsNullOrWhiteSpace(UserId))
@@ -56,13 +56,14 @@ public class CrateMemberController : BaseController
 
         if (result.IsSuccess)
         {
-            return NoContent();
+            // Return OK with response body instead of NoContent
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Role assigned successfully"));
         }
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
 
-    [HttpDelete("{userId:guid}")]
+    [HttpDelete("{userId}")]
     public async Task<IActionResult> RemoveMember(Guid crateId, string userId)
     {
         if (string.IsNullOrWhiteSpace(UserId))
@@ -74,7 +75,7 @@ public class CrateMemberController : BaseController
 
         if (result.IsSuccess)
         {
-            return NoContent();
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Member removed successfully"));
         }
 
         return result.GetError().ToActionResult<EmptyResponse>();
