@@ -11,6 +11,8 @@ public class ApplicationUser : IdentityUser
 
     [MaxLength(500)] public string ProfilePictureUrl { get; set; } = string.Empty;
 
+    public bool IsAdmin { get; set; } = false;
+
     public SubscriptionPlan Plan { get; set; } = SubscriptionPlan.Free;
 
     public long AllocatedStorageBytes { get; set; } = 0;
