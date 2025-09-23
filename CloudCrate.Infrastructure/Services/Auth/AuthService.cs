@@ -10,6 +10,7 @@ using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
+using CloudCrate.Application.Interfaces.Invite;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Services.Auth;
@@ -19,22 +20,44 @@ public class AuthService : IAuthService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailService _emailService;
+    private readonly IUserInviteService _userInviteService;
     private readonly IConfiguration _configuration;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IJwtTokenService jwtTokenService,
         IEmailService emailService,
+        IUserInviteService userInviteService,
         IConfiguration configuration)
     {
         _userManager = userManager;
         _jwtTokenService = jwtTokenService;
         _emailService = emailService;
+        _userInviteService = userInviteService;
         _configuration = configuration;
     }
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
     {
+        if (string.IsNullOrWhiteSpace(request.InviteToken))
+        {
+            return Result<AuthResponse>.Failure(Error.Unauthorized("Registration requires a valid invite"));
+        }
+
+        var inviteResult = await _userInviteService.ValidateInviteTokenAsync(request.InviteToken);
+        if (!inviteResult.IsSuccess)
+        {
+            return Result<AuthResponse>.Failure(inviteResult.GetError());
+        }
+
+        var invite = inviteResult.GetValue();
+
+        if (!string.IsNullOrWhiteSpace(invite.Email) &&
+            !invite.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            return Result<AuthResponse>.Failure(Error.Unauthorized("This invite is for a different email address"));
+        }
+
         var domainUser = UserAccount.Create(
             id: Guid.NewGuid().ToString(),
             email: request.Email,
@@ -58,6 +81,8 @@ public class AuthService : IAuthService
             return Result<AuthResponse>.Failure(errorToReturn);
         }
 
+        var markUsedResult = await _userInviteService.MarkInviteAsUsedAsync(request.InviteToken, userEntity.Id);
+
         var accessToken = _jwtTokenService.GenerateAccessToken(new UserTokenInfo
         {
             UserId = userEntity.Id,
@@ -80,7 +105,8 @@ public class AuthService : IAuthService
             {
                 Id = userEntity.Id,
                 Email = userEntity.Email!,
-                DisplayName = userEntity.DisplayName
+                DisplayName = userEntity.DisplayName,
+                IsAdmin = userEntity.IsAdmin 
             }
         });
     }
@@ -115,7 +141,8 @@ public class AuthService : IAuthService
             {
                 Id = userEntity.Id,
                 Email = userEntity.Email!,
-                DisplayName = userEntity.DisplayName
+                DisplayName = userEntity.DisplayName,
+                IsAdmin = userEntity.IsAdmin 
             }
         });
     }
