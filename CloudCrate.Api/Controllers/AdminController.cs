@@ -1,4 +1,17 @@
-﻿[ApiController]
+﻿using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Api.Controllers;
+using CloudCrate.Api.Models;
+using CloudCrate.Application.DTOs.Admin.Request;
+using CloudCrate.Application.DTOs.Admin.Response;
+using CloudCrate.Application.DTOs.Invite.Request;
+using CloudCrate.Application.DTOs.Invite.Response;
+using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.Interfaces.Admin;
+using CloudCrate.Application.Interfaces.Invite;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+[ApiController]
 [Route("api/admin")]
 [Authorize]
 public class AdminController : BaseController
