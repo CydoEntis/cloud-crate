@@ -14,22 +14,26 @@ using System.Text.Json;
 using Amazon.S3;
 using CloudCrate.Api.Validators.Crate;
 using CloudCrate.Application.Interfaces;
+using CloudCrate.Application.Interfaces.Admin;
 using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Interfaces.Bulk;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Email;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Folder;
+using CloudCrate.Application.Interfaces.Invite;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.Transactions;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Infrastructure.Services;
+using CloudCrate.Infrastructure.Services.Admin;
 using CloudCrate.Infrastructure.Services.Auth;
 using CloudCrate.Infrastructure.Services.Bulk;
 using CloudCrate.Infrastructure.Services.Crates;
 using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
+using CloudCrate.Infrastructure.Services.Invites;
 using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using CloudCrate.Infrastructure.Services.Storage;
 using CloudCrate.Infrastructure.Services.User;
@@ -138,6 +142,10 @@ builder.Services.AddScoped<IBulkService, BulkService>();
 builder.Services.AddScoped<IBatchDeleteService, BatchDeleteService>();
 builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
+builder.Services.AddScoped<IUserInviteService, UserInviteService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
+
+builder.Services.AddScoped<DatabaseSeederService>();
 
 // Registering Minio Storage
 builder.Services.AddSingleton<IAmazonS3>(sp =>
@@ -158,17 +166,23 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontend", policy =>
     {
         policy.WithOrigins(
-                "https://localhost:5173", 
-                "http://localhost:5173" 
+                "https://localhost:5173",
+                "http://localhost:5173"
             )
             .AllowAnyHeader()
             .AllowAnyMethod()
-            .AllowCredentials() 
+            .AllowCredentials()
             .WithExposedHeaders("Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy");
     });
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeederService>();
+    await seeder.SeedAsync();
+}
 
 if (app.Environment.IsDevelopment())
 {
