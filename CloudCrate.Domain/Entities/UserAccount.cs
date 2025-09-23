@@ -75,6 +75,9 @@ public class UserAccount
 
     public void ChangePlan(SubscriptionPlan newPlan)
     {
+        if (!Enum.IsDefined(typeof(SubscriptionPlan), newPlan))
+            throw new ArgumentException($"Invalid subscription plan: {newPlan}");
+
         var newLimit = PlanStorageLimits.GetLimit(newPlan);
 
         if (AllocatedStorageBytes > newLimit)

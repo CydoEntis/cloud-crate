@@ -342,9 +342,13 @@ public class UserService : IUserService
             {
                 domainUser.ChangePlan(newPlan);
             }
+            catch (ArgumentException ex)
+            {
+                return Result.Failure(new ValidationError(ex.Message));
+            }
             catch (InvalidOperationException ex)
             {
-                return Result.Failure(new StorageError(ex.Message));
+                return Result.Failure(new ValidationError(ex.Message));
             }
 
             userEntity.Plan = domainUser.Plan;
@@ -362,7 +366,7 @@ public class UserService : IUserService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Exception in UpdateUserPlanAsync for UserId {UserId}", userId);
-            return Result.Failure(new InternalError(ex.Message));
+            return Result.Failure(new InternalError("An unexpected error occurred while updating the user plan"));
         }
     }
 
