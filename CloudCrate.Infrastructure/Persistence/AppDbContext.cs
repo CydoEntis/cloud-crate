@@ -1,4 +1,4 @@
-﻿using CloudCrate.Infrastructure.Identity;
+﻿using CloudCrate.Infrastructure.Persistence.Configurations;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +18,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<CrateFolderEntity> CrateFolders { get; set; }
     public DbSet<CrateMemberEntity> CrateMembers { get; set; }
     public DbSet<CrateInviteEntity> CrateInvites { get; set; }
+    public DbSet<InviteTokenEntity> InviteTokens { get; set; }
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
@@ -28,7 +29,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
     {
         base.OnModelCreating(builder);
 
-        // Keep your enum conversion - this is useful
         foreach (var entityType in builder.Model.GetEntityTypes())
         {
             foreach (var property in entityType.ClrType.GetProperties())
@@ -43,7 +43,8 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
             }
         }
 
-        // ESSENTIAL: Fix navigation properties for includes to work
+        builder.ApplyConfiguration(new InviteTokenEntityConfiguration());
+
         builder.Entity<CrateFileEntity>(b =>
         {
             b.HasQueryFilter(f => !f.IsDeleted);
@@ -65,7 +66,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(c => c.Members)
                 .HasForeignKey(m => m.CrateId);
 
-            // Keep this - prevents duplicate members
+
             b.HasIndex(m => new { m.UserId, m.CrateId }).IsUnique();
         });
 
@@ -76,7 +77,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
                 .HasForeignKey(i => i.CrateId);
         });
 
-        // ESSENTIAL: Ensure only one root folder per crate
+
         builder.Entity<CrateFolderEntity>()
             .HasIndex(x => x.CrateId)
             .HasFilter("\"IsRoot\" = TRUE")
