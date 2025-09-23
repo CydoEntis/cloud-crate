@@ -9,27 +9,30 @@ public class UserAccount
     public string Email { get; private set; } = string.Empty;
     public string DisplayName { get; private set; } = string.Empty;
     public string ProfilePictureUrl { get; private set; } = string.Empty;
+    public bool IsAdmin { get; private set; } = false; // Add this
 
     public SubscriptionPlan Plan { get; private set; } = SubscriptionPlan.Free;
-    
+
     public long AllocatedStorageBytes { get; private set; } = 0;
-    
+
     public long UsedStorageBytes { get; private set; } = 0;
 
     public long AccountStorageLimitBytes => PlanStorageLimits.GetLimit(Plan);
-    
+
     public long RemainingAllocationBytes => AccountStorageLimitBytes - AllocatedStorageBytes;
-    
+
     public long RemainingUsageBytes => AccountStorageLimitBytes - UsedStorageBytes;
 
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    private UserAccount() { } 
+    private UserAccount()
+    {
+    }
 
     internal UserAccount(string id, string email, string displayName, string profilePictureUrl,
-                         SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes, 
-                         DateTime createdAt, DateTime updatedAt)
+        SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes,
+        DateTime createdAt, DateTime updatedAt, bool isAdmin = false)
     {
         Id = id;
         Email = email;
@@ -40,18 +43,20 @@ public class UserAccount
         UsedStorageBytes = usedStorageBytes;
         CreatedAt = createdAt;
         UpdatedAt = updatedAt;
+        IsAdmin = isAdmin;
     }
 
     public static UserAccount Rehydrate(string id, string email, string displayName, string profilePictureUrl,
-                                        SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes, 
-                                        DateTime createdAt, DateTime updatedAt)
+        SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes,
+        DateTime createdAt, DateTime updatedAt, bool isAdmin = false)
     {
-        return new UserAccount(id, email, displayName, profilePictureUrl, plan, 
-                              allocatedStorageBytes, usedStorageBytes, createdAt, updatedAt);
+        return new UserAccount(id, email, displayName, profilePictureUrl, plan,
+            allocatedStorageBytes, usedStorageBytes, createdAt, updatedAt, isAdmin);
     }
 
-    public static UserAccount Create(string id, string email, string displayName = "", 
-                                   string profilePictureUrl = "", SubscriptionPlan plan = SubscriptionPlan.Free)
+    public static UserAccount Create(string id, string email, string displayName = "",
+        string profilePictureUrl = "", SubscriptionPlan plan = SubscriptionPlan.Free,
+        bool isAdmin = false)
     {
         return new UserAccount
         {
@@ -63,17 +68,18 @@ public class UserAccount
             AllocatedStorageBytes = 0,
             UsedStorageBytes = 0,
             CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
+            UpdatedAt = DateTime.UtcNow,
+            IsAdmin = isAdmin
         };
     }
 
     public void ChangePlan(SubscriptionPlan newPlan)
     {
         var newLimit = PlanStorageLimits.GetLimit(newPlan);
-        
+
         if (AllocatedStorageBytes > newLimit)
             throw new InvalidOperationException("Cannot downgrade plan below current allocated storage.");
-            
+
         if (UsedStorageBytes > newLimit)
             throw new InvalidOperationException("Cannot downgrade plan below current used storage.");
 
@@ -81,6 +87,32 @@ public class UserAccount
         UpdatedAt = DateTime.UtcNow;
     }
 
+    // Admin-related business logic
+    public void PromoteToAdmin()
+    {
+        IsAdmin = true;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void RevokeAdmin()
+    {
+        IsAdmin = false;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public bool CanPerformAdminActions()
+    {
+        return IsAdmin;
+    }
+
+    public bool CanModifyUser(UserAccount targetUser)
+    {
+        if (!IsAdmin) return false;
+        if (Id == targetUser.Id) return false; // Can't modify yourself
+        return true;
+    }
+
+    // Storage management methods (unchanged)
     public void AllocateStorage(long bytes)
     {
         if (bytes < 0) throw new ArgumentOutOfRangeException(nameof(bytes));

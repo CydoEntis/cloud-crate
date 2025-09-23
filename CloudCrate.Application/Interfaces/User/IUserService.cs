@@ -20,4 +20,5 @@ public interface IUserService
     Task<Result> AllocateStorageAsync(string userId, long bytesToAllocate);
     Task<Result> DeallocateStorageAsync(string userId, long bytesToDeallocate);
     Task<Result> CanAllocateStorageAsync(string userId, long bytesToAllocate);
+    Task<Result> DeleteUserWithCascadeAsync(string targetUserId, string deletingUserId);
 }

@@ -4,37 +4,36 @@ namespace CloudCrate.Infrastructure.Persistence.Mappers;
 
 public static class ApplicationUserMapper
 {
-    public static ApplicationUser ToEntity(this UserAccount user)
+    public static ApplicationUser ToEntity(this UserAccount domain)
     {
         return new ApplicationUser
         {
-            Id = user.Id,
-            UserName = user.Email,
-            NormalizedUserName = user.Email.ToUpperInvariant(),
-            Email = user.Email,
-            NormalizedEmail = user.Email.ToUpperInvariant(),
-            DisplayName = user.DisplayName,
-            ProfilePictureUrl = user.ProfilePictureUrl,
-            Plan = user.Plan,
-            AllocatedStorageBytes = user.AllocatedStorageBytes,
-            UsedStorageBytes = user.UsedStorageBytes,
-            CreatedAt = user.CreatedAt,
-            UpdatedAt = user.UpdatedAt
+            Id = domain.Id,
+            Email = domain.Email,
+            DisplayName = domain.DisplayName,
+            ProfilePictureUrl = domain.ProfilePictureUrl,
+            Plan = domain.Plan,
+            AllocatedStorageBytes = domain.AllocatedStorageBytes,
+            UsedStorageBytes = domain.UsedStorageBytes,
+            CreatedAt = domain.CreatedAt,
+            UpdatedAt = domain.UpdatedAt,
+            IsAdmin = domain.IsAdmin,
         };
     }
 
     public static UserAccount ToDomain(this ApplicationUser entity)
     {
         return UserAccount.Rehydrate(
-            entity.Id,
-            entity.Email,
-            entity.DisplayName,
-            entity.ProfilePictureUrl,
-            entity.Plan,
-            entity.AllocatedStorageBytes,
-            entity.UsedStorageBytes,
-            entity.CreatedAt,
-            entity.UpdatedAt
+            id: entity.Id,
+            email: entity.Email!,
+            displayName: entity.DisplayName,
+            profilePictureUrl: entity.ProfilePictureUrl,
+            plan: entity.Plan,
+            allocatedStorageBytes: entity.AllocatedStorageBytes,
+            usedStorageBytes: entity.UsedStorageBytes,
+            createdAt: entity.CreatedAt,
+            updatedAt: entity.UpdatedAt,
+            isAdmin: entity.IsAdmin
         );
     }
 }

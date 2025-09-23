@@ -1,6 +1,7 @@
 ﻿using CloudCrate.Application.DTOs.User.Mappers;
 using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Errors;
+using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
@@ -20,15 +21,18 @@ public class UserService : IUserService
 {
     private readonly AppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
         AppDbContext context,
         UserManager<ApplicationUser> userManager,
+        IBatchDeleteService batchDeleteService,
         ILogger<UserService> logger)
     {
         _context = context;
         _userManager = userManager;
+        _batchDeleteService = batchDeleteService;
         _logger = logger;
     }
 
@@ -41,7 +45,6 @@ public class UserService : IUserService
                 return Result<UserResponse>.Failure(new NotFoundError("User not found"));
 
             var domainUser = userEntity.ToDomain();
-            // TODO: Move this into a separate mapper.
             var response = MapToUserResponse(domainUser);
 
             return Result<UserResponse>.Success(response);
@@ -53,12 +56,13 @@ public class UserService : IUserService
         }
     }
 
-    public async Task<Result> ReallocateStorageAsync(string userId, int currentCrateAllocationGB, int newCrateAllocationGB)
+    public async Task<Result> ReallocateStorageAsync(string userId, int currentCrateAllocationGB,
+        int newCrateAllocationGB)
     {
         var allocationDifferenceGb = newCrateAllocationGB - currentCrateAllocationGB;
-    
+
         if (allocationDifferenceGb == 0)
-            return Result.Success(); 
+            return Result.Success();
 
         if (allocationDifferenceGb > 0)
         {
@@ -71,7 +75,7 @@ public class UserService : IUserService
 
         return await DeallocateStorageAsync(userId, StorageSize.FromGigabytes(Math.Abs(allocationDifferenceGb)).Bytes);
     }
-    
+
     public async Task<Result<long>> GetRemainingStorageAsync(string userId)
     {
         try
@@ -264,7 +268,7 @@ public class UserService : IUserService
 
             if (domainUser.RemainingAllocationBytes < requestedBytes)
             {
-                _logger.LogWarning("User {UserId} cannot allocate {AllocatedGb}GB: insufficient quota", 
+                _logger.LogWarning("User {UserId} cannot allocate {AllocatedGb}GB: insufficient quota",
                     userId, allocatedGb);
                 return Result.Failure(new StorageError("Insufficient storage quota available for allocation"));
             }
@@ -362,6 +366,123 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<Result> DeleteUserWithCascadeAsync(string targetUserId, string deletingUserId)
+    {
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var ownedCrates = await _context.CrateMembers
+                .Where(m => m.UserId == targetUserId && m.Role == CrateRole.Owner)
+                .Select(m => m.CrateId)
+                .ToListAsync();
+
+            if (ownedCrates.Any())
+            {
+                _logger.LogInformation("Deleting {Count} crates owned by user {UserId}", ownedCrates.Count,
+                    targetUserId);
+                var crateDeleteResult = await _batchDeleteService.DeleteCratesAsync(ownedCrates);
+                if (crateDeleteResult.IsFailure)
+                {
+                    await transaction.RollbackAsync();
+                    return crateDeleteResult;
+                }
+            }
+
+            var membershipCrates = await _context.CrateMembers
+                .Where(m => m.UserId == targetUserId && m.Role != CrateRole.Owner)
+                .Select(m => m.CrateId)
+                .ToListAsync();
+
+            if (membershipCrates.Any())
+            {
+                _logger.LogInformation("Removing user {UserId} from {Count} crates", targetUserId,
+                    membershipCrates.Count);
+                await _context.CrateMembers
+                    .Where(m => m.UserId == targetUserId && m.Role != CrateRole.Owner)
+                    .ExecuteDeleteAsync();
+            }
+
+            var remainingFiles = await _context.CrateFiles
+                .Where(f => f.UploadedByUserId == targetUserId)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            if (remainingFiles.Any())
+            {
+                _logger.LogInformation("Deleting {Count} remaining files uploaded by user {UserId}",
+                    remainingFiles.Count, targetUserId);
+                var fileDeleteResult = await _batchDeleteService.DeleteFilesAsync(remainingFiles);
+                if (fileDeleteResult.IsFailure)
+                {
+                    _logger.LogWarning("Failed to delete some files for user {UserId}: {Error}",
+                        targetUserId, fileDeleteResult.GetError().Message);
+                }
+            }
+
+            var userFolders = await _context.CrateFolders
+                .Where(f => f.CreatedByUserId == targetUserId && !f.IsDeleted)
+                .ToListAsync();
+
+            foreach (var folder in userFolders)
+            {
+                folder.IsDeleted = true;
+                folder.DeletedAt = DateTime.UtcNow;
+                folder.DeletedByUserId = deletingUserId;
+                folder.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.CrateInvites
+                .Where(ci => ci.InvitedByUserId == targetUserId)
+                .ExecuteDeleteAsync();
+
+            await UpdateUserReferencesAsync(targetUserId, deletingUserId);
+
+            var targetUser = await _userManager.FindByIdAsync(targetUserId);
+            if (targetUser != null)
+            {
+                var deleteResult = await _userManager.DeleteAsync(targetUser);
+                if (!deleteResult.Succeeded)
+                {
+                    await transaction.RollbackAsync();
+                    var errors = string.Join(", ", deleteResult.Errors.Select(e => e.Description));
+                    return Result.Failure(new InternalError($"Failed to delete user account: {errors}"));
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            _logger.LogWarning("Successfully deleted user {UserId} and all associated data", targetUserId);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to delete user {UserId} with cascade", targetUserId);
+            return Result.Failure(new InternalError($"Failed to delete user: {ex.Message}"));
+        }
+    }
+
+    private async Task UpdateUserReferencesAsync(string targetUserId, string replacementUserId)
+    {
+        await _context.CrateFiles
+            .Where(f => f.DeletedByUserId == targetUserId)
+            .ExecuteUpdateAsync(f => f.SetProperty(x => x.DeletedByUserId, replacementUserId));
+
+        await _context.CrateFiles
+            .Where(f => f.RestoredByUserId == targetUserId)
+            .ExecuteUpdateAsync(f => f.SetProperty(x => x.RestoredByUserId, replacementUserId));
+
+        await _context.CrateFolders
+            .Where(f => f.DeletedByUserId == targetUserId)
+            .ExecuteUpdateAsync(f => f.SetProperty(x => x.DeletedByUserId, replacementUserId));
+
+        await _context.CrateFolders
+            .Where(f => f.RestoredByUserId == targetUserId)
+            .ExecuteUpdateAsync(f => f.SetProperty(x => x.RestoredByUserId, replacementUserId));
+    }
+
     private async Task<int> GetOwnedCrateCountAsync(string userId)
     {
         try
@@ -377,7 +498,6 @@ public class UserService : IUserService
         }
     }
 
-    // TODO: Move this into a separate mapper.
     private static UserResponse MapToUserResponse(UserAccount domainUser)
     {
         return new UserResponse
@@ -392,7 +512,8 @@ public class UserService : IUserService
             RemainingAllocationBytes = domainUser.RemainingAllocationBytes,
             RemainingUsageBytes = domainUser.RemainingUsageBytes,
             CreatedAt = domainUser.CreatedAt,
-            UpdatedAt = domainUser.UpdatedAt
+            UpdatedAt = domainUser.UpdatedAt,
+            IsAdmin = domainUser.IsAdmin
         };
     }
 }
