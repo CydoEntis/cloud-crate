@@ -3,6 +3,7 @@ using CloudCrate.Application.DTOs.Admin.Response;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Admin;
+using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Enums;
@@ -18,13 +19,15 @@ public class AdminService : IAdminService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IUserService _userService;
+    private readonly IJwtTokenService _jwtTokenService;
     private readonly ILogger<AdminService> _logger;
 
     public AdminService(UserManager<ApplicationUser> userManager, IUserService userService,
-        ILogger<AdminService> logger)
+        IJwtTokenService jwtTokenService, ILogger<AdminService> logger)
     {
         _userManager = userManager;
         _userService = userService;
+        _jwtTokenService = jwtTokenService;
         _logger = logger;
     }
 
@@ -81,6 +84,7 @@ public class AdminService : IAdminService
         }
     }
 
+    // In AdminService.cs
     public async Task<Result> BanUserAsync(string adminUserId, string targetUserId)
     {
         try
@@ -106,7 +110,10 @@ public class AdminService : IAdminService
 
             if (result.Succeeded)
             {
-                _logger.LogInformation("User {TargetUserId} banned by admin {AdminUserId}", targetUserId, adminUserId);
+                await _jwtTokenService.RevokeRefreshTokenAsync(targetUserId);
+
+                _logger.LogInformation("User {TargetUserId} banned and tokens revoked by admin {AdminUserId}",
+                    targetUserId, adminUserId);
                 return Result.Success();
             }
 
@@ -319,7 +326,7 @@ public class AdminService : IAdminService
             return Result<AdminStatsResponse>.Failure(Error.Internal("Failed to retrieve admin statistics"));
         }
     }
-    
+
     public async Task<Result> UpdateUserPlanAsync(string adminUserId, string targetUserId, SubscriptionPlan newPlan)
     {
         try
@@ -331,7 +338,7 @@ public class AdminService : IAdminService
             var result = await _userService.UpdateUserPlanAsync(targetUserId, newPlan);
             if (result.IsSuccess)
             {
-                _logger.LogInformation("User {TargetUserId} plan updated to {NewPlan} by admin {AdminUserId}", 
+                _logger.LogInformation("User {TargetUserId} plan updated to {NewPlan} by admin {AdminUserId}",
                     targetUserId, newPlan, adminUserId);
             }
 
@@ -339,7 +346,7 @@ public class AdminService : IAdminService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error updating plan for user {TargetUserId} by admin {AdminUserId}", 
+            _logger.LogError(ex, "Error updating plan for user {TargetUserId} by admin {AdminUserId}",
                 targetUserId, adminUserId);
             return Result.Failure(Error.Internal("Failed to update user plan"));
         }

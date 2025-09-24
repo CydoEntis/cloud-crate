@@ -26,6 +26,7 @@ using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.Transactions;
 using CloudCrate.Application.Interfaces.User;
+using CloudCrate.Infrastructure.Middleware;
 using CloudCrate.Infrastructure.Services;
 using CloudCrate.Infrastructure.Services.Admin;
 using CloudCrate.Infrastructure.Services.Auth;
@@ -203,6 +204,7 @@ app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
+app.UseMiddleware<JwtBanCheckMiddleware>(); 
 app.UseAuthorization();
 app.MapControllers();
 

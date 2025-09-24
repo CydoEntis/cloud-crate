@@ -31,7 +31,6 @@ public class AuthController : BaseController
         if (result.IsSuccess)
         {
             var authData = result.GetValue();
-
             SetRefreshTokenCookie(authData.RefreshToken, authData.RefreshTokenExpires);
 
             return Created("", ApiResponse<object>.Success(
@@ -40,7 +39,6 @@ public class AuthController : BaseController
                     accessToken = authData.AccessToken,
                     accessTokenExpires = authData.AccessTokenExpires,
                     tokenType = authData.TokenType,
-                    user = authData.User
                 },
                 message: "User registered successfully",
                 statusCode: 201));
@@ -57,18 +55,14 @@ public class AuthController : BaseController
         if (result.IsSuccess)
         {
             var authData = result.GetValue();
-
-            // Set refresh token as HttpOnly cookie
             SetRefreshTokenCookie(authData.RefreshToken, authData.RefreshTokenExpires);
 
-            // Return only access token data
             return Ok(ApiResponse<object>.Success(
                 data: new
                 {
                     accessToken = authData.AccessToken,
                     accessTokenExpires = authData.AccessTokenExpires,
                     tokenType = authData.TokenType,
-                    user = authData.User
                 },
                 message: "Login successful"));
         }
@@ -86,10 +80,7 @@ public class AuthController : BaseController
                 "No refresh token provided", 401));
         }
 
-        var result = await _authService.RefreshTokenAsync(new RefreshTokenRequest
-        {
-            RefreshToken = refreshToken
-        });
+        var result = await _authService.RefreshTokenAsync(refreshToken);
 
         if (result.IsSuccess)
         {
@@ -165,28 +156,6 @@ public class AuthController : BaseController
         return result.GetError().ToActionResult<object>();
     }
 
-    [Authorize]
-    [HttpGet("user")]
-    public async Task<IActionResult> GetCurrentUser()
-    {
-        if (string.IsNullOrWhiteSpace(UserId))
-        {
-            return Unauthorized(ApiResponse<UserResponse>.Failure(
-                "User is not authenticated", 401));
-        }
-
-        var result = await _userService.GetUserByIdAsync(UserId);
-
-        if (result.IsSuccess)
-        {
-            return Ok(ApiResponse<UserResponse>.Success(
-                data: result.GetValue(),
-                message: "User retrieved successfully"));
-        }
-
-        return result.GetError().ToActionResult<UserResponse>();
-    }
-
     private void SetRefreshTokenCookie(string refreshToken, DateTime expires)
     {
         var cookieOptions = new CookieOptions
@@ -195,7 +164,7 @@ public class AuthController : BaseController
             Secure = true,
             SameSite = SameSiteMode.Strict,
             Expires = expires,
-            Path = "/api/auth",
+            Path = "/",
             IsEssential = true
         };
 
@@ -209,8 +178,8 @@ public class AuthController : BaseController
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Strict,
-            Path = "/api/auth",
-            Expires = DateTime.UtcNow.AddDays(-1) 
+            Path = "/",
+            Expires = DateTime.UtcNow.AddDays(-1)
         };
 
         Response.Cookies.Append("refreshToken", "", cookieOptions);

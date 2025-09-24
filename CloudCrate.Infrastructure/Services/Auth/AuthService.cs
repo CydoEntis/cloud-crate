@@ -101,13 +101,6 @@ public class AuthService : IAuthService
             AccessTokenExpires = DateTime.UtcNow.AddMinutes(15),
             RefreshTokenExpires = refreshTokenExpires,
             TokenType = "Bearer",
-            User = new AuthResponse.AuthUser
-            {
-                Id = userEntity.Id,
-                Email = userEntity.Email!,
-                DisplayName = userEntity.DisplayName,
-                IsAdmin = userEntity.IsAdmin 
-            }
         });
     }
 
@@ -117,6 +110,11 @@ public class AuthService : IAuthService
         if (userEntity == null || !await _userManager.CheckPasswordAsync(userEntity, password))
         {
             return Result<AuthResponse>.Failure(new UnauthorizedError("Invalid credentials"));
+        }
+
+        if (await _userManager.IsLockedOutAsync(userEntity))
+        {
+            return Result<AuthResponse>.Failure(new UnauthorizedError("Account has been suspended"));
         }
 
         var accessToken = _jwtTokenService.GenerateAccessToken(new UserTokenInfo
@@ -137,32 +135,30 @@ public class AuthService : IAuthService
             AccessTokenExpires = DateTime.UtcNow.AddMinutes(15),
             RefreshTokenExpires = refreshTokenExpires,
             TokenType = "Bearer",
-            User = new AuthResponse.AuthUser
-            {
-                Id = userEntity.Id,
-                Email = userEntity.Email!,
-                DisplayName = userEntity.DisplayName,
-                IsAdmin = userEntity.IsAdmin 
-            }
         });
     }
 
-    public async Task<Result<AuthResponse>> RefreshTokenAsync(RefreshTokenRequest request)
+    public async Task<Result<AuthResponse>> RefreshTokenAsync(string refreshToken)
     {
-        if (string.IsNullOrWhiteSpace(request.RefreshToken))
+        if (string.IsNullOrWhiteSpace(refreshToken))
         {
             return Result<AuthResponse>.Failure(new UnauthorizedError("Invalid refresh token"));
         }
 
         var user = await _userManager.Users
-            .FirstOrDefaultAsync(u => u.RefreshToken == request.RefreshToken);
+            .FirstOrDefaultAsync(u => u.RefreshToken == refreshToken);
 
         if (user == null)
         {
             return Result<AuthResponse>.Failure(new UnauthorizedError("Invalid refresh token"));
         }
 
-        var isValidRefreshToken = await _jwtTokenService.ValidateRefreshTokenAsync(user.Id, request.RefreshToken);
+        if (await _userManager.IsLockedOutAsync(user))
+        {
+            return Result<AuthResponse>.Failure(new UnauthorizedError("Account has been suspended"));
+        }
+
+        var isValidRefreshToken = await _jwtTokenService.ValidateRefreshTokenAsync(user.Id, refreshToken);
         if (!isValidRefreshToken)
         {
             return Result<AuthResponse>.Failure(new UnauthorizedError("Refresh token expired or invalid"));
@@ -183,7 +179,7 @@ public class AuthService : IAuthService
         {
             AccessToken = newAccessToken,
             RefreshToken = newRefreshToken,
-            AccessTokenExpires = DateTime.UtcNow.AddMinutes(15),
+            AccessTokenExpires = DateTime.UtcNow.AddMinutes(2),
             RefreshTokenExpires = newRefreshTokenExpires,
             TokenType = "Bearer"
         });
