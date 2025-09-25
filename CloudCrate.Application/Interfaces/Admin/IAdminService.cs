@@ -12,7 +12,6 @@ public interface IAdminService
     Task<Result<PaginatedResult<AdminUserResponse>>> GetUsersAsync(AdminUserParameters parameters);
     Task<Result> BanUserAsync(string adminUserId, string targetUserId);
     Task<Result> UnbanUserAsync(string adminUserId, string targetUserId);
-    Task<Result> DeleteUserAsync(string adminUserId, string targetUserId);
     Task<Result> PromoteToAdminAsync(string adminUserId, string targetUserId);
     Task<Result> RemoveAdminAsync(string adminUserId, string targetUserId);
     Task<Result<AdminStatsResponse>> GetAdminStatsAsync(string adminUserId);

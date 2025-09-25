@@ -165,45 +165,6 @@ public class AdminService : IAdminService
         }
     }
 
-    public async Task<Result> DeleteUserAsync(string adminUserId, string targetUserId)
-    {
-        try
-        {
-            var adminUser = await _userManager.FindByIdAsync(adminUserId);
-            var targetUser = await _userManager.FindByIdAsync(targetUserId);
-
-            if (adminUser == null)
-                return Result.Failure(Error.NotFound("Admin user not found"));
-
-            if (targetUser == null)
-                return Result.Failure(Error.NotFound("Target user not found"));
-
-            var adminDomain = adminUser.ToDomain();
-            var targetDomain = targetUser.ToDomain();
-
-            if (!adminDomain.CanModifyUser(targetDomain))
-            {
-                return Result.Failure(Error.Forbidden("Cannot delete this user"));
-            }
-
-            var deletionResult = await _userService.DeleteUserWithCascadeAsync(targetUserId, adminUserId);
-            if (deletionResult.IsFailure)
-            {
-                return Result.Failure(deletionResult.GetError());
-            }
-
-            _logger.LogWarning("User {TargetUserId} and all associated data deleted by admin {AdminUserId}",
-                targetUserId, adminUserId);
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error deleting user {TargetUserId} by admin {AdminUserId}", targetUserId,
-                adminUserId);
-            return Result.Failure(Error.Internal("Failed to delete user"));
-        }
-    }
-
     public async Task<Result> PromoteToAdminAsync(string adminUserId, string targetUserId)
     {
         try
