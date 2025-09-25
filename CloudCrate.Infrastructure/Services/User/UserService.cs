@@ -385,7 +385,8 @@ public class UserService : IUserService
             {
                 _logger.LogInformation("Deleting {Count} crates owned by user {UserId}", ownedCrates.Count,
                     targetUserId);
-                var crateDeleteResult = await _batchDeleteService.DeleteCratesAsync(ownedCrates);
+                var crateDeleteResult =
+                    await _batchDeleteService.DeleteCratesAsync(ownedCrates, transaction);
                 if (crateDeleteResult.IsFailure)
                 {
                     await transaction.RollbackAsync();
@@ -416,7 +417,8 @@ public class UserService : IUserService
             {
                 _logger.LogInformation("Deleting {Count} remaining files uploaded by user {UserId}",
                     remainingFiles.Count, targetUserId);
-                var fileDeleteResult = await _batchDeleteService.DeleteFilesAsync(remainingFiles);
+                var fileDeleteResult =
+                    await _batchDeleteService.DeleteFilesAsync(remainingFiles, transaction);
                 if (fileDeleteResult.IsFailure)
                 {
                     _logger.LogWarning("Failed to delete some files for user {UserId}: {Error}",
