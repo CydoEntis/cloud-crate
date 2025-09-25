@@ -96,18 +96,6 @@ public class AdminController : BaseController
         return result.GetError().ToActionResult<EmptyResponse>();
     }
 
-    [HttpDelete("users/{userId}")]
-    public async Task<IActionResult> DeleteUser(string userId)
-    {
-        var result = await _adminService.DeleteUserAsync(UserId!, userId);
-
-        if (result.IsSuccess)
-        {
-            return NoContent();
-        }
-
-        return result.GetError().ToActionResult<EmptyResponse>();
-    }
 
     [HttpPost("users/{userId}/make-admin")]
     public async Task<IActionResult> MakeUserAdmin(string userId)
