@@ -1,5 +1,4 @@
-﻿
-namespace CloudCrate.Infrastructure.Persistence.Entities;
+﻿namespace CloudCrate.Infrastructure.Persistence.Entities;
 
 public class CrateEntity
 {

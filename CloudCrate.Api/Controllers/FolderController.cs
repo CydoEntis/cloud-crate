@@ -211,4 +211,22 @@ public class FolderController : BaseController
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
+    
+    [HttpDelete("trash")]
+    public async Task<IActionResult> EmptyTrash(Guid crateId)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+        }
+
+        var result = await _folderService.EmptyTrashAsync(crateId, UserId);
+    
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Trash emptied successfully"));
+        }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
+    }
 }

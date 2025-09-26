@@ -478,7 +478,7 @@ public class FolderService : IFolderService
     private async Task<Result> ValidateMoveDestinationAsync(CrateFolderEntity folderEntity, Guid? newParentId)
     {
         if (!newParentId.HasValue)
-            return Result.Success(); 
+            return Result.Success();
 
         var newParent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == newParentId.Value && !f.IsDeleted);
         if (newParent == null || newParent.CrateId != folderEntity.CrateId)
@@ -642,6 +642,58 @@ public class FolderService : IFolderService
         {
             _logger.LogError(ex, "Exception in RestoreFolderAsync for FolderId {FolderId}, UserId {UserId}",
                 folderId, userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
+    public async Task<Result> EmptyTrashAsync(Guid crateId, string userId)
+    {
+        var role = await _crateRoleService.GetUserRole(crateId, userId);
+        if (role == null)
+            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+        var canEmpty = role switch
+        {
+            CrateRole.Owner => true,
+            CrateRole.Manager => true,
+            CrateRole.Member => false, 
+            _ => false
+        };
+
+        if (!canEmpty)
+            return Result.Failure(new CrateUnauthorizedError("Cannot empty trash for this crate"));
+
+        try
+        {
+            var trashedFileIds = await _context.CrateFiles
+                .Where(f => f.CrateId == crateId && f.IsDeleted)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            var trashedFolderIds = await _context.CrateFolders
+                .Where(f => f.CrateId == crateId && f.IsDeleted)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            if (trashedFileIds.Any())
+            {
+                var fileResult = await _fileService.PermanentlyDeleteFilesAsync(trashedFileIds, userId);
+                if (fileResult.IsFailure)
+                    return fileResult;
+            }
+
+            foreach (var folderId in trashedFolderIds)
+            {
+                var folderResult = await PermanentlyDeleteFolderAsync(folderId, userId);
+                if (folderResult.IsFailure)
+                    return folderResult;
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception emptying trash for CrateId {CrateId}, UserId {UserId}", crateId, userId);
             return Result.Failure(new InternalError(ex.Message));
         }
     }

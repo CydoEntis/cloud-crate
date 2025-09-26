@@ -30,4 +30,6 @@ public interface IFolderService
     );
 
     Task<Result> RestoreFolderAsync(Guid folderId, string userId);
+
+    Task<Result> EmptyTrashAsync(Guid crateId, string userId);
 }

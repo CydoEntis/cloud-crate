@@ -14,4 +14,5 @@ public class CrateDetailsResponse
     public List<FileTypeBreakdownResponse> BreakdownByType { get; set; } = [];
 
     public Guid RootFolderId { get; set; }
+    public long TrashStorageBytes { get; set; }
 }

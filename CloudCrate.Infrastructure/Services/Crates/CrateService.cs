@@ -227,6 +227,17 @@ public class CrateService : ICrateService
         if (crateEntity is null)
             return Result<CrateDetailsResponse>.Failure(new NotFoundError("Crate not found"));
 
+
+        var allFiles = await _context.CrateFiles
+            .IgnoreQueryFilters()
+            .Where(f => f.CrateId == crateId)
+            .Select(f => new { f.Name, f.IsDeleted, f.SizeInBytes })
+            .ToListAsync();
+
+
+        var trashStorageBytes = allFiles.Where(f => f.IsDeleted).Sum(f => f.SizeInBytes);
+
+
         var crateDomain = crateEntity.ToDomain();
         var currentMember = crateDomain.Members.First(m => m.UserId == userId);
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
@@ -242,7 +253,8 @@ public class CrateService : ICrateService
             UsedStorageBytes = crateDomain.UsedStorage.Bytes,
             AllocatedStorageBytes = crateDomain.AllocatedStorage.Bytes,
             BreakdownByType = FileBreakdownHelper.GetFilesByMimeTypeInMemory(crateDomain.Files),
-            RootFolderId = rootFolder.Id
+            RootFolderId = rootFolder.Id,
+            TrashStorageBytes = trashStorageBytes,
         };
 
         return Result<CrateDetailsResponse>.Success(response);
@@ -304,7 +316,6 @@ public class CrateService : ICrateService
             .Where(c => crateIdList.Contains(c.Id))
             .ToListAsync();
 
-        // Figure out what we can and can't delete
         var existingIds = crateEntities.Select(c => c.Id).ToHashSet();
         var notFoundIds = crateIdList.Where(id => !existingIds.Contains(id)).ToList();
 
@@ -318,7 +329,6 @@ public class CrateService : ICrateService
             .Select(c => c.Id)
             .ToList();
 
-        // If we can't delete anything, that's an error
         if (!ownedCrates.Any())
         {
             return Result<BulkDeleteCrateResponse>.Failure(
