@@ -16,4 +16,5 @@ public interface IStorageService
     Task<Result<string>> GetFileUrlAsync(Guid crateId, Guid? folderId, string fileName, TimeSpan? expiry = null);
     Task<Result> MoveFileAsync(Guid crateId, Guid? oldFolderId, Guid? newFolderId, string fileName);
     Task<Result> MoveFolderAsync(Guid crateId, Guid folderId, Guid? newParentId);
+    Task<Result> RenameFileAsync(Guid crateId, Guid? folderId, string oldFileName, string newFileName);
 }

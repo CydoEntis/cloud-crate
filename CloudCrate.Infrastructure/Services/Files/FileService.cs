@@ -43,7 +43,6 @@ public class FileService : IFileService
     private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<FileService> _logger;
 
-    // Constants
     private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
     private const string VIDEO_MIME_PREFIX = "video/";
     private const string FOLDER_NOT_FOUND_MESSAGE = "Folder not found";
@@ -447,6 +446,72 @@ public class FileService : IFileService
 
 
     #region File Operations
+
+    public async Task<Result> UpdateFileAsync(Guid fileId, UpdateFileRequest request, string userId)
+    {
+        try
+        {
+            var fileEntity = await _context.CrateFiles.FirstOrDefaultAsync(f => f.Id == fileId && !f.IsDeleted);
+            if (fileEntity == null)
+                return Result.Failure(new FileNotFoundError());
+
+            var role = await _crateRoleService.GetUserRole(fileEntity.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canUpdate = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => fileEntity.UploadedByUserId == userId,
+                _ => false
+            };
+
+            if (!canUpdate)
+                return Result.Failure(new CrateUnauthorizedError("Cannot update this file"));
+
+            if (request.NewName != null && request.NewName != fileEntity.Name)
+            {
+                await using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    var storageResult = await _storageService.RenameFileAsync(
+                        fileEntity.CrateId,
+                        fileEntity.CrateFolderId,
+                        fileEntity.Name,
+                        request.NewName);
+
+                    if (storageResult.IsFailure)
+                    {
+                        await transaction.RollbackAsync();
+                        return Result.Failure(storageResult.GetError());
+                    }
+
+                    var domainFile = fileEntity.ToDomain();
+                    domainFile.Rename(request.NewName);
+                    var updatedEntity = domainFile.ToEntity(fileEntity.CrateId);
+
+                    _context.Entry(fileEntity).CurrentValues.SetValues(updatedEntity);
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+                    _logger.LogError(ex, "Exception updating file {FileId} for user {UserId}", fileId, userId);
+                    return Result.Failure(new InternalError(ex.Message));
+                }
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in UpdateFileAsync for FileId {FileId}, UserId {UserId}", fileId, userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
 
     public async Task<Result> DeleteFileAsync(Guid fileId, string userId)
     {

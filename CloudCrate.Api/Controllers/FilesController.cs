@@ -226,4 +226,21 @@ public class FilesController : BaseController
             ? Ok(ApiResponse<EmptyResponse>.Success(message: "Files moved to trash"))
             : result.GetError().ToActionResult<EmptyResponse>();
     }
+    
+    [HttpPut("{fileId:guid}")]
+    public async Task<IActionResult> UpdateFile(Guid fileId, [FromBody] UpdateFileRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+
+        if (fileId != request.FileId)
+            return BadRequest(ApiResponse<EmptyResponse>.Failure("File ID in route and request body do not match", 400));
+
+        var result = await _fileService.UpdateFileAsync(request.FileId, request, UserId);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "File updated successfully"));
+
+        return result.GetError().ToActionResult<EmptyResponse>();
+    }
 }

@@ -178,12 +178,20 @@ public class FolderService : IFolderService
             if (!canUpdate)
                 return Result.Failure(new CrateUnauthorizedError("Cannot update this folder"));
 
-            folderEntity.Name = request.NewName ?? folderEntity.Name;
-            folderEntity.Color = request.NewColor ?? folderEntity.Color;
-            folderEntity.UpdatedAt = DateTime.UtcNow;
+            if (request.NewName != null || request.NewColor != null)
+            {
+                var domainFolder = folderEntity.ToDomain();
+                domainFolder.Update(request.NewName, request.NewColor);
+                var updatedEntity = domainFolder.ToEntity(folderEntity.CrateId);
+                _context.Entry(folderEntity).CurrentValues.SetValues(updatedEntity);
+            }
 
             await _context.SaveChangesAsync();
             return Result.Success();
+        }
+        catch (ArgumentException ex)
+        {
+            return Result.Failure(Error.Validation(ex.Message, "Name"));
         }
         catch (Exception ex)
         {
@@ -656,7 +664,7 @@ public class FolderService : IFolderService
         {
             CrateRole.Owner => true,
             CrateRole.Manager => true,
-            CrateRole.Member => false, 
+            CrateRole.Member => false,
             _ => false
         };
 
