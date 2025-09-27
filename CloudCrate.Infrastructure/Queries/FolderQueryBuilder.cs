@@ -11,10 +11,8 @@ public static class FolderQueryBuilder
         bool includeDeleted = false)
     {
         query = query.Where(f => f.CrateId == crateId);
-
         if (!includeDeleted)
             query = query.Where(f => !f.IsDeleted);
-
         return query;
     }
 
@@ -24,7 +22,6 @@ public static class FolderQueryBuilder
     {
         if (string.IsNullOrWhiteSpace(searchTerm))
             return query;
-
         var term = searchTerm.Trim();
         return query.Where(f => EF.Functions.ILike(f.Name, $"%{term}%"));
     }
@@ -35,29 +32,29 @@ public static class FolderQueryBuilder
     {
         if (excludedIds.Count == 0)
             return query;
-
         return query.Where(f => !excludedIds.Contains(f.Id));
     }
 
     public static IQueryable<CrateFolderEntity> ApplyOrdering(
         this IQueryable<CrateFolderEntity> query,
-        bool alphabetical = true)
+        bool ascending = true)
     {
-        return alphabetical
+        return ascending
             ? query.OrderBy(f => f.Name)
-            : query.OrderByDescending(f => f.CreatedAt);
+            : query.OrderByDescending(f => f.Name);
     }
 
     public static IQueryable<CrateFolderEntity> ApplyMoveTargetFiltering(
         this IQueryable<CrateFolderEntity> query,
         Guid crateId,
         HashSet<Guid> excludedIds,
-        string? searchTerm = null)
+        string? searchTerm = null,
+        bool ascending = true)
     {
         return query
             .ApplyBaseFilters(crateId)
             .ApplyExclusion(excludedIds)
             .ApplySearch(searchTerm)
-            .ApplyOrdering(alphabetical: true);
+            .ApplyOrdering(ascending);
     }
 }

@@ -161,9 +161,7 @@ public class FolderController : BaseController
             return Unauthorized(ApiResponse<PaginatedResult<FolderResponse>>.Failure("User is not authenticated", 401));
         }
 
-        // Ensure crateId consistency
         request.CrateId = crateId;
-
         var result = await _folderService.GetAvailableMoveFoldersAsync(request, UserId);
 
         if (result.IsSuccess)

@@ -519,6 +519,7 @@ public class FolderService : IFolderService
         try
         {
             var excludedIds = new HashSet<Guid>();
+
             if (request.ExcludeFolderId.HasValue)
             {
                 var hierarchyData = await _context.CrateFolders
@@ -530,9 +531,14 @@ public class FolderService : IFolderService
                 excludedIds.Add(request.ExcludeFolderId.Value);
             }
 
+            if (request.CurrentFolderId.HasValue)
+            {
+                excludedIds.Add(request.CurrentFolderId.Value);
+            }
+
             var query = _context.CrateFolders
                 .Include(f => f.CreatedByUser)
-                .ApplyMoveTargetFiltering(request.CrateId, excludedIds, request.SearchTerm);
+                .ApplyMoveTargetFiltering(request.CrateId, excludedIds, request.SearchTerm, request.Ascending);
 
             var totalCount = await query.CountAsync();
 
