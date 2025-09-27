@@ -2,6 +2,7 @@
 using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
+using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Folder;
@@ -24,10 +25,9 @@ public interface IFolderService
     Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId);
     Task<Result> SoftDeleteFolderAsync(Guid folderId, string userId);
 
-    Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(
-        Guid crateId,
-        Guid? excludeFolderId
-    );
+    Task<Result<PaginatedResult<FolderResponse>>> GetAvailableMoveFoldersAsync(
+        GetAvailableMoveTargetsRequest request,
+        string userId);
 
     Task<Result> RestoreFolderAsync(Guid folderId, string userId);
 

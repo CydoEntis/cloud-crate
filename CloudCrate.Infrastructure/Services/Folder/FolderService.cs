@@ -7,6 +7,7 @@ using CloudCrate.Application.Interfaces.Permissions;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using CloudCrate.Application.DTOs;
+using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Mappers;
@@ -15,6 +16,7 @@ using CloudCrate.Domain.Entities;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using CloudCrate.Infrastructure.Persistence.Mappers;
+using CloudCrate.Infrastructure.Queries;
 using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.Extensions.Logging;
 
@@ -510,37 +512,76 @@ public class FolderService : IFolderService
         return Result.Success();
     }
 
-    public async Task<Result<List<FolderResponse>>> GetAvailableMoveFoldersAsync(
-        Guid crateId,
-        Guid? excludeFolderId)
+    public async Task<Result<PaginatedResult<FolderResponse>>> GetAvailableMoveFoldersAsync(
+        GetAvailableMoveTargetsRequest request,
+        string userId)
     {
         try
         {
-            var allFolders = await _context.CrateFolders
-                .Include(f => f.CreatedByUser)
-                .Where(f => f.CrateId == crateId && !f.IsDeleted)
-                .ToListAsync();
-
-            if (excludeFolderId.HasValue)
+            var excludedIds = new HashSet<Guid>();
+            if (request.ExcludeFolderId.HasValue)
             {
-                var excludedIds = GetDescendantFolderIds(allFolders, excludeFolderId.Value);
-                excludedIds.Add(excludeFolderId.Value);
-                allFolders = allFolders
-                    .Where(f => !excludedIds.Contains(f.Id))
-                    .ToList();
+                var hierarchyData = await _context.CrateFolders
+                    .Where(f => f.CrateId == request.CrateId && !f.IsDeleted)
+                    .Select(f => new { f.Id, f.ParentFolderId })
+                    .ToListAsync();
+
+                excludedIds = GetDescendantFolderIds(hierarchyData, request.ExcludeFolderId.Value);
+                excludedIds.Add(request.ExcludeFolderId.Value);
             }
 
-            var domainFolders = allFolders.Select(f => f.ToDomain()).ToList();
+            var query = _context.CrateFolders
+                .Include(f => f.CreatedByUser)
+                .ApplyMoveTargetFiltering(request.CrateId, excludedIds, request.SearchTerm);
 
-            var response = domainFolders.Select(CrateFolderMapper.ToFolderResponse).ToList();
+            var totalCount = await query.CountAsync();
 
-            return Result<List<FolderResponse>>.Success(response);
+            var folders = await query
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+
+            var domainFolders = folders.Select(f => f.ToDomain()).ToList();
+            var folderResponses = domainFolders.Select(CrateFolderMapper.ToFolderResponse).ToList();
+
+            var paginatedResult = PaginatedResult<FolderResponse>.Create(
+                folderResponses,
+                totalCount,
+                request.Page,
+                request.PageSize);
+
+            return Result<PaginatedResult<FolderResponse>>.Success(paginatedResult);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception in GetAvailableMoveFoldersAsync for CrateId {CrateId}", crateId);
-            return Result<List<FolderResponse>>.Failure(new InternalError(ex.Message));
+            _logger.LogError(ex, "Exception in GetAvailableMoveFoldersAsync for CrateId {CrateId}", request.CrateId);
+            return Result<PaginatedResult<FolderResponse>>.Failure(new InternalError(ex.Message));
         }
+    }
+
+    private HashSet<Guid> GetDescendantFolderIds(IEnumerable<dynamic> hierarchyData, Guid parentId)
+    {
+        var descendants = new HashSet<Guid>();
+        var queue = new Queue<Guid>();
+        queue.Enqueue(parentId);
+
+        while (queue.Count > 0)
+        {
+            var currentId = queue.Dequeue();
+            var children = hierarchyData
+                .Where(f => f.ParentFolderId == currentId)
+                .Select(f => f.Id);
+
+            foreach (var childId in children)
+            {
+                if (descendants.Add(childId))
+                {
+                    queue.Enqueue(childId);
+                }
+            }
+        }
+
+        return descendants;
     }
 
 

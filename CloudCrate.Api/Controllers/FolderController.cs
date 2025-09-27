@@ -6,6 +6,7 @@ using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Application.DTOs.Pagination;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -151,23 +152,28 @@ public class FolderController : BaseController
     }
 
     [HttpGet("available-move-targets")]
-    public async Task<IActionResult> GetAvailableMoveTargets(Guid crateId, Guid? excludeFolderId = null)
+    public async Task<IActionResult> GetAvailableMoveTargets(
+        Guid crateId,
+        [FromQuery] GetAvailableMoveTargetsRequest request)
     {
         if (string.IsNullOrWhiteSpace(UserId))
         {
-            return Unauthorized(ApiResponse<List<FolderResponse>>.Failure("User is not authenticated", 401));
+            return Unauthorized(ApiResponse<PaginatedResult<FolderResponse>>.Failure("User is not authenticated", 401));
         }
 
-        var result = await _folderService.GetAvailableMoveFoldersAsync(crateId, excludeFolderId);
+        // Ensure crateId consistency
+        request.CrateId = crateId;
+
+        var result = await _folderService.GetAvailableMoveFoldersAsync(request, UserId);
 
         if (result.IsSuccess)
         {
-            return Ok(ApiResponse<List<FolderResponse>>.Success(
+            return Ok(ApiResponse<PaginatedResult<FolderResponse>>.Success(
                 data: result.GetValue(),
                 message: "Available move targets retrieved successfully"));
         }
 
-        return result.GetError().ToActionResult<List<FolderResponse>>();
+        return result.GetError().ToActionResult<PaginatedResult<FolderResponse>>();
     }
 
     [HttpGet("{folderId:guid}/download")]
@@ -211,7 +217,7 @@ public class FolderController : BaseController
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
-    
+
     [HttpDelete("trash")]
     public async Task<IActionResult> EmptyTrash(Guid crateId)
     {
@@ -221,7 +227,7 @@ public class FolderController : BaseController
         }
 
         var result = await _folderService.EmptyTrashAsync(crateId, UserId);
-    
+
         if (result.IsSuccess)
         {
             return Ok(ApiResponse<EmptyResponse>.Success(message: "Trash emptied successfully"));
