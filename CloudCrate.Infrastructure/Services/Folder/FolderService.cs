@@ -487,6 +487,11 @@ public class FolderService : IFolderService
 
     private async Task<Result> ValidateMoveDestinationAsync(CrateFolderEntity folderEntity, Guid? newParentId)
     {
+        if (folderEntity.ParentFolderId == newParentId)
+        {
+            return Result.Failure(new AlreadyExistsError("Folder is already in this location"));
+        }
+
         if (!newParentId.HasValue)
             return Result.Success();
 

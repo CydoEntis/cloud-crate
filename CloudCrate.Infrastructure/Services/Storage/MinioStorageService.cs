@@ -288,36 +288,24 @@ public class MinioStorageService : IStorageService
 
     public async Task<Result> MoveFolderAsync(Guid crateId, Guid folderId, Guid? newParentId)
     {
-        var oldPrefix = $"{crateId}/{folderId}/";
-        var newPrefix = newParentId.HasValue
-            ? $"{crateId}/{newParentId}/{folderId}/"
-            : $"{crateId}/{folderId}/";
+        _logger.LogInformation("Moving folder - CrateId: {CrateId}, FolderId: {FolderId}, NewParentId: {NewParentId}",
+            crateId, folderId, newParentId);
 
-        string? continuationToken = null;
-        var allKeys = new List<string>();
-
-        do
+        var prefix = $"{crateId}/{folderId}/";
+        var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
         {
-            var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
-            {
-                BucketName = BucketName,
-                Prefix = oldPrefix,
-                ContinuationToken = continuationToken,
-                MaxKeys = DeleteBatchSize
-            });
+            BucketName = BucketName,
+            Prefix = prefix,
+            MaxKeys = 1
+        });
 
-            allKeys.AddRange(listResponse.S3Objects.Select(o => o.Key));
-            continuationToken =
-                listResponse.IsTruncated.GetValueOrDefault() ? listResponse.NextContinuationToken : null;
-        } while (continuationToken != null);
-
-        foreach (var oldKey in allKeys)
+        if (!listResponse.S3Objects.Any())
         {
-            var newKey = oldKey.Replace(oldPrefix, newPrefix);
-            await _s3Client.CopyObjectAsync(BucketName, oldKey, BucketName, newKey);
+            _logger.LogInformation("No files found for folder {FolderId}, no storage move needed", folderId);
+            return Result.Success();
         }
 
-        return await DeleteKeysAsync(allKeys);
+        return Result.Success();
     }
 
     public async Task<Result> RenameFileAsync(Guid crateId, Guid? folderId, string oldFileName, string newFileName)
