@@ -8,6 +8,7 @@ using CloudCrate.Application.DTOs.Invite.Response;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Interfaces.Admin;
 using CloudCrate.Application.Interfaces.Invite;
+using CloudCrate.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -43,6 +44,38 @@ public class AdminController : BaseController
     [HttpGet("users")]
     public async Task<IActionResult> GetUsers([FromQuery] AdminUserParameters parameters)
     {
+        if (Request.Query.TryGetValue("sortBy", out var sortByValue))
+        {
+            if (Enum.TryParse<AdminUserSortBy>(sortByValue.ToString(), true, out var parsedSortBy))
+            {
+                parameters.SortBy = parsedSortBy;
+            }
+        }
+
+        if (Request.Query.TryGetValue("userType", out var userTypeValue))
+        {
+            if (Enum.TryParse<AdminUserType>(userTypeValue.ToString(), true, out var parsedUserType))
+            {
+                parameters.UserType = parsedUserType;
+            }
+        }
+
+        if (Request.Query.TryGetValue("userStatus", out var userStatusValue))
+        {
+            if (Enum.TryParse<AdminUserStatus>(userStatusValue.ToString(), true, out var parsedUserStatus))
+            {
+                parameters.UserStatus = parsedUserStatus;
+            }
+        }
+
+        if (Request.Query.TryGetValue("planFilter", out var planFilterValue))
+        {
+            if (Enum.TryParse<AdminPlanFilter>(planFilterValue.ToString(), true, out var parsedPlanFilter))
+            {
+                parameters.PlanFilter = parsedPlanFilter;
+            }
+        }
+
         var result = await _adminService.GetUsersAsync(parameters);
 
         if (result.IsSuccess)
