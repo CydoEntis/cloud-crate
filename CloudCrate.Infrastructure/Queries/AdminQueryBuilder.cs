@@ -1,5 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.Admin.Request;
-using CloudCrate.Infrastructure.Persistence;
+using CloudCrate.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Queries;
@@ -18,49 +18,59 @@ public static class AdminQueryBuilder
     }
 
     public static IQueryable<ApplicationUser> ApplyUserTypeFilter(this IQueryable<ApplicationUser> query,
-        string? userType)
+        AdminUserType userType)
     {
         return userType switch
         {
-            "Admin" => query.Where(u => u.IsAdmin == true),
-            "User" => query.Where(u => u.IsAdmin == false),
+            AdminUserType.Admin => query.Where(u => u.IsAdmin == true),
+            AdminUserType.User => query.Where(u => u.IsAdmin == false),
+            AdminUserType.All => query,
             _ => query
         };
     }
 
     public static IQueryable<ApplicationUser> ApplyStatusFilter(this IQueryable<ApplicationUser> query,
-        string? userStatus)
+        AdminUserStatus userStatus)
     {
         return userStatus switch
         {
-            "Banned" => query.Where(u => u.LockoutEnd != null && u.LockoutEnd > DateTimeOffset.UtcNow),
-            "Active" => query.Where(u => u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow),
+            AdminUserStatus.Banned => query.Where(u => u.LockoutEnd != null && u.LockoutEnd > DateTimeOffset.UtcNow),
+            AdminUserStatus.Active => query.Where(u => u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow),
+            AdminUserStatus.All => query,
             _ => query
         };
     }
 
     public static IQueryable<ApplicationUser> ApplyPlanFilter(this IQueryable<ApplicationUser> query,
-        string? planFilter)
+        AdminPlanFilter planFilter)
     {
-        if (string.IsNullOrWhiteSpace(planFilter) || planFilter == "All")
-            return query;
-
-        return query.Where(u => u.Plan.ToString() == planFilter);
+        return planFilter switch
+        {
+            AdminPlanFilter.Free => query.Where(u => u.Plan == SubscriptionPlan.Free),
+            AdminPlanFilter.Mini => query.Where(u => u.Plan == SubscriptionPlan.Mini),
+            AdminPlanFilter.Standard => query.Where(u => u.Plan == SubscriptionPlan.Standard),
+            AdminPlanFilter.Max => query.Where(u => u.Plan == SubscriptionPlan.Max),
+            AdminPlanFilter.All => query,
+            _ => query
+        };
     }
 
-    public static IQueryable<ApplicationUser> ApplySorting(this IQueryable<ApplicationUser> query, string? sortBy,
-        bool ascending)
+    public static IQueryable<ApplicationUser> ApplyOrdering(this IQueryable<ApplicationUser> query,
+        AdminUserParameters parameters)
     {
-        return sortBy?.ToLower() switch
+        return (parameters.SortBy, parameters.Ascending) switch
         {
-            "email" => ascending ? query.OrderBy(u => u.Email) : query.OrderByDescending(u => u.Email),
-            "displayname" => ascending
-                ? query.OrderBy(u => u.DisplayName)
-                : query.OrderByDescending(u => u.DisplayName),
-            "createdat" => ascending ? query.OrderBy(u => u.CreatedAt) : query.OrderByDescending(u => u.CreatedAt),
-            "storageused" => ascending
-                ? query.OrderBy(u => u.UsedStorageBytes)
-                : query.OrderByDescending(u => u.UsedStorageBytes),
+            (AdminUserSortBy.Email, true) => query.OrderBy(u => u.Email),
+            (AdminUserSortBy.Email, false) => query.OrderByDescending(u => u.Email),
+            (AdminUserSortBy.DisplayName, true) => query.OrderBy(u => u.DisplayName),
+            (AdminUserSortBy.DisplayName, false) => query.OrderByDescending(u => u.DisplayName),
+            (AdminUserSortBy.CreatedAt, true) => query.OrderBy(u => u.CreatedAt),
+            (AdminUserSortBy.CreatedAt, false) => query.OrderByDescending(u => u.CreatedAt),
+            (AdminUserSortBy.StorageUsed, true) => query.OrderBy(u => u.UsedStorageBytes),
+            (AdminUserSortBy.StorageUsed, false) => query.OrderByDescending(u => u.UsedStorageBytes),
+            (AdminUserSortBy.Plan, true) => query.OrderBy(u => u.Plan),
+            (AdminUserSortBy.Plan, false) => query.OrderByDescending(u => u.Plan),
+            // Safety net for any unexpected enum value
             _ => query.OrderByDescending(u => u.CreatedAt)
         };
     }
@@ -73,6 +83,6 @@ public static class AdminQueryBuilder
             .ApplyUserTypeFilter(parameters.UserType)
             .ApplyStatusFilter(parameters.UserStatus)
             .ApplyPlanFilter(parameters.PlanFilter)
-            .ApplySorting(parameters.SortBy, parameters.Ascending);
+            .ApplyOrdering(parameters);
     }
 }
