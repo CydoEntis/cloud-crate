@@ -139,4 +139,62 @@ public class CrateFolder
             IsDeleted = false
         };
     }
+
+    public void Rename(string newName)
+    {
+        if (string.IsNullOrWhiteSpace(newName))
+            throw new ArgumentException("Name cannot be null or empty", nameof(newName));
+
+        if (newName.Length > 200)
+            throw new ArgumentException("Name too long (max 200 characters)", nameof(newName));
+
+        var invalidChars = new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+        if (newName.IndexOfAny(invalidChars) >= 0)
+            throw new ArgumentException("Name contains invalid characters: / \\ : * ? \" < > |", nameof(newName));
+
+        if (newName.Any(c => char.IsControl(c)))
+            throw new ArgumentException("Name cannot contain control characters", nameof(newName));
+
+        if (newName.StartsWith(' ') || newName.EndsWith(' ') || (newName.StartsWith('.') && newName.All(c => c == '.')))
+            throw new ArgumentException("Name cannot start/end with spaces or be only dots", nameof(newName));
+
+        var reservedNames = new[]
+        {
+            "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1",
+            "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+        };
+        if (reservedNames.Contains(newName.ToUpperInvariant()))
+            throw new ArgumentException($"Name '{newName}' is reserved by the system", nameof(newName));
+
+        Name = newName;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void ChangeColor(string newColor)
+    {
+        if (string.IsNullOrWhiteSpace(newColor))
+            throw new ArgumentException("Color cannot be null or empty", nameof(newColor));
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(newColor, @"^#[0-9A-Fa-f]{6}$"))
+            throw new ArgumentException("Color must be a valid hex format (#RRGGBB)", nameof(newColor));
+
+        Color = newColor;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void Update(string? newName = null, string? newColor = null)
+    {
+        if (newName == null && newColor == null)
+            throw new ArgumentException("At least one parameter must be provided");
+
+        if (newName != null)
+        {
+            Rename(newName);
+        }
+
+        if (newColor != null)
+        {
+            ChangeColor(newColor);
+        }
+    }
 }

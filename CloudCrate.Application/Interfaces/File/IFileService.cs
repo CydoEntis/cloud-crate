@@ -16,10 +16,10 @@ public interface IFileService
     Task<Result<PaginatedResult<CrateFileResponse>>> GetFilesAsync(FolderContentsParameters parameters);
     Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId);
     Task<Result<long>> GetTotalFileSizeInFolderAsync(Guid folderId);
-    
+
     Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);
     Task<Result<byte[]>> DownloadMultipleFilesAsZipAsync(List<Guid> fileIds, string userId);
-    
+
     Task<Result> DeleteFileAsync(Guid fileId, string userId);
     Task<Result> SoftDeleteFileAsync(Guid fileId, string userId);
     Task<Result> MoveFileAsync(Guid fileId, Guid? newParentId, string userId);
@@ -29,4 +29,5 @@ public interface IFileService
     Task<Result> PermanentlyDeleteFilesAsync(List<Guid> fileIds, string userId);
     Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId);
     Task<Result> RestoreFilesAsync(List<Guid> fileIds, string userId);
+    Task<Result> UpdateFileAsync(Guid fileId, UpdateFileRequest request, string userId);
 }

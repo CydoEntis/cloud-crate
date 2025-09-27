@@ -320,6 +320,26 @@ public class MinioStorageService : IStorageService
         return await DeleteKeysAsync(allKeys);
     }
 
+    public async Task<Result> RenameFileAsync(Guid crateId, Guid? folderId, string oldFileName, string newFileName)
+    {
+        var oldKey = GetObjectKey(crateId, folderId, oldFileName);
+        var newKey = GetObjectKey(crateId, folderId, newFileName);
+
+        try
+        {
+            await _s3Client.CopyObjectAsync(BucketName, oldKey, BucketName, newKey);
+
+            await _s3Client.DeleteObjectAsync(BucketName, oldKey);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to rename file from {OldKey} to {NewKey}", oldKey, newKey);
+            return Result.Failure(new StorageError($"Failed to rename file: {ex.Message}"));
+        }
+    }
+
     private static string GetObjectKey(Guid crateId, Guid? folderId, string fileName)
     {
         var parts = new List<string> { crateId.ToString() };

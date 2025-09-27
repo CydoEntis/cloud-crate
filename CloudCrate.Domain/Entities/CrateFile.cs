@@ -114,7 +114,7 @@ namespace CloudCrate.Domain.Entities
                 IsDeleted = false
             };
         }
-        
+
         public void SoftDelete(string? deletedByUserId = null)
         {
             IsDeleted = true;
@@ -135,7 +135,7 @@ namespace CloudCrate.Domain.Entities
         {
             if (string.IsNullOrWhiteSpace(objectKey))
                 throw new ArgumentException("ObjectKey cannot be null or empty", nameof(objectKey));
-                
+
             ObjectKey = objectKey;
             UpdatedAt = DateTime.UtcNow;
         }
@@ -143,6 +143,37 @@ namespace CloudCrate.Domain.Entities
         public void MoveTo(Guid? newFolderId)
         {
             CrateFolderId = newFolderId;
+            UpdatedAt = DateTime.UtcNow;
+        }
+
+        public void Rename(string newName)
+        {
+            if (string.IsNullOrWhiteSpace(newName))
+                throw new ArgumentException("Name cannot be null or empty", nameof(newName));
+
+            if (newName.Length > 200)
+                throw new ArgumentException("Name too long (max 200 characters)", nameof(newName));
+
+            var invalidChars = new[] { '/', '\\', ':', '*', '?', '"', '<', '>', '|' };
+            if (newName.IndexOfAny(invalidChars) >= 0)
+                throw new ArgumentException("Name contains invalid characters: / \\ : * ? \" < > |", nameof(newName));
+
+            if (newName.Any(c => char.IsControl(c)))
+                throw new ArgumentException("Name cannot contain control characters", nameof(newName));
+
+            if (newName.StartsWith(' ') || newName.EndsWith(' ') ||
+                newName.StartsWith('.') && newName.All(c => c == '.'))
+                throw new ArgumentException("Name cannot start/end with spaces or be only dots", nameof(newName));
+
+            var reservedNames = new[]
+            {
+                "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+                "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+            };
+            if (reservedNames.Contains(newName.ToUpperInvariant()))
+                throw new ArgumentException($"Name '{newName}' is reserved by the system", nameof(newName));
+
+            Name = newName;
             UpdatedAt = DateTime.UtcNow;
         }
     }
