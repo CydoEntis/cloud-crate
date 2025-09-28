@@ -404,16 +404,17 @@ public class FolderService : IFolderService
     {
         try
         {
-            folderEntity.IsDeleted = true;
-            folderEntity.DeletedAt = DateTime.UtcNow;
-            folderEntity.DeletedByUserId = userId;
-            folderEntity.UpdatedAt = DateTime.UtcNow;
-
             var filesResult = await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id);
             if (filesResult.IsFailure)
                 return Result.Failure(filesResult.GetError());
 
             var files = filesResult.GetValue();
+
+            var domainFolder = folderEntity.ToDomain();
+            domainFolder.SoftDelete(userId);
+            var updatedEntity = domainFolder.ToEntity(folderEntity.CrateId);
+            _context.Entry(folderEntity).CurrentValues.SetValues(updatedEntity);
+
             if (files.Any())
             {
                 var fileResult = await _fileService.SoftDeleteFilesAsync(files.Select(f => f.Id).ToList(), userId);

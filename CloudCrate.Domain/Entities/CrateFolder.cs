@@ -197,4 +197,20 @@ public class CrateFolder
             ChangeColor(newColor);
         }
     }
+
+    public void SoftDelete(string? deletedByUserId = null)
+    {
+        IsDeleted = true;
+        DeletedAt = DateTime.UtcNow;
+        DeletedByUserId = deletedByUserId;
+        UpdatedAt = DateTime.UtcNow;
+    }
+
+    public void Restore(string? restoredByUserId = null)
+    {
+        IsDeleted = false;
+        RestoredAt = DateTime.UtcNow;
+        RestoredByUserId = restoredByUserId;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }

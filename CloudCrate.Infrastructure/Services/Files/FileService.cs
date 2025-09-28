@@ -726,6 +726,9 @@ public class FileService : IFileService
             {
                 var domainFile = file.ToDomain();
                 domainFile.SoftDelete(userId);
+                var updatedEntity = domainFile.ToEntity(file.CrateId);
+
+                _context.Entry(file).CurrentValues.SetValues(updatedEntity);
             }
 
             await _context.SaveChangesAsync();

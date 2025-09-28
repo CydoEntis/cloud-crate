@@ -55,6 +55,7 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
 
         builder.Entity<CrateFolderEntity>(b =>
         {
+            b.HasQueryFilter(f => !f.IsDeleted);
             b.HasOne(f => f.Crate)
                 .WithMany(c => c.Folders)
                 .HasForeignKey(f => f.CrateId);
@@ -66,7 +67,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(c => c.Members)
                 .HasForeignKey(m => m.CrateId);
 
-
             b.HasIndex(m => new { m.UserId, m.CrateId }).IsUnique();
         });
 
@@ -76,7 +76,6 @@ public class AppDbContext : IdentityDbContext<ApplicationUser>
                 .WithMany(c => c.Invites)
                 .HasForeignKey(i => i.CrateId);
         });
-
 
         builder.Entity<CrateFolderEntity>()
             .HasIndex(x => x.CrateId)
