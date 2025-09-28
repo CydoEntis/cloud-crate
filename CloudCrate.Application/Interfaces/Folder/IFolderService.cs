@@ -20,7 +20,6 @@ public interface IFolderService
 
     Task<Result> BulkMoveItemsAsync(List<Guid> fileIds, List<Guid> folderIds, Guid? newParentId, string userId);
 
-    Task<Result> SoftDeleteFoldersAsync(List<Guid> folderIds, string userId);
     Task<Result> BulkSoftDeleteItemsAsync(List<Guid> fileIds, List<Guid> folderIds, string userId);
 
     Task<Result> EmptyTrashAsync(Guid crateId, string userId);

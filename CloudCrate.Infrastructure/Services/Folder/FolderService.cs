@@ -6,7 +6,6 @@ using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Permissions;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
-using CloudCrate.Application.DTOs;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Storage;
@@ -30,7 +29,6 @@ public class FolderService : IFolderService
     private readonly IStorageService _storageService;
     private readonly ILogger<FolderService> _logger;
 
-    // Constants
     private const int DefaultPageSize = 20;
     private const string DefaultFolderColor = "#EAAC00";
     private const string UnknownFolderName = "Unknown";
@@ -207,90 +205,6 @@ public class FolderService : IFolderService
         }
     }
 
-    public async Task<Result> SoftDeleteFoldersAsync(List<Guid> folderIds, string userId)
-    {
-        if (!folderIds?.Any() == true)
-            return Result.Success();
-
-        var folders = await _context.CrateFolders
-            .Where(f => folderIds.Contains(f.Id))
-            .ToListAsync();
-
-        // Permission checks first
-        foreach (var folder in folders)
-        {
-            var role = await _crateRoleService.GetUserRole(folder.CrateId, userId);
-            if (role == null)
-                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
-
-            var canDelete = role switch
-            {
-                CrateRole.Owner => true,
-                CrateRole.Manager => true,
-                CrateRole.Member => folder.CreatedByUserId == userId,
-                _ => false
-            };
-
-            if (!canDelete)
-                return Result.Failure(new CrateUnauthorizedError($"Cannot delete folder {folder.Name}"));
-        }
-
-        try
-        {
-            foreach (var folderId in folderIds)
-            {
-                var result = await SoftDeleteFolderAsync(folderId, userId);
-                if (result.IsFailure)
-                    return result;
-            }
-
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to soft delete folders");
-            return Result.Failure(new InternalError(ex.Message));
-        }
-    }
-
-    public async Task<Result> DeleteFolderAsync(Guid folderId, string userId)
-    {
-        try
-        {
-            var folderEntity = await _context.CrateFolders
-                .Include(f => f.Subfolders)
-                .FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
-
-            if (folderEntity == null)
-                return Result.Failure(new NotFoundError("Folder not found"));
-
-            var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
-            if (role == null)
-                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
-
-            var canDelete = role switch
-            {
-                CrateRole.Owner => true,
-                CrateRole.Manager => true,
-                CrateRole.Member => folderEntity.CreatedByUserId == userId,
-                _ => false
-            };
-
-            if (!canDelete)
-                return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
-
-            await SoftDeleteFolderRecursiveAsync(folderEntity, userId);
-            await _context.SaveChangesAsync();
-
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Exception in DeleteFolderAsync for FolderId {FolderId}, UserId {UserId}",
-                folderId, userId);
-            return Result.Failure(new InternalError(ex.Message));
-        }
-    }
 
     public async Task<Result> SoftDeleteFolderAsync(Guid folderId, string userId)
     {
@@ -477,9 +391,31 @@ public class FolderService : IFolderService
     {
         try
         {
+            _logger.LogInformation("MoveFolderAsync: Starting - FolderId: {FolderId}, NewParentId: {NewParentId}",
+                folderId, newParentId);
+
             var folderEntity = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == folderId && !f.IsDeleted);
             if (folderEntity == null)
+            {
+                _logger.LogError("MoveFolderAsync: Folder not found - {FolderId}", folderId);
                 return Result.Failure(new NotFoundError("Folder not found"));
+            }
+
+            _logger.LogInformation("MoveFolderAsync: Folder found - Name: {Name}, CrateId: {CrateId}",
+                folderEntity.Name, folderEntity.CrateId);
+
+            // Check for null properties
+            if (string.IsNullOrEmpty(folderEntity.Name))
+            {
+                _logger.LogError("MoveFolderAsync: Folder has null/empty name - {FolderId}", folderId);
+                return Result.Failure(new InternalError("Folder has invalid name"));
+            }
+
+            if (folderEntity.CrateId == Guid.Empty)
+            {
+                _logger.LogError("MoveFolderAsync: Folder has invalid CrateId - {FolderId}", folderId);
+                return Result.Failure(new InternalError("Folder has invalid crate ID"));
+            }
 
             var role = await _crateRoleService.GetUserRole(folderEntity.CrateId, userId);
             if (role == null)
@@ -496,29 +432,61 @@ public class FolderService : IFolderService
             if (!canMove)
                 return Result.Failure(new CrateUnauthorizedError("Cannot move this folder"));
 
+            _logger.LogInformation("MoveFolderAsync: Starting validation - {FolderId}", folderId);
             var validationResult = await ValidateMoveDestinationAsync(folderEntity, newParentId);
             if (validationResult.IsFailure)
+            {
+                _logger.LogError("MoveFolderAsync: Validation failed - {FolderId}, Error: {Error}", folderId,
+                    validationResult.GetError().Message);
                 return validationResult;
+            }
+
+            _logger.LogInformation("MoveFolderAsync: Calling storage service - {FolderId}", folderId);
+
+            if (_storageService == null)
+            {
+                _logger.LogError("MoveFolderAsync: Storage service is null");
+                return Result.Failure(new InternalError("Storage service not available"));
+            }
 
             var storageResult =
                 await _storageService.MoveFolderAsync(folderEntity.CrateId, folderEntity.Id, newParentId);
-            if (storageResult.IsFailure)
-                return storageResult;
 
+            _logger.LogInformation("MoveFolderAsync: Storage result - Success: {Success}", storageResult.IsSuccess);
+
+            if (storageResult.IsFailure)
+            {
+                _logger.LogError("MoveFolderAsync: Storage failed - {Error}", storageResult.GetError()?.Message);
+                return storageResult;
+            }
+
+            _logger.LogInformation("MoveFolderAsync: Converting to domain - {FolderId}", folderId);
             var domainFolder = folderEntity.ToDomain();
+
+            if (domainFolder == null)
+            {
+                _logger.LogError("MoveFolderAsync: ToDomain returned null - {FolderId}", folderId);
+                return Result.Failure(new InternalError("Failed to convert folder to domain"));
+            }
+
+            _logger.LogInformation("MoveFolderAsync: Calling MoveTo - {FolderId}", folderId);
             domainFolder.MoveTo(newParentId);
 
+            _logger.LogInformation("MoveFolderAsync: Updating entity - {FolderId}", folderId);
             folderEntity.ParentFolderId = domainFolder.ParentFolderId;
             folderEntity.UpdatedAt = domainFolder.UpdatedAt;
 
+            _logger.LogInformation("MoveFolderAsync: Saving changes - {FolderId}", folderId);
             await _context.SaveChangesAsync();
 
+            _logger.LogInformation("MoveFolderAsync: Completed successfully - {FolderId}", folderId);
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception in MoveFolderAsync for FolderId {FolderId}, UserId {UserId}", folderId,
-                userId);
+            _logger.LogError(ex,
+                "MoveFolderAsync: Exception - FolderId: {FolderId}, Type: {Type}, Message: {Message}, StackTrace: {StackTrace}",
+                folderId, ex.GetType().Name, ex.Message, ex.StackTrace);
             return Result.Failure(new InternalError(ex.Message));
         }
     }

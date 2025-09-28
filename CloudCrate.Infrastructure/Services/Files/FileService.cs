@@ -1,13 +1,10 @@
-﻿using CloudCrate.Application.Common.Utils;
-using CloudCrate.Application.DTOs.File;
+﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.DTOs.User.Mappers;
-using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Extensions;
-using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Application.Interfaces.Permissions;
 using CloudCrate.Application.Interfaces.Storage;
@@ -792,13 +789,55 @@ public class FileService : IFileService
 
     public async Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId)
     {
-        foreach (var fileId in fileIds)
+        var fileIdList = fileIds.ToList();
+        if (!fileIdList.Any()) return Result.Success();
+
+        var files = await _context.CrateFiles
+            .Where(f => fileIdList.Contains(f.Id))
+            .ToListAsync();
+
+        foreach (var file in files)
         {
-            var result = await MoveFileAsync(fileId, newParentId, userId);
-            if (result.IsFailure) return result;
+            var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canMove = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => file.UploadedByUserId == userId,
+                _ => false
+            };
+
+            if (!canMove)
+                return Result.Failure(new CrateUnauthorizedError("Cannot move this file"));
         }
 
-        return Result.Success();
+        try
+        {
+            foreach (var file in files)
+            {
+                var storageResult = await _storageService.MoveFileAsync(
+                    file.CrateId, file.CrateFolderId, newParentId, file.Name);
+                if (storageResult.IsFailure)
+                    return Result.Failure(storageResult.GetError());
+
+                var domainFile = file.ToDomain();
+                domainFile.MoveTo(newParentId);
+
+                file.CrateFolderId = domainFile.CrateFolderId;
+                file.UpdatedAt = domainFile.UpdatedAt;
+            }
+
+            await _context.SaveChangesAsync();
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to move files");
+            return Result.Failure(new InternalError(ex.Message));
+        }
     }
 
     public async Task<Result> RestoreFilesAsync(List<Guid> fileIds, string userId)

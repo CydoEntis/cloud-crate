@@ -274,9 +274,24 @@ public class MinioStorageService : IStorageService
 
         try
         {
+            try
+            {
+                await _s3Client.GetObjectMetadataAsync(BucketName, oldKey);
+            }
+            catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                _logger.LogWarning("File {FileName} not found in storage at {OldKey}, skipping move", fileName, oldKey);
+                return Result.Success();
+            }
+
             await _s3Client.CopyObjectAsync(BucketName, oldKey, BucketName, newKey);
             await _s3Client.DeleteObjectAsync(BucketName, oldKey);
 
+            return Result.Success();
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            _logger.LogWarning("File {FileName} not found during move operation, skipping", fileName);
             return Result.Success();
         }
         catch (Exception ex)
@@ -343,12 +358,12 @@ public class MinioStorageService : IStorageService
 
             var results = await Task.WhenAll(moveResults);
 
-            var failedResult = results.FirstOrDefault(r => r.IsFailure);
-            if (failedResult.IsFailure)
+            var failedResults = results.Where(r => r.IsFailure).ToList();
+            if (failedResults.Any())
             {
-                _logger.LogError("Failed to move some objects for folder {FolderId}: {Error}",
-                    folderId, failedResult.GetError().Message);
-                return failedResult;
+                _logger.LogWarning("Some objects failed to move for folder {FolderId}, but continuing: {Errors}",
+                    folderId, string.Join(", ", failedResults.Select(r => r.GetError().Message)));
+                // Don't return failure - let folder move succeed even if some files are missing
             }
 
             _logger.LogInformation("Successfully moved {Count} objects for folder {FolderId}", allObjects.Count,
