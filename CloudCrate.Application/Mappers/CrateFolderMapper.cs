@@ -17,7 +17,11 @@ public static class CrateFolderMapper
             CrateId = folder.CrateId,
             CreatedAt = folder.CreatedAt,
             UpdatedAt = folder.UpdatedAt,
-            IsDeleted = folder.IsDeleted
+            IsDeleted = folder.IsDeleted,
+            CreatedByUserId = folder.CreatedByUserId,
+            CreatedByDisplayName = folder.CreatedByUser?.DisplayName ?? "Unknown",
+            CreatedByEmail = folder.CreatedByUser?.Email ?? "",
+            CreatedByProfilePictureUrl = folder.CreatedByUser?.ProfilePictureUrl ?? ""
         };
     }
 

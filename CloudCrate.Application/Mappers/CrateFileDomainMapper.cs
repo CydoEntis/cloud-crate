@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.DTOs.File.Response;
 using CloudCrate.Application.DTOs.User.Projections;
 using CloudCrate.Domain.Entities;
 

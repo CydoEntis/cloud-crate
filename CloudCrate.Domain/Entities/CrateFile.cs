@@ -16,7 +16,7 @@ namespace CloudCrate.Domain.Entities
         public CrateFolder? Folder { get; set; }
 
         public string UploadedByUserId { get; private set; } = string.Empty;
-        public CrateMember UploadedByUser { get; set; } = null!;
+        public UserAccount? UploadedByUser { get; private set; }
         public bool IsDeleted { get; private set; } = false;
         public DateTime? DeletedAt { get; private set; }
 
@@ -43,6 +43,7 @@ namespace CloudCrate.Domain.Entities
             Guid crateId,
             Guid? crateFolderId,
             string uploadedByUserId,
+            UserAccount? uploadedByUser,
             bool isDeleted,
             DateTime? deletedAt,
             string? deletedByUserId,
@@ -59,6 +60,7 @@ namespace CloudCrate.Domain.Entities
             CrateId = crateId;
             CrateFolderId = crateFolderId;
             UploadedByUserId = uploadedByUserId;
+            UploadedByUser = uploadedByUser;
             IsDeleted = isDeleted;
             DeletedAt = deletedAt;
             DeletedByUserId = deletedByUserId;
@@ -77,6 +79,7 @@ namespace CloudCrate.Domain.Entities
             Guid crateId,
             Guid? folderId,
             string uploadedByUserId,
+            UserAccount? uploadedByUser,
             bool isDeleted,
             DateTime? deletedAt,
             string? deletedByUserId,
@@ -87,7 +90,7 @@ namespace CloudCrate.Domain.Entities
         {
             return new CrateFile(
                 id, name, size, mimeType, objectKey, crateId, folderId,
-                uploadedByUserId, isDeleted, deletedAt, deletedByUserId,
+                uploadedByUserId, uploadedByUser, isDeleted, deletedAt, deletedByUserId,
                 restoredByUserId, restoredAt, createdAt, updatedAt
             );
         }

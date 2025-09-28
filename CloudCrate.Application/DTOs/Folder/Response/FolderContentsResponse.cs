@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.File;
+using CloudCrate.Application.DTOs.File.Response;
 
 namespace CloudCrate.Application.DTOs.Folder.Response;
 

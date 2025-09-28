@@ -39,6 +39,7 @@ namespace CloudCrate.Infrastructure.Persistence.Mappers
                 entity.CrateId,
                 entity.CrateFolderId,
                 entity.UploadedByUserId,
+                entity.UploadedByUser?.ToDomain(), 
                 entity.IsDeleted,
                 entity.DeletedAt,
                 entity.DeletedByUserId,

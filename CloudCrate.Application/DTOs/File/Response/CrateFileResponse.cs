@@ -1,7 +1,6 @@
-﻿using CloudCrate.Application.DTOs.User;
-using CloudCrate.Application.DTOs.User.Projections;
+﻿using CloudCrate.Application.DTOs.User.Projections;
 
-namespace CloudCrate.Application.DTOs.File;
+namespace CloudCrate.Application.DTOs.File.Response;
 
 public class CrateFileResponse
 {

@@ -4,6 +4,7 @@ using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.Interfaces.File;
 using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Application.DTOs.File.Response;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

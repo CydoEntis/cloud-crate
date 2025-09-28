@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.DTOs.File;
 using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.DTOs.File.Response;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.DTOs.User.Mappers;
@@ -262,7 +263,7 @@ public class FileService : IFileService
 
             var fileResponse = CrateFileDomainMapper.ToCrateFileResponse(
                 domainFile,
-                domainFile.UploadedByUser != null ? UserMapper.ToUploader(domainFile.UploadedByUser.User) : null,
+                domainFile.UploadedByUser != null ? UserMapper.ToUploader(domainFile.UploadedByUser) : null,
                 urlResult.IsSuccess ? urlResult.GetValue() : null
             );
 
@@ -354,7 +355,7 @@ public class FileService : IFileService
 
                 var fileResponse = CrateFileDomainMapper.ToCrateFileResponse(
                     domainFile,
-                    domainFile.UploadedByUser != null ? UserMapper.ToUploader(domainFile.UploadedByUser.User) : null,
+                    domainFile.UploadedByUser != null ? UserMapper.ToUploader(domainFile.UploadedByUser) : null,
                     urlResult.IsSuccess ? urlResult.GetValue() : null
                 );
 

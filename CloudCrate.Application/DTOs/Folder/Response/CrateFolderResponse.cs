@@ -1,6 +1,4 @@
-﻿using CloudCrate.Application.DTOs.User;
-
-namespace CloudCrate.Application.DTOs.Folder.Response;
+﻿namespace CloudCrate.Application.DTOs.Folder.Response;
 
 public class CrateFolderResponse
 {
@@ -13,10 +11,14 @@ public class CrateFolderResponse
 
     public Guid CrateId { get; set; }
 
-
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
     public bool IsDeleted { get; set; } = false;
     public bool IsFolder { get; set; } = true;
+
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public string CreatedByDisplayName { get; set; } = string.Empty;
+    public string CreatedByEmail { get; set; } = string.Empty;
+    public string CreatedByProfilePictureUrl { get; set; } = string.Empty;
 }
