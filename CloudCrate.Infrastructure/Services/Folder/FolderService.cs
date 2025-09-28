@@ -207,6 +207,52 @@ public class FolderService : IFolderService
         }
     }
 
+    public async Task<Result> SoftDeleteFoldersAsync(List<Guid> folderIds, string userId)
+    {
+        if (!folderIds?.Any() == true)
+            return Result.Success();
+
+        var folders = await _context.CrateFolders
+            .Where(f => folderIds.Contains(f.Id))
+            .ToListAsync();
+
+        // Permission checks first
+        foreach (var folder in folders)
+        {
+            var role = await _crateRoleService.GetUserRole(folder.CrateId, userId);
+            if (role == null)
+                return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+
+            var canDelete = role switch
+            {
+                CrateRole.Owner => true,
+                CrateRole.Manager => true,
+                CrateRole.Member => folder.CreatedByUserId == userId,
+                _ => false
+            };
+
+            if (!canDelete)
+                return Result.Failure(new CrateUnauthorizedError($"Cannot delete folder {folder.Name}"));
+        }
+
+        try
+        {
+            foreach (var folderId in folderIds)
+            {
+                var result = await SoftDeleteFolderAsync(folderId, userId);
+                if (result.IsFailure)
+                    return result;
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to soft delete folders");
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
     public async Task<Result> DeleteFolderAsync(Guid folderId, string userId)
     {
         try
@@ -273,7 +319,13 @@ public class FolderService : IFolderService
             if (!canDelete)
                 return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
 
-            return await SoftDeleteFolderRecursiveAsync(folderEntity, userId);
+            var result = await SoftDeleteFolderRecursiveAsync(folderEntity, userId);
+            if (result.IsFailure)
+                return result;
+
+            await _context.SaveChangesAsync();
+
+            return Result.Success();
         }
         catch (Exception ex)
         {
@@ -374,15 +426,23 @@ public class FolderService : IFolderService
     {
         try
         {
+            _logger.LogInformation("Starting soft delete for folder {FolderId}", folderEntity.Id);
+
             var filesResult = await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id);
             if (filesResult.IsFailure)
                 return Result.Failure(filesResult.GetError());
 
             var files = filesResult.GetValue();
+            _logger.LogInformation("Found {FileCount} files to delete in folder {FolderId}", files.Count,
+                folderEntity.Id);
 
             var domainFolder = folderEntity.ToDomain();
             domainFolder.SoftDelete(userId);
             var updatedEntity = domainFolder.ToEntity(folderEntity.CrateId);
+
+            _logger.LogInformation("Setting folder {FolderId} IsDeleted to {IsDeleted}", folderEntity.Id,
+                updatedEntity.IsDeleted);
+
             _context.Entry(folderEntity).CurrentValues.SetValues(updatedEntity);
 
             if (files.Any())
@@ -398,6 +458,10 @@ public class FolderService : IFolderService
                 if (subResult.IsFailure)
                     return Result.Failure(subResult.GetError());
             }
+
+            _logger.LogInformation("About to save changes for folder {FolderId}", folderEntity.Id);
+            var trackedEntries = _context.ChangeTracker.Entries().Where(e => e.State != EntityState.Unchanged).ToList();
+            _logger.LogInformation("Tracked entities count: {Count}", trackedEntries.Count);
 
             return Result.Success();
         }
@@ -1026,7 +1090,6 @@ public class FolderService : IFolderService
             return Result.Success();
 
         using var transaction = await _context.Database.BeginTransactionAsync();
-
         try
         {
             if (fileIds?.Any() == true)
@@ -1039,25 +1102,17 @@ public class FolderService : IFolderService
                 }
             }
 
+            // Delete folders if any
             if (folderIds?.Any() == true)
             {
-                var failedDeletes = new List<string>();
-
                 foreach (var folderId in folderIds)
                 {
                     var result = await SoftDeleteFolderAsync(folderId, userId);
                     if (result.IsFailure)
                     {
-                        var folderName = await GetFolderNameAsync(folderId);
-                        failedDeletes.Add($"'{folderName}': {result.GetError().Message}");
+                        await transaction.RollbackAsync();
+                        return result;
                     }
-                }
-
-                if (failedDeletes.Any())
-                {
-                    await transaction.RollbackAsync();
-                    return Result.Failure(new ValidationError(
-                        $"Failed to delete some folders: {string.Join("; ", failedDeletes)}"));
                 }
             }
 
@@ -1075,7 +1130,7 @@ public class FolderService : IFolderService
     private async Task<int> GetFolderDepthFromId(Guid folderId, Guid crateId)
     {
         int depth = 0;
-        Guid? currentId = folderId; // Make it nullable
+        Guid? currentId = folderId;
 
         while (currentId.HasValue)
         {

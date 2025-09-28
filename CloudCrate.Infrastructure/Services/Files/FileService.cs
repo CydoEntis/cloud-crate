@@ -31,16 +31,12 @@ public sealed record FileTooLargeError(string Message = "The uploaded file excee
 
 public sealed record VideoNotAllowedError(string Message = "Video files are not allowed") : Error(Message);
 
-public sealed record StorageQuotaExceededError(string Message = "Uploading this file would exceed your storage quota")
-    : Error(Message);
-
 public class FileService : IFileService
 {
     private readonly AppDbContext _context;
     private readonly IStorageService _storageService;
     private readonly ICrateRoleService _crateRoleService;
     private readonly IUserService _userService;
-    private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<FileService> _logger;
 
     private const long MaxFileSize = 10 * 1024 * 1024; // 10 MB
@@ -56,14 +52,12 @@ public class FileService : IFileService
         IStorageService storageService,
         ICrateRoleService crateRoleService,
         IUserService userService,
-        IBatchDeleteService batchDeleteService,
         ILogger<FileService> logger)
     {
         _context = context;
         _storageService = storageService;
         _crateRoleService = crateRoleService;
         _userService = userService;
-        _batchDeleteService = batchDeleteService;
         _logger = logger;
     }
 
@@ -534,7 +528,7 @@ public class FileService : IFileService
         if (!canDelete)
             return Result.Failure(new CrateUnauthorizedError("Cannot delete this file"));
 
-        return await _batchDeleteService.DeleteFilesAsync(new[] { fileId });
+        return await PermanentlyDeleteFilesAsync(new List<Guid> { fileId }, userId);
     }
 
     public async Task<Result> SoftDeleteFileAsync(Guid fileId, string userId)
@@ -691,10 +685,14 @@ public class FileService : IFileService
 
     public async Task<Result> SoftDeleteFilesAsync(List<Guid> fileIds, string userId)
     {
+        if (!fileIds?.Any() == true)
+            return Result.Success();
+
         var files = await _context.CrateFiles
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 
+        // Permission checks first (outside any transaction)
         foreach (var file in files)
         {
             var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
@@ -713,7 +711,7 @@ public class FileService : IFileService
                 return Result.Failure(new CrateUnauthorizedError($"Cannot delete file {file.Name}"));
         }
 
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        // No transaction here - let the caller manage it
         try
         {
             foreach (var file in files)
@@ -721,29 +719,31 @@ public class FileService : IFileService
                 var domainFile = file.ToDomain();
                 domainFile.SoftDelete(userId);
                 var updatedEntity = domainFile.ToEntity(file.CrateId);
-
                 _context.Entry(file).CurrentValues.SetValues(updatedEntity);
             }
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
             return Result.Success();
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Failed to soft delete files");
             return Result.Failure(new InternalError(ex.Message));
         }
     }
 
     public async Task<Result> PermanentlyDeleteFilesAsync(List<Guid> fileIds, string userId)
     {
-        foreach (var fileId in fileIds)
-        {
-            var file = await _context.CrateFiles.FirstOrDefaultAsync(f => f.Id == fileId);
-            if (file == null)
-                return Result.Failure(new FileNotFoundError());
+        if (!fileIds?.Any() == true)
+            return Result.Success();
 
+        var files = await _context.CrateFiles
+            .Where(f => fileIds.Contains(f.Id))
+            .ToListAsync();
+
+        // Permission checks
+        foreach (var file in files)
+        {
             var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
             if (role == null)
                 return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
@@ -757,10 +757,37 @@ public class FileService : IFileService
             };
 
             if (!canDelete)
-                return Result.Failure(new CrateUnauthorizedError("Cannot delete this file"));
+                return Result.Failure(new CrateUnauthorizedError($"Cannot delete file {file.Name}"));
         }
 
-        return await _batchDeleteService.DeleteFilesAsync(fileIds);
+        try
+        {
+            // Group by storage location for efficient deletion
+            var fileGroups = files.GroupBy(f => new { f.CrateId, f.CrateFolderId });
+
+            foreach (var group in fileGroups)
+            {
+                var storageResult = await _storageService.DeleteFilesAsync(
+                    group.Key.CrateId,
+                    group.Key.CrateFolderId,
+                    group.Select(f => f.Name));
+
+                if (!storageResult.IsSuccess)
+                    _logger.LogWarning("Failed to delete files from storage: {Error}",
+                        storageResult.GetError().Message);
+            }
+
+            // Remove from database
+            _context.CrateFiles.RemoveRange(files);
+            await _context.SaveChangesAsync();
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to permanently delete files");
+            return Result.Failure(new InternalError(ex.Message));
+        }
     }
 
     public async Task<Result> MoveFilesAsync(IEnumerable<Guid> fileIds, Guid? newParentId, string userId)

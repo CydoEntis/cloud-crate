@@ -94,25 +94,4 @@ public class CrateController : BaseController
         return result.GetError().ToActionResult<EmptyResponse>();
     }
 
-    [HttpPost("bulk-delete")]
-    public async Task<IActionResult> BulkDeleteCrates([FromBody] BulkCrateActionRequest request)
-    {
-        if (request.CrateIds == null || !request.CrateIds.Any())
-        {
-            return BadRequest(ApiResponse<EmptyResponse>.Failure("No crate IDs provided", 400));
-        }
-
-        var result = await _crateService.DeleteCratesAsync(request.CrateIds, UserId!);
-
-        if (result.IsSuccess)
-        {
-            var deleteResult = result.GetValue();
-            return Ok(ApiResponse<BulkDeleteCrateResponse>.Success(
-                data: deleteResult,
-                message: $"Processed {deleteResult.RequestedCount} crates: " +
-                         $"{deleteResult.DeletedCount} deleted, {deleteResult.SkippedCrateIds.Count} skipped"));
-        }
-
-        return result.GetError().ToActionResult<BulkDeleteCrateResponse>();
-    }
 }

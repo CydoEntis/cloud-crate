@@ -136,7 +136,6 @@ builder.Services.AddScoped<ICrateInviteService, CrateInviteService>();
 builder.Services.AddScoped<ICrateRoleService, CrateRoleService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
-builder.Services.AddScoped<IBatchDeleteService, BatchDeleteService>();
 builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
 builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
 builder.Services.AddScoped<IUserInviteService, UserInviteService>();

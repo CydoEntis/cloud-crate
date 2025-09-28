@@ -21,18 +21,15 @@ public class UserService : IUserService
 {
     private readonly AppDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<UserService> _logger;
 
     public UserService(
         AppDbContext context,
         UserManager<ApplicationUser> userManager,
-        IBatchDeleteService batchDeleteService,
         ILogger<UserService> logger)
     {
         _context = context;
         _userManager = userManager;
-        _batchDeleteService = batchDeleteService;
         _logger = logger;
     }
 

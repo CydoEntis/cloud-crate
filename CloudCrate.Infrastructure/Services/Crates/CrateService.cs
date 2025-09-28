@@ -1,11 +1,8 @@
-﻿using CloudCrate.Application.Common.Utils;
-using CloudCrate.Application.DTOs.Crate.Request;
+﻿using CloudCrate.Application.DTOs.Crate.Request;
 using CloudCrate.Application.DTOs.Crate.Response;
 using CloudCrate.Application.DTOs.Pagination;
-using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Extensions;
-using CloudCrate.Application.Interfaces;
 using CloudCrate.Application.Interfaces.Crate;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Interfaces.User;
@@ -30,7 +27,6 @@ public class CrateService : ICrateService
     private readonly IUserService _userService;
     private readonly IStorageService _storageService;
     private readonly ICrateRoleService _crateRoleService;
-    private readonly IBatchDeleteService _batchDeleteService;
     private readonly ILogger<CrateService> _logger;
 
     public CrateService(
@@ -38,14 +34,12 @@ public class CrateService : ICrateService
         IUserService userService,
         IStorageService storageService,
         ICrateRoleService crateRoleService,
-        IBatchDeleteService batchDeleteService,
         ILogger<CrateService> logger)
     {
         _context = context;
         _userService = userService;
         _storageService = storageService;
         _crateRoleService = crateRoleService;
-        _batchDeleteService = batchDeleteService;
         _logger = logger;
     }
 
@@ -278,14 +272,20 @@ public class CrateService : ICrateService
                 return Result.Failure(deallocationResult.GetError());
             }
 
-            var deleteResult = await _batchDeleteService.DeleteCratesAsync(new[] { crateDomain.Id });
-            if (!deleteResult.IsSuccess)
+            var storageResult = await _storageService.DeleteAllFilesForCrateAsync(crateId);
+            if (!storageResult.IsSuccess)
             {
-                await transaction.RollbackAsync();
-                return Result.Failure(deleteResult.GetError());
+                _logger.LogWarning("Failed to delete files for crate {CrateId}: {Error}",
+                    crateId, storageResult.GetError().Message);
             }
 
+            await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+            await _context.CrateFolders.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+            await _context.CrateMembers.Where(m => m.CrateId == crateId).ExecuteDeleteAsync();
+            await _context.Crates.Where(c => c.Id == crateId).ExecuteDeleteAsync();
+
             await transaction.CommitAsync();
+            _logger.LogInformation("Successfully deleted crate {CrateId}", crateId);
             return Result.Success();
         }
         catch (Exception ex)
@@ -296,81 +296,6 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result<BulkDeleteCrateResponse>> DeleteCratesAsync(IEnumerable<Guid> crateIds, string userId)
-    {
-        var crateIdList = crateIds.ToList();
-
-        if (!crateIdList.Any())
-            return Result<BulkDeleteCrateResponse>.Failure(new ValidationError("No crate IDs provided"));
-
-        var crateEntities = await _context.Crates
-            .Include(c => c.Members)
-            .Where(c => crateIdList.Contains(c.Id))
-            .ToListAsync();
-
-        var existingIds = crateEntities.Select(c => c.Id).ToHashSet();
-        var notFoundIds = crateIdList.Where(id => !existingIds.Contains(id)).ToList();
-
-        var ownedCrates = crateEntities
-            .Where(c => c.Members.Any(m => m.UserId == userId && m.Role == CrateRole.Owner))
-            .ToList();
-
-        var ownedIds = ownedCrates.Select(c => c.Id).ToHashSet();
-        var unauthorizedIds = crateEntities
-            .Where(c => !ownedIds.Contains(c.Id))
-            .Select(c => c.Id)
-            .ToList();
-
-        if (!ownedCrates.Any())
-        {
-            return Result<BulkDeleteCrateResponse>.Failure(
-                new ForbiddenError("You do not have permission to delete any of the specified crates"));
-        }
-
-        // Proceed with deletion
-        await using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            var totalStorageToFree = ownedCrates.Sum(c => c.AllocatedStorageBytes);
-            var deallocationResult = await _userService.DeallocateStorageAsync(userId, totalStorageToFree);
-            if (!deallocationResult.IsSuccess)
-            {
-                await transaction.RollbackAsync();
-                return Result<BulkDeleteCrateResponse>.Failure(deallocationResult.GetError());
-            }
-
-            var deleteResult = await _batchDeleteService.DeleteCratesAsync(ownedCrates.Select(c => c.Id));
-            if (!deleteResult.IsSuccess)
-            {
-                await transaction.RollbackAsync();
-                return Result<BulkDeleteCrateResponse>.Failure(deleteResult.GetError());
-            }
-
-            await transaction.CommitAsync();
-
-            var deletedIds = ownedCrates.Select(c => c.Id).ToList();
-            var skippedIds = notFoundIds.Concat(unauthorizedIds).ToList();
-
-            var response = new BulkDeleteCrateResponse
-            {
-                DeletedCount = deletedIds.Count,
-                RequestedCount = crateIdList.Count,
-                DeletedCrateIds = deletedIds,
-                SkippedCrateIds = skippedIds,
-                Message = BuildBulkDeleteMessage(deletedIds.Count, skippedIds.Count, notFoundIds.Count,
-                    unauthorizedIds.Count)
-            };
-
-            return Result<BulkDeleteCrateResponse>.Success(response);
-        }
-        catch (Exception ex)
-        {
-            await transaction.RollbackAsync();
-            _logger.LogError(ex, "Failed to delete crates: {CrateIds}",
-                string.Join(", ", ownedCrates.Select(c => c.Id)));
-            return Result<BulkDeleteCrateResponse>.Failure(new InternalError("Failed to delete crates"));
-        }
-    }
 
     public async Task<Result<string>> GetCrateNameAsync(Guid crateId)
     {
