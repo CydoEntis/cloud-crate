@@ -205,6 +205,12 @@ public class CrateFolder
         DeletedByUserId = deletedByUserId;
         UpdatedAt = DateTime.UtcNow;
     }
+    
+    public void MoveTo(Guid? newParentFolderId)
+    {
+        ParentFolderId = newParentFolderId;
+        UpdatedAt = DateTime.UtcNow;
+    }
 
     public void Restore(string? restoredByUserId = null)
     {

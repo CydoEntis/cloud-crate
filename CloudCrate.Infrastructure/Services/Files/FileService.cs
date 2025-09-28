@@ -624,6 +624,8 @@ public class FileService : IFileService
             file.CrateFolderId = domainFile.CrateFolderId;
             file.UpdatedAt = domainFile.UpdatedAt;
 
+            await _context.SaveChangesAsync();
+
             return Result.Success();
         }
         catch (Exception ex)

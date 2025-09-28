@@ -441,8 +441,13 @@ public class FolderService : IFolderService
             if (storageResult.IsFailure)
                 return storageResult;
 
-            folderEntity.ParentFolderId = newParentId;
-            folderEntity.UpdatedAt = DateTime.UtcNow;
+            var domainFolder = folderEntity.ToDomain();
+            domainFolder.MoveTo(newParentId);
+
+            folderEntity.ParentFolderId = domainFolder.ParentFolderId;
+            folderEntity.UpdatedAt = domainFolder.UpdatedAt;
+
+            await _context.SaveChangesAsync();
 
             return Result.Success();
         }
@@ -920,6 +925,12 @@ public class FolderService : IFolderService
     public async Task<Result> BulkMoveItemsAsync(List<Guid> fileIds, List<Guid> folderIds, Guid? newParentId,
         string userId)
     {
+        _logger.LogInformation(
+            "BulkMoveItems starting - FileIds: {FileIds}, FolderIds: {FolderIds}, NewParentId: {NewParentId}",
+            string.Join(",", fileIds ?? new List<Guid>()),
+            string.Join(",", folderIds ?? new List<Guid>()),
+            newParentId);
+
         if ((!fileIds?.Any() == true) && (!folderIds?.Any() == true))
             return Result.Success();
 
@@ -932,30 +943,55 @@ public class FolderService : IFolderService
 
             if (fileIds?.Any() == true)
             {
-                var fileResult = await _fileService.MoveFilesAsync(fileIds, newParentId, userId);
-                if (fileResult.IsSuccess)
-                {
-                    successfulMoves.Add($"{fileIds.Count} file(s)");
-                }
-                else
-                {
-                    failedMoves.Add($"Files: {fileResult.GetError().Message}");
-                }
-            }
+                _logger.LogInformation("Moving {Count} files to parent {ParentId}", fileIds.Count, newParentId);
 
-            if (folderIds?.Any() == true)
-            {
-                foreach (var folderId in folderIds)
+                try
                 {
-                    var folderResult = await MoveFolderAsync(folderId, newParentId, userId);
-                    if (folderResult.IsSuccess)
+                    var fileResult = await _fileService.MoveFilesAsync(fileIds, newParentId, userId);
+                    if (fileResult.IsSuccess)
                     {
-                        successfulMoves.Add("1 folder");
+                        successfulMoves.Add($"{fileIds.Count} file(s)");
                     }
                     else
                     {
+                        _logger.LogError("File move failed: {Error}", fileResult.GetError().Message);
+                        failedMoves.Add($"Files: {fileResult.GetError().Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Exception during file move operation");
+                    failedMoves.Add($"Files: {ex.Message}");
+                }
+            }
+
+            // FOLDERS SECTION
+            if (folderIds?.Any() == true)
+            {
+                _logger.LogInformation("Moving {Count} folders to parent {ParentId}", folderIds.Count, newParentId);
+
+                foreach (var folderId in folderIds)
+                {
+                    try
+                    {
+                        var folderResult = await MoveFolderAsync(folderId, newParentId, userId);
+                        if (folderResult.IsSuccess)
+                        {
+                            successfulMoves.Add("1 folder");
+                        }
+                        else
+                        {
+                            var folderName = await GetFolderNameAsync(folderId);
+                            _logger.LogError("Folder move failed for {FolderName}: {Error}", folderName,
+                                folderResult.GetError().Message);
+                            failedMoves.Add($"'{folderName}': {folderResult.GetError().Message}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
                         var folderName = await GetFolderNameAsync(folderId);
-                        failedMoves.Add($"'{folderName}': {folderResult.GetError().Message}");
+                        _logger.LogError(ex, "Exception moving folder {FolderName}", folderName);
+                        failedMoves.Add($"'{folderName}': {ex.Message}");
                     }
                 }
             }

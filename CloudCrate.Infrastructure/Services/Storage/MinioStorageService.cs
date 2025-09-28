@@ -286,26 +286,103 @@ public class MinioStorageService : IStorageService
         }
     }
 
+
     public async Task<Result> MoveFolderAsync(Guid crateId, Guid folderId, Guid? newParentId)
     {
         _logger.LogInformation("Moving folder - CrateId: {CrateId}, FolderId: {FolderId}, NewParentId: {NewParentId}",
             crateId, folderId, newParentId);
 
-        var prefix = $"{crateId}/{folderId}/";
-        var listResponse = await _s3Client.ListObjectsV2Async(new ListObjectsV2Request
+        try
         {
-            BucketName = BucketName,
-            Prefix = prefix,
-            MaxKeys = 1
-        });
+            var prefix = $"{crateId}/{folderId}/";
+            var allObjects = new List<S3Object>();
+            string? continuationToken = null;
 
-        if (!listResponse.S3Objects.Any())
-        {
-            _logger.LogInformation("No files found for folder {FolderId}, no storage move needed", folderId);
+            do
+            {
+                var listRequest = new ListObjectsV2Request
+                {
+                    BucketName = BucketName,
+                    Prefix = prefix,
+                    ContinuationToken = continuationToken,
+                    MaxKeys = 1000
+                };
+
+                var listResponse = await _s3Client.ListObjectsV2Async(listRequest);
+
+                if (listResponse.S3Objects?.Any() == true)
+                {
+                    allObjects.AddRange(listResponse.S3Objects);
+                }
+
+                continuationToken = listResponse.IsTruncated.GetValueOrDefault()
+                    ? listResponse.NextContinuationToken
+                    : null;
+            } while (continuationToken != null);
+
+            if (!allObjects.Any())
+            {
+                _logger.LogInformation("No files found for folder {FolderId}, no storage move needed", folderId);
+                return Result.Success();
+            }
+
+            _logger.LogInformation("Found {Count} objects to move for folder {FolderId}", allObjects.Count, folderId);
+
+            var moveResults = new List<Task<Result>>();
+
+            foreach (var obj in allObjects)
+            {
+                var relativePath = obj.Key.Substring(prefix.Length);
+
+                var newKey = newParentId.HasValue
+                    ? $"{crateId}/{newParentId.Value}/{folderId}/{relativePath}"
+                    : $"{crateId}/{folderId}/{relativePath}";
+
+                moveResults.Add(MoveObjectAsync(obj.Key, newKey));
+            }
+
+            var results = await Task.WhenAll(moveResults);
+
+            var failedResult = results.FirstOrDefault(r => r.IsFailure);
+            if (failedResult.IsFailure)
+            {
+                _logger.LogError("Failed to move some objects for folder {FolderId}: {Error}",
+                    folderId, failedResult.GetError().Message);
+                return failedResult;
+            }
+
+            _logger.LogInformation("Successfully moved {Count} objects for folder {FolderId}", allObjects.Count,
+                folderId);
             return Result.Success();
         }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception occurred while moving folder {FolderId}", folderId);
+            return Result.Failure(new StorageError($"Failed to move folder: {ex.Message}"));
+        }
+    }
 
-        return Result.Success();
+    private async Task<Result> MoveObjectAsync(string sourceKey, string destinationKey)
+    {
+        try
+        {
+            await _s3Client.CopyObjectAsync(new CopyObjectRequest
+            {
+                SourceBucket = BucketName,
+                SourceKey = sourceKey,
+                DestinationBucket = BucketName,
+                DestinationKey = destinationKey
+            });
+
+            await _s3Client.DeleteObjectAsync(BucketName, sourceKey);
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to move object from {Source} to {Destination}", sourceKey, destinationKey);
+            return Result.Failure(new StorageError($"Failed to move object: {ex.Message}"));
+        }
     }
 
     public async Task<Result> RenameFileAsync(Guid crateId, Guid? folderId, string oldFileName, string newFileName)
