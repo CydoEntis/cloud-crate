@@ -30,6 +30,11 @@ public class FolderService : IFolderService
     private readonly IStorageService _storageService;
     private readonly ILogger<FolderService> _logger;
 
+    // Constants
+    private const int DefaultPageSize = 20;
+    private const string DefaultFolderColor = "#EAAC00";
+    private const string UnknownFolderName = "Unknown";
+
     public FolderService(
         AppDbContext context,
         ICrateRoleService crateRoleService,
@@ -43,7 +48,6 @@ public class FolderService : IFolderService
         _storageService = storageService;
         _logger = logger;
     }
-
 
     public async Task<Result<FolderContentsResponse>> GetFolderContentsAsync(FolderContentsParameters parameters)
     {
@@ -366,40 +370,6 @@ public class FolderService : IFolderService
         return depth;
     }
 
-    public async Task<Result> DeleteMultipleAsync(MultipleDeleteRequest request, string userId)
-    {
-        try
-        {
-            if (request.FileIds.Any())
-            {
-                var fileResult = request.Permanent
-                    ? await _fileService.PermanentlyDeleteFilesAsync(request.FileIds, userId)
-                    : await _fileService.SoftDeleteFilesAsync(request.FileIds, userId);
-
-                if (fileResult.IsFailure)
-                    return Result.Failure(fileResult.GetError());
-            }
-
-            foreach (var folderId in request.FolderIds)
-            {
-                var folderResult = request.Permanent
-                    ? await PermanentlyDeleteFolderAsync(folderId, userId)
-                    : await SoftDeleteFolderAsync(folderId, userId);
-
-                if (folderResult.IsFailure)
-                    return Result.Failure(folderResult.GetError());
-            }
-
-            await _context.SaveChangesAsync();
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Exception in DeleteMultipleAsync for UserId {UserId}", userId);
-            return Result.Failure(new InternalError(ex.Message));
-        }
-    }
-
     private async Task<Result> SoftDeleteFolderRecursiveAsync(CrateFolderEntity folderEntity, string userId)
     {
         try
@@ -438,7 +408,6 @@ public class FolderService : IFolderService
             return Result.Failure(new InternalError(ex.Message));
         }
     }
-
 
     public async Task<Result> MoveFolderAsync(Guid folderId, Guid? newParentId, string userId)
     {
@@ -526,15 +495,20 @@ public class FolderService : IFolderService
         {
             var excludedIds = new HashSet<Guid>();
 
-            if (request.ExcludeFolderId.HasValue)
-            {
-                var hierarchyData = await _context.CrateFolders
-                    .Where(f => f.CrateId == request.CrateId && !f.IsDeleted)
-                    .Select(f => new { f.Id, f.ParentFolderId })
-                    .ToListAsync();
+            // Fetch hierarchy data once for all operations
+            var hierarchyData = await _context.CrateFolders
+                .Where(f => f.CrateId == request.CrateId && !f.IsDeleted)
+                .Select(f => new { f.Id, f.ParentFolderId })
+                .ToListAsync();
 
-                excludedIds = GetDescendantFolderIds(hierarchyData, request.ExcludeFolderId.Value);
-                excludedIds.Add(request.ExcludeFolderId.Value);
+            if (request.ExcludeFolderIds?.Any() == true)
+            {
+                foreach (var excludeFolderId in request.ExcludeFolderIds)
+                {
+                    var descendants = GetDescendantFolderIdsFromHierarchy(hierarchyData, excludeFolderId);
+                    excludedIds.UnionWith(descendants);
+                    excludedIds.Add(excludeFolderId);
+                }
             }
 
             if (request.CurrentFolderId.HasValue)
@@ -571,7 +545,7 @@ public class FolderService : IFolderService
         }
     }
 
-    private HashSet<Guid> GetDescendantFolderIds(IEnumerable<dynamic> hierarchyData, Guid parentId)
+    private HashSet<Guid> GetDescendantFolderIdsFromHierarchy(IEnumerable<dynamic> hierarchyData, Guid parentId)
     {
         var descendants = new HashSet<Guid>();
         var queue = new Queue<Guid>();
@@ -580,9 +554,10 @@ public class FolderService : IFolderService
         while (queue.Count > 0)
         {
             var currentId = queue.Dequeue();
+
             var children = hierarchyData
                 .Where(f => f.ParentFolderId == currentId)
-                .Select(f => f.Id);
+                .Select(f => (Guid)f.Id);
 
             foreach (var childId in children)
             {
@@ -595,7 +570,6 @@ public class FolderService : IFolderService
 
         return descendants;
     }
-
 
     public async Task<Result<FolderDownloadResult>> DownloadFolderAsync(Guid folderId, string userId)
     {
@@ -620,18 +594,24 @@ public class FolderService : IFolderService
             var allFiles = filesResult.GetValue();
 
             using var memoryStream = new MemoryStream();
-            using (var zip = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+            try
             {
-                await AddFolderToZipOptimizedAsync(folderEntity, allFolders, allFiles, zip, userId, string.Empty);
+                using (var zip = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
+                {
+                    await AddFolderToZipOptimizedAsync(folderEntity, allFolders, allFiles, zip, userId, string.Empty);
+                }
+
+                return Result<FolderDownloadResult>.Success(new FolderDownloadResult
+                {
+                    FileBytes = memoryStream.ToArray(),
+                    FileName = folderEntity.Name
+                });
             }
-
-            memoryStream.Position = 0;
-
-            return Result<FolderDownloadResult>.Success(new FolderDownloadResult
+            catch
             {
-                FileBytes = memoryStream.ToArray(),
-                FileName = folderEntity.Name
-            });
+                memoryStream?.Dispose();
+                throw;
+            }
         }
         catch (Exception ex)
         {
@@ -640,7 +620,6 @@ public class FolderService : IFolderService
             return Result<FolderDownloadResult>.Failure(new InternalError(ex.Message));
         }
     }
-
 
     public async Task<Result> RestoreFolderAsync(Guid folderId, string userId)
     {
@@ -707,6 +686,7 @@ public class FolderService : IFolderService
         }
     }
 
+
     public async Task<Result> EmptyTrashAsync(Guid crateId, string userId)
     {
         var role = await _crateRoleService.GetUserRole(crateId, userId);
@@ -724,6 +704,8 @@ public class FolderService : IFolderService
         if (!canEmpty)
             return Result.Failure(new CrateUnauthorizedError("Cannot empty trash for this crate"));
 
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
         try
         {
             var trashedFileIds = await _context.CrateFiles
@@ -733,6 +715,7 @@ public class FolderService : IFolderService
 
             var trashedFolderIds = await _context.CrateFolders
                 .Where(f => f.CrateId == crateId && f.IsDeleted)
+                .OrderByDescending(f => GetFolderDepthFromId(f.Id, crateId))
                 .Select(f => f.Id)
                 .ToListAsync();
 
@@ -740,20 +723,28 @@ public class FolderService : IFolderService
             {
                 var fileResult = await _fileService.PermanentlyDeleteFilesAsync(trashedFileIds, userId);
                 if (fileResult.IsFailure)
+                {
+                    await transaction.RollbackAsync();
                     return fileResult;
+                }
             }
 
             foreach (var folderId in trashedFolderIds)
             {
                 var folderResult = await PermanentlyDeleteFolderAsync(folderId, userId);
                 if (folderResult.IsFailure)
+                {
+                    await transaction.RollbackAsync();
                     return folderResult;
+                }
             }
 
+            await transaction.CommitAsync();
             return Result.Success();
         }
         catch (Exception ex)
         {
+            await transaction.RollbackAsync();
             _logger.LogError(ex, "Exception emptying trash for CrateId {CrateId}, UserId {UserId}", crateId, userId);
             return Result.Failure(new InternalError(ex.Message));
         }
@@ -761,31 +752,52 @@ public class FolderService : IFolderService
 
     private async Task<Result> ValidateParentChainNotDeletedAsync(Guid? parentFolderId)
     {
-        var current = parentFolderId;
-        while (current != null)
+        if (!parentFolderId.HasValue)
+            return Result.Success();
+
+        var parentChain = new List<(Guid Id, string Name, bool IsDeleted, Guid? ParentId)>();
+        var currentId = parentFolderId;
+
+        while (currentId.HasValue)
         {
-            var parent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == current);
+            var parent = await _context.CrateFolders
+                .Where(f => f.Id == currentId.Value)
+                .Select(f => new { f.Id, f.Name, f.IsDeleted, f.ParentFolderId })
+                .FirstOrDefaultAsync();
+
             if (parent == null)
                 return Result.Failure(new NotFoundError("Parent folder not found"));
+
+            parentChain.Add((parent.Id, parent.Name, parent.IsDeleted, parent.ParentFolderId));
+
             if (parent.IsDeleted)
+            {
                 return Result.Failure(new AlreadyExistsError(
-                    "A parent folder is deleted. Restore parent(s) first or move to root."));
-            current = parent.ParentFolderId;
+                    $"Parent folder '{parent.Name}' is deleted. Restore parent(s) first or move to root."));
+            }
+
+            currentId = parent.ParentFolderId;
         }
 
         return Result.Success();
     }
 
-
     private List<Guid> GetDescendantFolderIds(List<CrateFolderEntity> allFolders, Guid parentId)
     {
-        var children = allFolders.Where(f => f.ParentFolderId == parentId).ToList();
         var result = new List<Guid>();
+        var toProcess = new Queue<Guid>();
+        toProcess.Enqueue(parentId);
 
-        foreach (var child in children)
+        while (toProcess.Count > 0)
         {
-            result.Add(child.Id);
-            result.AddRange(GetDescendantFolderIds(allFolders, child.Id));
+            var currentParentId = toProcess.Dequeue();
+            var children = allFolders.Where(f => f.ParentFolderId == currentParentId);
+
+            foreach (var child in children)
+            {
+                result.Add(child.Id);
+                toProcess.Enqueue(child.Id);
+            }
         }
 
         return result;
@@ -807,20 +819,34 @@ public class FolderService : IFolderService
 
         foreach (var file in filesInThisFolder)
         {
-            var fileBytesResult = await _fileService.DownloadFileAsync(file.Id, userId);
-            if (fileBytesResult.IsFailure) continue;
+            try
+            {
+                var fileBytesResult = await _fileService.DownloadFileAsync(file.Id, userId);
+                if (fileBytesResult.IsFailure)
+                {
+                    _logger.LogWarning("Failed to download file {FileId} for ZIP: {Error}",
+                        file.Id, fileBytesResult.GetError().Message);
+                    continue;
+                }
 
-            string filePathInZip = Path.Combine(folderPath, file.Name).Replace("\\", "/");
-            var zipEntry = zip.CreateEntry(filePathInZip, CompressionLevel.Fastest);
+                string filePathInZip = Path.Combine(folderPath, file.Name).Replace("\\", "/");
+                var zipEntry = zip.CreateEntry(filePathInZip, CompressionLevel.Fastest);
 
-            using var entryStream = zipEntry.Open();
-            using var fileStream = new MemoryStream(fileBytesResult.GetValue());
-            await fileStream.CopyToAsync(entryStream);
+                using var entryStream = zipEntry.Open();
+                using var fileStream = new MemoryStream(fileBytesResult.GetValue());
+                await fileStream.CopyToAsync(entryStream);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to add file {FileId} to ZIP", file.Id);
+            }
         }
 
-        var subfolders = allFolders.Where(f => f.ParentFolderId == folderEntity.Id);
+        var subfolders = allFolders.Where(f => f.ParentFolderId == folderEntity.Id && !f.IsDeleted);
         foreach (var subfolder in subfolders)
+        {
             await AddFolderToZipOptimizedAsync(subfolder, allFolders, allFiles, zip, userId, folderPath);
+        }
     }
 
     private async Task<List<CrateFolderResponse>> GetFolderItemsAsync(
@@ -834,45 +860,54 @@ public class FolderService : IFolderService
             .Where(f => f.CrateId == crateId && f.ParentFolderId == parentFolderId && !f.IsDeleted);
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
-            query = query.Where(f => EF.Functions.ILike(f.Name, $"%{searchTerm}%"));
+        {
+            var normalizedSearchTerm = searchTerm.Trim().ToLowerInvariant();
+            query = query.Where(f => EF.Functions.ILike(f.Name, $"%{normalizedSearchTerm}%"));
+        }
 
-        var folderEntities = await query.OrderBy(f => f.Name).ToListAsync();
+        var folderEntities = await query
+            .OrderBy(f => f.Name)
+            .ToListAsync();
 
-        var domainFolders = folderEntities.Select(f => f.ToDomain()).ToList();
-
-        return domainFolders.Select(CrateFolderMapper.ToCrateFolderResponse).ToList();
+        return folderEntities
+            .Select(f => f.ToDomain())
+            .Select(CrateFolderMapper.ToCrateFolderResponse)
+            .ToList();
     }
-
 
     private async Task<string> GetFolderNameAsync(Guid? folderId)
     {
         if (!folderId.HasValue) return "Root";
-        var folder = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == folderId.Value && !f.IsDeleted);
-        return folder?.Name ?? "Unknown";
+
+        var folderName = await _context.CrateFolders
+            .Where(f => f.Id == folderId.Value && !f.IsDeleted)
+            .Select(f => f.Name)
+            .FirstOrDefaultAsync();
+
+        return folderName ?? UnknownFolderName;
     }
 
     private async Task<List<FolderBreadcrumb>> GetFolderBreadcrumbs(Guid? folderId)
     {
+        if (!folderId.HasValue) return new List<FolderBreadcrumb>();
+
         var breadcrumbs = new List<FolderBreadcrumb>();
-
-        if (!folderId.HasValue) return breadcrumbs;
-
-        var allFolders = await _context.CrateFolders
-            .Where(f => !f.IsDeleted)
-            .ToListAsync();
-
         var currentId = folderId;
 
         while (currentId.HasValue)
         {
-            var folder = allFolders.FirstOrDefault(f => f.Id == currentId.Value);
+            var folder = await _context.CrateFolders
+                .Where(f => f.Id == currentId.Value && !f.IsDeleted)
+                .Select(f => new { f.Id, f.Name, f.Color, f.IsRoot, f.ParentFolderId })
+                .FirstOrDefaultAsync();
+
             if (folder == null) break;
 
             breadcrumbs.Insert(0, new FolderBreadcrumb
             {
                 Id = folder.Id.ToString(),
                 Name = folder.Name,
-                Color = folder.Color ?? "#EAAC00",
+                Color = folder.Color ?? DefaultFolderColor,
                 IsRoot = folder.IsRoot
             });
 
@@ -880,5 +915,145 @@ public class FolderService : IFolderService
         }
 
         return breadcrumbs;
+    }
+
+
+    public async Task<Result> BulkMoveItemsAsync(List<Guid> fileIds, List<Guid> folderIds, Guid? newParentId,
+        string userId)
+    {
+        if ((!fileIds?.Any() == true) && (!folderIds?.Any() == true))
+            return Result.Success();
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            var successfulMoves = new List<string>();
+            var failedMoves = new List<string>();
+
+            if (fileIds?.Any() == true)
+            {
+                var fileResult = await _fileService.MoveFilesAsync(fileIds, newParentId, userId);
+                if (fileResult.IsSuccess)
+                {
+                    successfulMoves.Add($"{fileIds.Count} file(s)");
+                }
+                else
+                {
+                    failedMoves.Add($"Files: {fileResult.GetError().Message}");
+                }
+            }
+
+            if (folderIds?.Any() == true)
+            {
+                foreach (var folderId in folderIds)
+                {
+                    var folderResult = await MoveFolderAsync(folderId, newParentId, userId);
+                    if (folderResult.IsSuccess)
+                    {
+                        successfulMoves.Add("1 folder");
+                    }
+                    else
+                    {
+                        var folderName = await GetFolderNameAsync(folderId);
+                        failedMoves.Add($"'{folderName}': {folderResult.GetError().Message}");
+                    }
+                }
+            }
+
+            await transaction.CommitAsync();
+
+            if (failedMoves.Any() && successfulMoves.Any())
+            {
+                var successMsg = $"Successfully moved {string.Join(", ", successfulMoves)}.";
+                var failMsg = $"Failed to move: {string.Join("; ", failedMoves)}";
+                return Result.Failure(new ValidationError($"{successMsg} {failMsg}"));
+            }
+            else if (failedMoves.Any())
+            {
+                return Result.Failure(new ValidationError($"Failed to move: {string.Join("; ", failedMoves)}"));
+            }
+
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Exception in BulkMoveItemsAsync for UserId {UserId}", userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
+    public async Task<Result> BulkSoftDeleteItemsAsync(List<Guid> fileIds, List<Guid> folderIds, string userId)
+    {
+        if ((!fileIds?.Any() == true) && (!folderIds?.Any() == true))
+            return Result.Success();
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+
+        try
+        {
+            if (fileIds?.Any() == true)
+            {
+                var fileResult = await _fileService.SoftDeleteFilesAsync(fileIds, userId);
+                if (fileResult.IsFailure)
+                {
+                    await transaction.RollbackAsync();
+                    return fileResult;
+                }
+            }
+
+            if (folderIds?.Any() == true)
+            {
+                var failedDeletes = new List<string>();
+
+                foreach (var folderId in folderIds)
+                {
+                    var result = await SoftDeleteFolderAsync(folderId, userId);
+                    if (result.IsFailure)
+                    {
+                        var folderName = await GetFolderNameAsync(folderId);
+                        failedDeletes.Add($"'{folderName}': {result.GetError().Message}");
+                    }
+                }
+
+                if (failedDeletes.Any())
+                {
+                    await transaction.RollbackAsync();
+                    return Result.Failure(new ValidationError(
+                        $"Failed to delete some folders: {string.Join("; ", failedDeletes)}"));
+                }
+            }
+
+            await transaction.CommitAsync();
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            _logger.LogError(ex, "Exception in BulkSoftDeleteItemsAsync for UserId {UserId}", userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
+    private async Task<int> GetFolderDepthFromId(Guid folderId, Guid crateId)
+    {
+        int depth = 0;
+        Guid? currentId = folderId; // Make it nullable
+
+        while (currentId.HasValue)
+        {
+            var parentId = await _context.CrateFolders
+                .Where(f => f.Id == currentId.Value && f.CrateId == crateId)
+                .Select(f => f.ParentFolderId)
+                .FirstOrDefaultAsync();
+
+            if (!parentId.HasValue) break;
+
+            depth++;
+            currentId = parentId;
+        }
+
+        return depth;
     }
 }

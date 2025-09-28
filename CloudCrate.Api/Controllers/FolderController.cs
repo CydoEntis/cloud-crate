@@ -80,7 +80,7 @@ public class FolderController : BaseController
             return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
         }
 
-        var result = await _folderService.DeleteFolderAsync(folderId, UserId);
+        var result = await _folderService.SoftDeleteFolderAsync(folderId, UserId);
 
         if (result.IsSuccess)
         {
@@ -157,9 +157,7 @@ public class FolderController : BaseController
         [FromQuery] GetAvailableMoveTargetsRequest request)
     {
         if (string.IsNullOrWhiteSpace(UserId))
-        {
             return Unauthorized(ApiResponse<PaginatedResult<FolderResponse>>.Failure("User is not authenticated", 401));
-        }
 
         request.CrateId = crateId;
         var result = await _folderService.GetAvailableMoveFoldersAsync(request, UserId);
@@ -230,6 +228,41 @@ public class FolderController : BaseController
         {
             return Ok(ApiResponse<EmptyResponse>.Success(message: "Trash emptied successfully"));
         }
+
+        return result.GetError().ToActionResult<EmptyResponse>();
+    }
+
+    [HttpPost("bulk-move")]
+    public async Task<IActionResult> BulkMoveItems(Guid crateId, [FromBody] BulkMoveRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+
+        var result = await _folderService.BulkMoveItemsAsync(
+            request.FileIds ?? new List<Guid>(),
+            request.FolderIds ?? new List<Guid>(),
+            request.NewParentId,
+            UserId);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Items moved successfully"));
+
+        return result.GetError().ToActionResult<EmptyResponse>();
+    }
+
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkSoftDeleteItems(Guid crateId, [FromBody] BulkDeleteRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
+
+        var result = await _folderService.BulkSoftDeleteItemsAsync(
+            request.FileIds ?? new List<Guid>(),
+            request.FolderIds ?? new List<Guid>(),
+            UserId);
+
+        if (result.IsSuccess)
+            return Ok(ApiResponse<EmptyResponse>.Success(message: "Items deleted successfully"));
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
