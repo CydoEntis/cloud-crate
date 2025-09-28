@@ -443,14 +443,13 @@ public class FolderService : IFolderService
 
             folderEntity.ParentFolderId = newParentId;
             folderEntity.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
 
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception in MoveFolderAsync for FolderId {FolderId}, UserId {UserId}",
-                folderId, userId);
+            _logger.LogError(ex, "Exception in MoveFolderAsync for FolderId {FolderId}, UserId {UserId}", folderId,
+                userId);
             return Result.Failure(new InternalError(ex.Message));
         }
     }
@@ -961,6 +960,7 @@ public class FolderService : IFolderService
                 }
             }
 
+            await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             if (failedMoves.Any() && successfulMoves.Any())

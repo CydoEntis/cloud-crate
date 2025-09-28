@@ -611,16 +611,12 @@ public class FileService : IFileService
             newParentId = null;
         }
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
             var storageResult = await _storageService.MoveFileAsync(
                 file.CrateId, file.CrateFolderId, newParentId, file.Name);
             if (storageResult.IsFailure)
-            {
-                await transaction.RollbackAsync();
                 return Result.Failure(storageResult.GetError());
-            }
 
             var domainFile = file.ToDomain();
             domainFile.MoveTo(newParentId);
@@ -628,14 +624,10 @@ public class FileService : IFileService
             file.CrateFolderId = domainFile.CrateFolderId;
             file.UpdatedAt = domainFile.UpdatedAt;
 
-            await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
-
             return Result.Success();
         }
         catch (Exception ex)
         {
-            await transaction.RollbackAsync();
             _logger.LogError(ex, "Exception moving file {FileId} for user {UserId}", fileId, userId);
             return Result.Failure(new InternalError(ex.Message));
         }
