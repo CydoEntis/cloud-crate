@@ -18,6 +18,8 @@ public class Crate
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
+    public DateTime LastAccessedAt { get; private set; }
+
     private readonly List<CrateFolder> _folders = new();
     public IReadOnlyCollection<CrateFolder> Folders => _folders.AsReadOnly();
 
@@ -39,6 +41,7 @@ public class Crate
         StorageSize usedStorage,
         DateTime createdAt,
         DateTime updatedAt,
+        DateTime lastAccessedAt,
         List<CrateFolder> folders,
         List<CrateFile> files,
         List<CrateMember> members)
@@ -50,6 +53,7 @@ public class Crate
         UsedStorage = usedStorage;
         CreatedAt = createdAt;
         UpdatedAt = updatedAt;
+        LastAccessedAt = lastAccessedAt;
         _folders = folders ?? new List<CrateFolder>();
         _files = files ?? new List<CrateFile>();
         _members = members ?? new List<CrateMember>();
@@ -63,23 +67,24 @@ public class Crate
         StorageSize usedStorage,
         DateTime createdAt,
         DateTime updatedAt,
+        DateTime lastAccessedAt,
         List<CrateFolder> folders,
         List<CrateFile> files,
         List<CrateMember> members)
     {
         return new Crate(
             id, name, color, allocatedStorage, usedStorage,
-            createdAt, updatedAt, folders, files, members
+            createdAt, updatedAt, lastAccessedAt, folders, files, members
         );
     }
 
     public static Crate Create(string name, string userId, long allocatedGb, string? color = null)
     {
         if (string.IsNullOrWhiteSpace(name))
-            throw new ValueEmptyException(nameof(name)); 
+            throw new ValueEmptyException(nameof(name));
         if (string.IsNullOrWhiteSpace(userId))
             throw new ValueEmptyException(nameof(userId));
-        if (allocatedGb < 1) 
+        if (allocatedGb < 1)
             throw new MinimumAllocationException(1);
 
         var crate = new Crate
@@ -175,4 +180,9 @@ public class Crate
     }
 
     public string GetCrateStorageName() => $"crate-{Id}".ToLowerInvariant();
+
+    public void RecordAccess()
+    {
+        LastAccessedAt = DateTime.UtcNow;
+    }
 }

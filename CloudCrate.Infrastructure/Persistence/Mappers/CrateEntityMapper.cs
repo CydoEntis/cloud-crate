@@ -17,6 +17,7 @@ public static class CrateEntityMapper
             UsedStorageBytes = crate.UsedStorage.Bytes,
             CreatedAt = crate.CreatedAt,
             UpdatedAt = crate.UpdatedAt,
+            LastAccessedAt = crate.LastAccessedAt,
             Folders = crate.Folders.Select(f => f.ToEntity(crate.Id)).ToList(),
             Files = crate.Files.Select(file => file.ToEntity(crate.Id)).ToList(),
             Members = crate.Members.Select(m => m.ToEntity(crate.Id)).ToList()
@@ -33,6 +34,7 @@ public static class CrateEntityMapper
             StorageSize.FromBytes(entity.UsedStorageBytes),
             entity.CreatedAt,
             entity.UpdatedAt,
+            entity.LastAccessedAt,
             entity.Folders.Select(f => f.ToDomain()).ToList(),
             entity.Files.Select(f => f.ToDomain()).ToList(),
             entity.Members.Select(m => m.ToDomain()).ToList()

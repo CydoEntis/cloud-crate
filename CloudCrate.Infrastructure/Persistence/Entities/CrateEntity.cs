@@ -14,6 +14,7 @@ public class CrateEntity
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
 
+    public DateTime LastAccessedAt {get; set;}
     public ICollection<CrateFolderEntity> Folders { get; set; } = new List<CrateFolderEntity>();
     public ICollection<CrateFileEntity> Files { get; set; } = new List<CrateFileEntity>();
     public ICollection<CrateMemberEntity> Members { get; set; } = new List<CrateMemberEntity>();

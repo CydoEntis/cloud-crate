@@ -94,4 +94,18 @@ public class CrateController : BaseController
         return result.GetError().ToActionResult<EmptyResponse>();
     }
 
+    [HttpGet("recent")]
+    public async Task<IActionResult> GetRecentlyAccessedCrates([FromQuery] int count = 5)
+    {
+        var result = await _crateService.GetRecentlyAccessedCratesAsync(UserId!, count);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<List<CrateSummaryResponse>>.Success(
+                data: result.GetValue(),
+                message: "Recently accessed crates retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<List<CrateSummaryResponse>>();
+    }
 }

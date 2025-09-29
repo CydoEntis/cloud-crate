@@ -223,6 +223,18 @@ public class CrateService : ICrateService
             return Result<CrateDetailsResponse>.Failure(new NotFoundError("Crate not found"));
 
         var crateDomain = crateEntity.ToDomain();
+        crateDomain.RecordAccess();
+        crateEntity.UpdateEntity(crateDomain);
+
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to update LastAccessedAt for crate {CrateId}", crateId);
+        }
+
         var currentMember = crateDomain.Members.First(m => m.UserId == userId);
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
 
@@ -244,6 +256,43 @@ public class CrateService : ICrateService
         };
 
         return Result<CrateDetailsResponse>.Success(response);
+    }
+
+    public async Task<Result<List<CrateSummaryResponse>>> GetRecentlyAccessedCratesAsync(
+        string userId,
+        int count = 5)
+    {
+        if (string.IsNullOrEmpty(userId))
+            return Result<List<CrateSummaryResponse>>.Failure(
+                new UnauthorizedError("User must be logged in"));
+
+        if (count < 1 || count > 20)
+            return Result<List<CrateSummaryResponse>>.Failure(
+                new ValidationError("Count must be between 1 and 20"));
+
+        try
+        {
+            var crateEntities = await _context.Crates
+                .AsNoTracking()
+                .Include(c => c.Members)
+                .ThenInclude(m => m.User)
+                .Where(c => c.Members.Any(m => m.UserId == userId))
+                .OrderByDescending(c => c.LastAccessedAt)
+                .Take(count)
+                .ToListAsync();
+
+            var responses = crateEntities
+                .Select(entity => CrateSummaryMapper.ToCrateSummaryResponse(entity.ToDomain(), userId))
+                .ToList();
+
+            return Result<List<CrateSummaryResponse>>.Success(responses);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to retrieve recently accessed crates for user {UserId}", userId);
+            return Result<List<CrateSummaryResponse>>.Failure(
+                new InternalError("Could not fetch recently accessed crates"));
+        }
     }
 
     public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)

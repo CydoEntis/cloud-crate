@@ -14,6 +14,10 @@ public interface ICrateService
 
     Task<Result<CrateDetailsResponse>> GetCrateAsync(Guid crateId, string userId);
 
+    Task<Result<List<CrateSummaryResponse>>> GetRecentlyAccessedCratesAsync(
+        string userId,
+        int count = 5);
+
     Task<Result> UpdateCrateAsync(Guid crateId, string userId, UpdateCrateRequest request);
 
     Task<Result> DeleteCrateAsync(Guid crateId, string userId);
