@@ -211,7 +211,7 @@ public class CrateService : ICrateService
         if (role == null)
             return Result<CrateDetailsResponse>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-        var crateEntity = await _context.Crates.AsNoTracking()
+        var crateEntity = await _context.Crates
             .IgnoreQueryFilters()
             .Include(c => c.Members)
             .ThenInclude(m => m.User)
@@ -222,19 +222,19 @@ public class CrateService : ICrateService
         if (crateEntity is null)
             return Result<CrateDetailsResponse>.Failure(new NotFoundError("Crate not found"));
 
-        var crateDomain = crateEntity.ToDomain();
-        crateDomain.RecordAccess();
-        crateEntity.UpdateEntity(crateDomain);
+        crateEntity.LastAccessedAt = DateTime.UtcNow;
 
         try
         {
             await _context.SaveChangesAsync();
+            _context.Entry(crateEntity).State = EntityState.Detached;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to update LastAccessedAt for crate {CrateId}", crateId);
         }
 
+        var crateDomain = crateEntity.ToDomain();
         var currentMember = crateDomain.Members.First(m => m.UserId == userId);
         var rootFolder = crateDomain.Folders.FirstOrDefault(f => f.ParentFolderId == null);
 
@@ -295,55 +295,69 @@ public class CrateService : ICrateService
         }
     }
 
-    public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
+public async Task<Result> DeleteCrateAsync(Guid crateId, string userId)
+{
+    _logger.LogInformation("DELETE ATTEMPT - CrateId: {CrateId}, UserId: '{UserId}'", crateId, userId);
+    
+    var role = await _crateRoleService.GetUserRole(crateId, userId);
+    
+    _logger.LogInformation("GetUserRole returned: {Role}", role?.ToString() ?? "NULL");
+    
+    if (role == null)
     {
-        var role = await _crateRoleService.GetUserRole(crateId, userId);
-        if (role == null)
-            return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+        var members = await _context.CrateMembers
+            .Where(m => m.CrateId == crateId)
+            .Select(m => new { m.UserId, m.Role })
+            .ToListAsync();
+        
+        _logger.LogError("AUTH FAILED - Expected UserId: '{UserId}', Found members: {@Members}", userId, members);
+        
+        return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
+    }
 
-        if (role != CrateRole.Owner)
-            return Result.Failure(new ForbiddenError("Only the owner can delete this crate"));
+    if (role != CrateRole.Owner)
+        return Result.Failure(new ForbiddenError("Only the owner can delete this crate"));
 
-        var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
-        if (crateEntity is null)
-            return Result.Failure(new NotFoundError("Crate not found"));
+    var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
+    if (crateEntity is null)
+        return Result.Failure(new NotFoundError("Crate not found"));
 
-        var crateDomain = crateEntity.ToDomain();
+    var crateDomain = crateEntity.ToDomain();
 
-        await using var transaction = await _context.Database.BeginTransactionAsync();
-        try
-        {
-            var deallocationResult =
-                await _userService.DeallocateStorageAsync(userId, crateDomain.AllocatedStorage.Bytes);
-            if (!deallocationResult.IsSuccess)
-            {
-                await transaction.RollbackAsync();
-                return Result.Failure(deallocationResult.GetError());
-            }
-
-            var storageResult = await _storageService.DeleteAllFilesForCrateAsync(crateId);
-            if (!storageResult.IsSuccess)
-            {
-                _logger.LogWarning("Failed to delete files for crate {CrateId}: {Error}",
-                    crateId, storageResult.GetError().Message);
-            }
-
-            await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
-            await _context.CrateFolders.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
-            await _context.CrateMembers.Where(m => m.CrateId == crateId).ExecuteDeleteAsync();
-            await _context.Crates.Where(c => c.Id == crateId).ExecuteDeleteAsync();
-
-            await transaction.CommitAsync();
-            _logger.LogInformation("Successfully deleted crate {CrateId}", crateId);
-            return Result.Success();
-        }
-        catch (Exception ex)
+    await using var transaction = await _context.Database.BeginTransactionAsync();
+    try
+    {
+        var deallocationResult =
+            await _userService.DeallocateStorageAsync(userId, crateDomain.AllocatedStorage.Bytes);
+        if (!deallocationResult.IsSuccess)
         {
             await transaction.RollbackAsync();
-            _logger.LogError(ex, "Failed to delete crate {CrateId}", crateId);
-            return Result.Failure(new InternalError($"Failed to delete crate: {ex.Message}"));
+            return Result.Failure(deallocationResult.GetError());
         }
+
+        var storageResult = await _storageService.DeleteAllFilesForCrateAsync(crateId);
+        if (!storageResult.IsSuccess)
+        {
+            _logger.LogWarning("Failed to delete files for crate {CrateId}: {Error}",
+                crateId, storageResult.GetError().Message);
+        }
+
+        await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+        await _context.CrateFolders.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+        await _context.CrateMembers.Where(m => m.CrateId == crateId).ExecuteDeleteAsync();
+        await _context.Crates.Where(c => c.Id == crateId).ExecuteDeleteAsync();
+
+        await transaction.CommitAsync();
+        _logger.LogInformation("Successfully deleted crate {CrateId}", crateId);
+        return Result.Success();
     }
+    catch (Exception ex)
+    {
+        await transaction.RollbackAsync();
+        _logger.LogError(ex, "Failed to delete crate {CrateId}", crateId);
+        return Result.Failure(new InternalError($"Failed to delete crate: {ex.Message}"));
+    }
+}
 
 
     public async Task<Result<string>> GetCrateNameAsync(Guid crateId)
