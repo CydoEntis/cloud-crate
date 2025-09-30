@@ -4,6 +4,8 @@ public class TrashItemResponse
 {
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public Guid CrateId { get; set; } // ADD THIS
+    public string CrateName { get; set; } = string.Empty;
     public TrashItemType Type { get; set; }
 
     public long? SizeInBytes { get; set; }

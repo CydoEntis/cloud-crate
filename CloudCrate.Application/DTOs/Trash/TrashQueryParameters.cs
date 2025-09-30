@@ -2,7 +2,7 @@
 
 public class TrashQueryParameters
 {
-    public Guid CrateId { get; set; }
+    public Guid? CrateId { get; set; }
     public string UserId { get; set; } = string.Empty;
 
     public int Page { get; set; } = 1;

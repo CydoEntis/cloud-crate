@@ -21,7 +21,9 @@ public static class TrashItemMapper
             CreatedByUserId = file.UploadedByUserId,
             CreatedByUserName = file.UploadedByUser?.DisplayName ?? "Unknown",
             CanRestore = canModify,
-            CanPermanentlyDelete = canModify
+            CanPermanentlyDelete = canModify,
+            CrateId = file.CrateId,
+            CrateName = file.Crate.Name
         };
     }
 
@@ -41,36 +43,35 @@ public static class TrashItemMapper
             CreatedByUserId = folder.CreatedByUserId,
             CreatedByUserName = folder.CreatedByUser?.DisplayName ?? "Unknown",
             CanRestore = canModify,
-            CanPermanentlyDelete = canModify
+            CanPermanentlyDelete = canModify,
+            CrateId = folder.CrateId,
+            CrateName = folder.Crate.Name
         };
     }
 
     public static List<TrashItemResponse> ToTrashItemResponses(
         List<CrateFileEntity> files,
         List<CrateFolderEntity> folders,
-        bool isOwnerOrManager,
         string userId)
     {
         var trashItems = new List<TrashItemResponse>(files.Count + folders.Count);
-
+        
         foreach (var file in files)
         {
-            var canModify = isOwnerOrManager || 
-                           file.UploadedByUserId == userId || 
+            var canModify = file.UploadedByUserId == userId || 
                            file.DeletedByUserId == userId;
             
             trashItems.Add(ToTrashItemResponse(file, canModify));
         }
-
+        
         foreach (var folder in folders)
         {
-            var canModify = isOwnerOrManager || 
-                           folder.CreatedByUserId == userId || 
+            var canModify = folder.CreatedByUserId == userId || 
                            folder.DeletedByUserId == userId;
             
             trashItems.Add(ToTrashItemResponse(folder, canModify));
         }
-
+        
         return trashItems;
     }
 }

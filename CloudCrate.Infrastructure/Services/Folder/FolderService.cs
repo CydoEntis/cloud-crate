@@ -795,19 +795,43 @@ public class FolderService : IFolderService
     {
         try
         {
-            var authResult = await ValidateAndAuthorizeAsync(parameters);
-            if (authResult.IsFailure)
-                return Result<PaginatedResult<TrashItemResponse>>.Failure(authResult.GetError());
+            if (string.IsNullOrWhiteSpace(parameters.UserId))
+                return Result<PaginatedResult<TrashItemResponse>>.Failure(new UnauthorizedError("UserId is required"));
 
-            var (role, isOwnerOrManager) = authResult.GetValue();
+            // Get list of crates to query
+            List<Guid> crateIds;
+            if (parameters.CrateId.HasValue)
+            {
+                // Single crate - verify user is member
+                var role = await _crateRoleService.GetUserRole(parameters.CrateId.Value, parameters.UserId);
+                if (role == null)
+                    return Result<PaginatedResult<TrashItemResponse>>.Failure(
+                        new CrateUnauthorizedError("Not a member of this crate"));
 
-            var deletedFolderIds = await GetDeletedFolderIdsAsync(parameters.CrateId);
-            var files = await GetDeletedFilesAsync(parameters, isOwnerOrManager, deletedFolderIds);
-            var folders = await GetDeletedFoldersAsync(parameters, isOwnerOrManager, deletedFolderIds);
+                crateIds = new List<Guid> { parameters.CrateId.Value };
+            }
+            else
+            {
+                // All crates user is member of
+                crateIds = await _context.CrateMembers
+                    .Where(cm => cm.UserId == parameters.UserId)
+                    .Select(cm => cm.CrateId)
+                    .ToListAsync();
+            }
 
-            // Map to responses
-            var trashItems = TrashItemMapper.ToTrashItemResponses(
-                files, folders, isOwnerOrManager, parameters.UserId);
+            if (!crateIds.Any())
+            {
+                return Result<PaginatedResult<TrashItemResponse>>.Success(
+                    PaginatedResult<TrashItemResponse>.Create(
+                        new List<TrashItemResponse>(), 0, parameters.Page, parameters.PageSize));
+            }
+
+            var deletedFolderIds = await GetDeletedFolderIdsAsync(crateIds);
+            var files = await GetDeletedFilesAsync(parameters, crateIds, deletedFolderIds);
+            var folders = await GetDeletedFoldersAsync(parameters, crateIds, deletedFolderIds);
+
+            // Pass userId for permission checking
+            var trashItems = TrashItemMapper.ToTrashItemResponses(files, folders, parameters.UserId);
 
             var sortedItems = SortTrashItems(trashItems, parameters.SortBy, parameters.Ascending);
             var paginatedResult = PaginateTrashItems(sortedItems, parameters.Page, parameters.PageSize);
@@ -816,45 +840,37 @@ public class FolderService : IFolderService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex,
-                "Exception in GetTrashItemsAsync for CrateId {CrateId}, UserId {UserId}",
-                parameters.CrateId, parameters.UserId);
+            _logger.LogError(ex, "Exception in GetTrashItemsAsync for UserId {UserId}", parameters.UserId);
             return Result<PaginatedResult<TrashItemResponse>>.Failure(new InternalError(ex.Message));
         }
     }
 
-    private async Task<Result<(CrateRole role, bool isOwnerOrManager)>> ValidateAndAuthorizeAsync(
-        TrashQueryParameters parameters)
-    {
-        if (string.IsNullOrWhiteSpace(parameters.UserId))
-            return Result<(CrateRole, bool)>.Failure(new UnauthorizedError("UserId is required"));
-
-        var role = await _crateRoleService.GetUserRole(parameters.CrateId, parameters.UserId);
-        if (role == null)
-            return Result<(CrateRole, bool)>.Failure(
-                new CrateUnauthorizedError("Not a member of this crate"));
-
-        var isOwnerOrManager = role == CrateRole.Owner || role == CrateRole.Manager;
-        return Result<(CrateRole, bool)>.Success((role.Value, isOwnerOrManager));
-    }
-
-    private async Task<HashSet<Guid>> GetDeletedFolderIdsAsync(Guid crateId)
+    private async Task<HashSet<Guid>> GetDeletedFolderIdsAsync(List<Guid> crateIds)
     {
         return await _context.CrateFolders
-            .Where(f => f.CrateId == crateId && f.IsDeleted)
+            .Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted)
             .Select(f => f.Id)
             .ToHashSetAsync();
     }
 
     private async Task<List<CrateFileEntity>> GetDeletedFilesAsync(
         TrashQueryParameters parameters,
-        bool isOwnerOrManager,
+        List<Guid> crateIds,
         HashSet<Guid> deletedFolderIds)
     {
         var query = _context.CrateFiles
             .Include(f => f.UploadedByUser)
             .Include(f => f.DeletedByUser)
-            .ApplyTrashFileFiltering(parameters.CrateId, parameters.UserId, isOwnerOrManager, deletedFolderIds);
+            .Include(f => f.Crate)
+            .Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
+
+        query = query.Where(f =>
+            f.UploadedByUserId == parameters.UserId ||
+            f.DeletedByUserId == parameters.UserId);
+
+        query = query.Where(f =>
+            f.CrateFolderId == null ||
+            !deletedFolderIds.Contains(f.CrateFolderId.Value));
 
         if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             query = query.ApplyTrashSearch(parameters.SearchTerm);
@@ -864,13 +880,22 @@ public class FolderService : IFolderService
 
     private async Task<List<CrateFolderEntity>> GetDeletedFoldersAsync(
         TrashQueryParameters parameters,
-        bool isOwnerOrManager,
+        List<Guid> crateIds,
         HashSet<Guid> deletedFolderIds)
     {
         var query = _context.CrateFolders
             .Include(f => f.CreatedByUser)
             .Include(f => f.DeletedByUser)
-            .ApplyTrashFolderFiltering(parameters.CrateId, parameters.UserId, isOwnerOrManager, deletedFolderIds);
+            .Include(f => f.Crate)
+            .Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
+
+        query = query.Where(f =>
+            f.CreatedByUserId == parameters.UserId ||
+            f.DeletedByUserId == parameters.UserId);
+
+        query = query.Where(f =>
+            f.ParentFolderId == null ||
+            !deletedFolderIds.Contains(f.ParentFolderId.Value));
 
         if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             query = query.ApplyTrashSearch(parameters.SearchTerm);

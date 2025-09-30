@@ -267,7 +267,7 @@ public class FolderController : BaseController
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
-    
+
     [HttpGet("trash")]
     public async Task<IActionResult> GetTrashItems(
         Guid crateId,
@@ -283,7 +283,7 @@ public class FolderController : BaseController
 
         var parameters = new TrashQueryParameters
         {
-            CrateId = crateId,
+            CrateId = crateId == Guid.Empty ? null : crateId,
             UserId = UserId,
             Page = page,
             PageSize = pageSize,
