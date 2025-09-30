@@ -7,6 +7,7 @@ using CloudCrate.Application.Interfaces.Permissions;
 using Microsoft.EntityFrameworkCore;
 using System.IO.Compression;
 using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.DTOs.Trash;
 using CloudCrate.Application.Errors;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Application.Mappers;
@@ -267,7 +268,8 @@ public class FolderService : IFolderService
             {
                 CrateRole.Owner => true,
                 CrateRole.Manager => true,
-                CrateRole.Member => rootFolder.CreatedByUserId == userId,
+                CrateRole.Member => rootFolder.CreatedByUserId == userId ||
+                                    rootFolder.DeletedByUserId == userId,
                 _ => false
             };
 
@@ -676,7 +678,8 @@ public class FolderService : IFolderService
             {
                 CrateRole.Owner => true,
                 CrateRole.Manager => true,
-                CrateRole.Member => folderEntity.CreatedByUserId == userId,
+                CrateRole.Member => folderEntity.CreatedByUserId == userId ||
+                                    folderEntity.DeletedByUserId == userId,
                 _ => false
             };
 
@@ -785,6 +788,137 @@ public class FolderService : IFolderService
             return Result.Failure(new InternalError(ex.Message));
         }
     }
+
+
+    public async Task<Result<PaginatedResult<TrashItemResponse>>> GetTrashItemsAsync(
+        TrashQueryParameters parameters)
+    {
+        try
+        {
+            var authResult = await ValidateAndAuthorizeAsync(parameters);
+            if (authResult.IsFailure)
+                return Result<PaginatedResult<TrashItemResponse>>.Failure(authResult.GetError());
+
+            var (role, isOwnerOrManager) = authResult.GetValue();
+
+            var deletedFolderIds = await GetDeletedFolderIdsAsync(parameters.CrateId);
+            var files = await GetDeletedFilesAsync(parameters, isOwnerOrManager, deletedFolderIds);
+            var folders = await GetDeletedFoldersAsync(parameters, isOwnerOrManager, deletedFolderIds);
+
+            // Map to responses
+            var trashItems = TrashItemMapper.ToTrashItemResponses(
+                files, folders, isOwnerOrManager, parameters.UserId);
+
+            var sortedItems = SortTrashItems(trashItems, parameters.SortBy, parameters.Ascending);
+            var paginatedResult = PaginateTrashItems(sortedItems, parameters.Page, parameters.PageSize);
+
+            return Result<PaginatedResult<TrashItemResponse>>.Success(paginatedResult);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "Exception in GetTrashItemsAsync for CrateId {CrateId}, UserId {UserId}",
+                parameters.CrateId, parameters.UserId);
+            return Result<PaginatedResult<TrashItemResponse>>.Failure(new InternalError(ex.Message));
+        }
+    }
+
+    private async Task<Result<(CrateRole role, bool isOwnerOrManager)>> ValidateAndAuthorizeAsync(
+        TrashQueryParameters parameters)
+    {
+        if (string.IsNullOrWhiteSpace(parameters.UserId))
+            return Result<(CrateRole, bool)>.Failure(new UnauthorizedError("UserId is required"));
+
+        var role = await _crateRoleService.GetUserRole(parameters.CrateId, parameters.UserId);
+        if (role == null)
+            return Result<(CrateRole, bool)>.Failure(
+                new CrateUnauthorizedError("Not a member of this crate"));
+
+        var isOwnerOrManager = role == CrateRole.Owner || role == CrateRole.Manager;
+        return Result<(CrateRole, bool)>.Success((role.Value, isOwnerOrManager));
+    }
+
+    private async Task<HashSet<Guid>> GetDeletedFolderIdsAsync(Guid crateId)
+    {
+        return await _context.CrateFolders
+            .Where(f => f.CrateId == crateId && f.IsDeleted)
+            .Select(f => f.Id)
+            .ToHashSetAsync();
+    }
+
+    private async Task<List<CrateFileEntity>> GetDeletedFilesAsync(
+        TrashQueryParameters parameters,
+        bool isOwnerOrManager,
+        HashSet<Guid> deletedFolderIds)
+    {
+        var query = _context.CrateFiles
+            .Include(f => f.UploadedByUser)
+            .Include(f => f.DeletedByUser)
+            .ApplyTrashFileFiltering(parameters.CrateId, parameters.UserId, isOwnerOrManager, deletedFolderIds);
+
+        if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
+            query = query.ApplyTrashSearch(parameters.SearchTerm);
+
+        return await query.ToListAsync();
+    }
+
+    private async Task<List<CrateFolderEntity>> GetDeletedFoldersAsync(
+        TrashQueryParameters parameters,
+        bool isOwnerOrManager,
+        HashSet<Guid> deletedFolderIds)
+    {
+        var query = _context.CrateFolders
+            .Include(f => f.CreatedByUser)
+            .Include(f => f.DeletedByUser)
+            .ApplyTrashFolderFiltering(parameters.CrateId, parameters.UserId, isOwnerOrManager, deletedFolderIds);
+
+        if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
+            query = query.ApplyTrashSearch(parameters.SearchTerm);
+
+        return await query.ToListAsync();
+    }
+
+    private static List<TrashItemResponse> SortTrashItems(
+        List<TrashItemResponse> items,
+        TrashSortBy sortBy,
+        bool ascending)
+    {
+        return sortBy switch
+        {
+            TrashSortBy.Name => ascending
+                ? items.OrderBy(t => t.Name).ToList()
+                : items.OrderByDescending(t => t.Name).ToList(),
+
+            TrashSortBy.Size => ascending
+                ? items.OrderBy(t => t.SizeInBytes ?? 0).ToList()
+                : items.OrderByDescending(t => t.SizeInBytes ?? 0).ToList(),
+
+            TrashSortBy.DeletedAt => ascending
+                ? items.OrderBy(t => t.DeletedAt).ToList()
+                : items.OrderByDescending(t => t.DeletedAt).ToList(),
+
+            _ => items.OrderByDescending(t => t.DeletedAt).ToList()
+        };
+    }
+
+    private static PaginatedResult<TrashItemResponse> PaginateTrashItems(
+        List<TrashItemResponse> items,
+        int page,
+        int pageSize)
+    {
+        var totalCount = items.Count;
+        var paginatedItems = items
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+
+        return PaginatedResult<TrashItemResponse>.Create(
+            paginatedItems,
+            totalCount,
+            page,
+            pageSize);
+    }
+
 
     private async Task<Result> ValidateParentChainNotDeletedAsync(Guid? parentFolderId)
     {

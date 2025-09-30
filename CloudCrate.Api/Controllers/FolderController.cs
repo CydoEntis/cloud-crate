@@ -7,6 +7,7 @@ using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Api.Common.Extensions;
 using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.DTOs.Trash;
 
 namespace CloudCrate.Api.Controllers;
 
@@ -265,5 +266,41 @@ public class FolderController : BaseController
             return Ok(ApiResponse<EmptyResponse>.Success(message: "Items deleted successfully"));
 
         return result.GetError().ToActionResult<EmptyResponse>();
+    }
+    
+    [HttpGet("trash")]
+    public async Task<IActionResult> GetTrashItems(
+        Guid crateId,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] TrashSortBy sortBy = TrashSortBy.DeletedAt,
+        [FromQuery] bool ascending = false)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+            return Unauthorized(ApiResponse<PaginatedResult<TrashItemResponse>>.Failure(
+                "User is not authenticated", 401));
+
+        var parameters = new TrashQueryParameters
+        {
+            CrateId = crateId,
+            UserId = UserId,
+            Page = page,
+            PageSize = pageSize,
+            SearchTerm = searchTerm,
+            SortBy = sortBy,
+            Ascending = ascending
+        };
+
+        var result = await _folderService.GetTrashItemsAsync(parameters);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<PaginatedResult<TrashItemResponse>>.Success(
+                data: result.GetValue(),
+                message: "Trash items retrieved successfully"));
+        }
+
+        return result.GetError().ToActionResult<PaginatedResult<TrashItemResponse>>();
     }
 }

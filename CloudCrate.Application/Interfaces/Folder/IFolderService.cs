@@ -3,6 +3,7 @@ using CloudCrate.Application.DTOs.Folder;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Folder.Response;
 using CloudCrate.Application.DTOs.Pagination;
+using CloudCrate.Application.DTOs.Trash;
 using CloudCrate.Application.Models;
 
 namespace CloudCrate.Application.Interfaces.Folder;
@@ -27,4 +28,7 @@ public interface IFolderService
 
     Task<Result<PaginatedResult<FolderResponse>>> GetAvailableMoveFoldersAsync(GetAvailableMoveTargetsRequest request,
         string userId);
+
+    Task<Result<PaginatedResult<TrashItemResponse>>> GetTrashItemsAsync(
+        TrashQueryParameters parameters);
 }

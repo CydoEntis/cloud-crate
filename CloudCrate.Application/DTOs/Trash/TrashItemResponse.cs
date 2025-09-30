@@ -1,27 +1,26 @@
-﻿using CloudCrate.Domain.Entities;
-
-namespace CloudCrate.Application.DTOs.Trash;
+﻿namespace CloudCrate.Application.DTOs.Trash;
 
 public class TrashItemResponse
 {
     public Guid Id { get; set; }
-    public string Name { get; set; } = "";
-    public bool IsFolder { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public TrashItemType Type { get; set; }
+
+    public long? SizeInBytes { get; set; }
+
     public DateTime DeletedAt { get; set; }
 
-    public static TrashItemResponse FromFile(CrateFile file) => new()
-    {
-        Id = file.Id,
-        Name = file.Name,
-        IsFolder = false,
-        DeletedAt = file.DeletedAt ?? file.CreatedAt
-    };
+    public string DeletedByUserId { get; set; } = string.Empty;
+    public string DeletedByUserName { get; set; } = string.Empty;
+    public string CreatedByUserId { get; set; } = string.Empty;
+    public string CreatedByUserName { get; set; } = string.Empty;
 
-    public static TrashItemResponse FromFolder(CrateFolder folder) => new()
-    {
-        Id = folder.Id,
-        Name = folder.Name,
-        IsFolder = true,
-        DeletedAt = folder.DeletedAt ?? folder.CreatedAt
-    };
+    public bool CanRestore { get; set; }
+    public bool CanPermanentlyDelete { get; set; }
+}
+
+public enum TrashItemType
+{
+    File,
+    Folder
 }

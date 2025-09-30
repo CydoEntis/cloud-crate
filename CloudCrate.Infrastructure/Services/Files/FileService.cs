@@ -42,8 +42,6 @@ public class FileService : IFileService
     private const string FOLDER_NOT_FOUND_MESSAGE = "Folder not found";
     private const string CRATE_NOT_FOUND_MESSAGE = "Crate not found";
     private const string DESTINATION_FOLDER_NOT_FOUND_MESSAGE = "Destination folder not found";
-    private const string PARENT_FOLDER_NOT_FOUND_MESSAGE = "Parent folder not found";
-    private const string PARENT_FOLDER_DELETED_MESSAGE = "Parent folder is deleted. Restore parent or move to root.";
 
     public FileService(
         AppDbContext context,
@@ -59,7 +57,6 @@ public class FileService : IFileService
         _logger = logger;
     }
 
-    #region Upload Operations
 
     public async Task<Result<Guid>> UploadFileAsync(FileUploadRequest request, string userId)
     {
@@ -239,9 +236,6 @@ public class FileService : IFileService
         }
     }
 
-    #endregion
-
-    #region Query Operations
 
     public async Task<Result<CrateFileResponse>> GetFileAsync(Guid fileId, string userId)
     {
@@ -433,11 +427,6 @@ public class FileService : IFileService
             return Result<long>.Failure(new InternalError(ex.Message));
         }
     }
-
-    #endregion
-
-
-    #region File Operations
 
     public async Task<Result> UpdateFileAsync(Guid fileId, UpdateFileRequest request, string userId)
     {
@@ -641,7 +630,7 @@ public class FileService : IFileService
         {
             CrateRole.Owner => true,
             CrateRole.Manager => true,
-            CrateRole.Member => file.UploadedByUserId == userId,
+            CrateRole.Member => file.UploadedByUserId == userId || file.DeletedByUserId == userId,
             _ => false
         };
 
@@ -650,11 +639,19 @@ public class FileService : IFileService
 
         if (file.CrateFolderId.HasValue)
         {
-            var parent = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == file.CrateFolderId.Value);
-            if (parent == null)
-                return Result.Failure(new NotFoundError(PARENT_FOLDER_NOT_FOUND_MESSAGE));
-            if (parent.IsDeleted)
-                return Result.Failure(new FileError(PARENT_FOLDER_DELETED_MESSAGE));
+            var parent = await _context.CrateFolders
+                .FirstOrDefaultAsync(f => f.Id == file.CrateFolderId.Value);
+
+            if (parent == null || parent.IsDeleted)
+            {
+                _logger.LogInformation(
+                    "Restoring file {FileId} to root because parent folder {FolderId} is {Status}",
+                    fileId,
+                    file.CrateFolderId,
+                    parent == null ? "missing" : "deleted");
+
+                file.CrateFolderId = null;
+            }
         }
 
         try
@@ -677,9 +674,6 @@ public class FileService : IFileService
         }
     }
 
-    #endregion
-
-    #region Bulk Operations
 
     public async Task<Result> SoftDeleteFilesAsync(List<Guid> fileIds, string userId)
     {
@@ -690,7 +684,6 @@ public class FileService : IFileService
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 
-        // Permission checks first (outside any transaction)
         foreach (var file in files)
         {
             var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
@@ -709,7 +702,6 @@ public class FileService : IFileService
                 return Result.Failure(new CrateUnauthorizedError($"Cannot delete file {file.Name}"));
         }
 
-        // No transaction here - let the caller manage it
         try
         {
             foreach (var file in files)
@@ -739,7 +731,6 @@ public class FileService : IFileService
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 
-        // Permission checks
         foreach (var file in files)
         {
             var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
@@ -750,7 +741,7 @@ public class FileService : IFileService
             {
                 CrateRole.Owner => true,
                 CrateRole.Manager => true,
-                CrateRole.Member => file.UploadedByUserId == userId,
+                CrateRole.Member => file.UploadedByUserId == userId || file.DeletedByUserId == userId,
                 _ => false
             };
 
@@ -760,7 +751,6 @@ public class FileService : IFileService
 
         try
         {
-            // Group by storage location for efficient deletion
             var fileGroups = files.GroupBy(f => new { f.CrateId, f.CrateFolderId });
 
             foreach (var group in fileGroups)
@@ -775,7 +765,6 @@ public class FileService : IFileService
                         storageResult.GetError().Message);
             }
 
-            // Remove from database
             _context.CrateFiles.RemoveRange(files);
             await _context.SaveChangesAsync();
 
@@ -851,6 +840,4 @@ public class FileService : IFileService
 
         return Result.Success();
     }
-
-    #endregion
 }
