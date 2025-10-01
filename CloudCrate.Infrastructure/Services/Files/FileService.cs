@@ -618,7 +618,9 @@ public class FileService : IFileService
 
     public async Task<Result> RestoreFileAsync(Guid fileId, string userId)
     {
-        var file = await _context.CrateFiles.FirstOrDefaultAsync(f => f.Id == fileId);
+        var file = await _context.CrateFiles
+            .IgnoreQueryFilters() 
+            .FirstOrDefaultAsync(f => f.Id == fileId);
         if (file == null)
             return Result.Failure(new FileNotFoundError());
 
@@ -728,6 +730,7 @@ public class FileService : IFileService
             return Result.Success();
 
         var files = await _context.CrateFiles
+            .IgnoreQueryFilters()
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 

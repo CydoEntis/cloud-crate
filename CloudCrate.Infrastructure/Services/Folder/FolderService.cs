@@ -256,7 +256,9 @@ public class FolderService : IFolderService
 
         try
         {
-            var rootFolder = await _context.CrateFolders.FirstOrDefaultAsync(f => f.Id == folderId);
+            var rootFolder = await _context.CrateFolders
+                .IgnoreQueryFilters()
+                .FirstOrDefaultAsync(f => f.Id == folderId);
             if (rootFolder == null)
                 return Result.Failure(new NotFoundError("Folder not found"));
 
@@ -277,6 +279,7 @@ public class FolderService : IFolderService
                 return Result.Failure(new CrateUnauthorizedError("Cannot delete this folder"));
 
             var allFolders = await _context.CrateFolders
+                .IgnoreQueryFilters()
                 .Where(f => f.CrateId == rootFolder.CrateId)
                 .ToListAsync();
 
@@ -314,6 +317,7 @@ public class FolderService : IFolderService
     private async Task<Result> DeleteFilesInFoldersAsync(List<Guid> folderIds, string userId)
     {
         var fileIds = await _context.CrateFiles
+            .IgnoreQueryFilters()
             .Where(f => f.CrateFolderId != null && folderIds.Contains(f.CrateFolderId.Value))
             .Select(f => f.Id)
             .ToListAsync();
@@ -406,7 +410,6 @@ public class FolderService : IFolderService
             _logger.LogInformation("MoveFolderAsync: Folder found - Name: {Name}, CrateId: {CrateId}",
                 folderEntity.Name, folderEntity.CrateId);
 
-            // Check for null properties
             if (string.IsNullOrEmpty(folderEntity.Name))
             {
                 _logger.LogError("MoveFolderAsync: Folder has null/empty name - {FolderId}", folderId);
