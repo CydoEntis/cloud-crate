@@ -374,7 +374,8 @@ public class FileService : IFileService
         }
     }
 
-    public async Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId)
+    public async Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId,
+        bool includeDeleted = false)
     {
         try
         {
@@ -386,16 +387,35 @@ public class FileService : IFileService
             {
                 var currentFolderId = foldersToProcess.Dequeue();
 
-                var filesInFolder = await _context.CrateFiles
-                    .Where(f => f.CrateFolderId == currentFolderId && !f.IsDeleted)
-                    .ToListAsync();
+                var query = _context.CrateFiles
+                    .Where(f => f.CrateFolderId == currentFolderId);
 
+                // Add IgnoreQueryFilters if we want deleted files
+                if (includeDeleted)
+                {
+                    query = query.IgnoreQueryFilters().Where(f => f.CrateFolderId == currentFolderId);
+                }
+                else
+                {
+                    query = query.Where(f => !f.IsDeleted);
+                }
+
+                var filesInFolder = await query.ToListAsync();
                 allFiles.AddRange(filesInFolder);
 
-                var subfolders = await _context.CrateFolders
-                    .Where(f => f.ParentFolderId == currentFolderId && !f.IsDeleted)
-                    .Select(f => f.Id)
-                    .ToListAsync();
+                var subfolderQuery = _context.CrateFolders
+                    .Where(f => f.ParentFolderId == currentFolderId);
+
+                if (includeDeleted)
+                {
+                    subfolderQuery = subfolderQuery.IgnoreQueryFilters();
+                }
+                else
+                {
+                    subfolderQuery = subfolderQuery.Where(f => !f.IsDeleted);
+                }
+
+                var subfolders = await subfolderQuery.Select(f => f.Id).ToListAsync();
 
                 foreach (var subId in subfolders)
                     foldersToProcess.Enqueue(subId);

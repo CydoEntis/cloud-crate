@@ -15,7 +15,7 @@ public interface IFileService
 
     Task<Result<CrateFileResponse>> GetFileAsync(Guid fileId, string userId);
     Task<Result<PaginatedResult<CrateFileResponse>>> GetFilesAsync(FolderContentsParameters parameters);
-    Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId);
+    Task<Result<List<CrateFile>>> GetFilesInFolderRecursivelyAsync(Guid folderId, bool includeDeleted = false);
     Task<Result<long>> GetTotalFileSizeInFolderAsync(Guid folderId);
 
     Task<Result<byte[]>> DownloadFileAsync(Guid fileId, string userId);

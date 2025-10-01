@@ -667,6 +667,7 @@ public class FolderService : IFolderService
         try
         {
             var folderEntity = await _context.CrateFolders
+                .IgnoreQueryFilters()
                 .Include(f => f.Subfolders)
                 .FirstOrDefaultAsync(f => f.Id == folderId && f.IsDeleted);
 
@@ -698,7 +699,10 @@ public class FolderService : IFolderService
             folderEntity.RestoredByUserId = userId;
             folderEntity.UpdatedAt = DateTime.UtcNow;
 
-            var filesResult = await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id);
+            await _context.SaveChangesAsync();
+
+            var filesResult =
+                await _fileService.GetFilesInFolderRecursivelyAsync(folderEntity.Id, includeDeleted: true);
             if (filesResult.IsFailure)
                 return Result.Failure(filesResult.GetError());
 
@@ -717,7 +721,6 @@ public class FolderService : IFolderService
                     return subfolderResult;
             }
 
-            await _context.SaveChangesAsync();
             return Result.Success();
         }
         catch (Exception ex)
