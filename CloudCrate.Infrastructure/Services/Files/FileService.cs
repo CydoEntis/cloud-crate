@@ -619,7 +619,7 @@ public class FileService : IFileService
     public async Task<Result> RestoreFileAsync(Guid fileId, string userId)
     {
         var file = await _context.CrateFiles
-            .IgnoreQueryFilters() 
+            .IgnoreQueryFilters()
             .FirstOrDefaultAsync(f => f.Id == fileId);
         if (file == null)
             return Result.Failure(new FileNotFoundError());
@@ -734,8 +734,17 @@ public class FileService : IFileService
             .Where(f => fileIds.Contains(f.Id))
             .ToListAsync();
 
+        if (files == null || !files.Any())
+            return Result.Failure(new FileNotFoundError("No files found to delete"));
+
         foreach (var file in files)
         {
+            if (file == null || string.IsNullOrEmpty(file.Name))
+            {
+                _logger.LogWarning("Skipping file with null properties: {FileId}", file?.Id);
+                continue;
+            }
+
             var role = await _crateRoleService.GetUserRole(file.CrateId, userId);
             if (role == null)
                 return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
@@ -754,21 +763,42 @@ public class FileService : IFileService
 
         try
         {
-            var fileGroups = files.GroupBy(f => new { f.CrateId, f.CrateFolderId });
+            var validFiles = files.Where(f => f != null && !string.IsNullOrEmpty(f.Name)).ToList();
+
+            if (!validFiles.Any())
+            {
+                _logger.LogWarning("No valid files to delete after filtering nulls");
+                return Result.Success();
+            }
+
+            var fileGroups = validFiles.GroupBy(f => new { f.CrateId, f.CrateFolderId });
 
             foreach (var group in fileGroups)
             {
-                var storageResult = await _storageService.DeleteFilesAsync(
-                    group.Key.CrateId,
-                    group.Key.CrateFolderId,
-                    group.Select(f => f.Name));
+                try
+                {
+                    var storageResult = await _storageService.DeleteFilesAsync(
+                        group.Key.CrateId,
+                        group.Key.CrateFolderId,
+                        group.Select(f => f.Name).Where(name => !string.IsNullOrEmpty(name)));
 
-                if (!storageResult.IsSuccess)
-                    _logger.LogWarning("Failed to delete files from storage: {Error}",
-                        storageResult.GetError().Message);
+                    if (!storageResult.IsSuccess)
+                    {
+                        var errorMsg = storageResult.GetError()?.Message ?? "Unknown storage error";
+                        _logger.LogWarning("Failed to delete files from storage: {Error}", errorMsg);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Don't fail the entire operation if storage cleanup fails
+                    _logger.LogError(ex,
+                        "Exception during storage deletion for crate {CrateId}, continuing with database cleanup",
+                        group.Key.CrateId);
+                }
             }
 
-            _context.CrateFiles.RemoveRange(files);
+            // Always proceed with database cleanup even if storage deletion had issues
+            _context.CrateFiles.RemoveRange(validFiles);
             await _context.SaveChangesAsync();
 
             return Result.Success();

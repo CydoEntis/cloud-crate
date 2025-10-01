@@ -45,8 +45,8 @@ public class FilesController : BaseController
 
         var result = await _fileService.UploadFileAsync(uploadRequest, UserId);
 
-        return result.IsSuccess 
-            ? Created($"/api/crates/{crateId}/files/{result.GetValue()}", 
+        return result.IsSuccess
+            ? Created($"/api/crates/{crateId}/files/{result.GetValue()}",
                 ApiResponse<Guid>.Success(result.GetValue(), "File uploaded successfully", 201))
             : result.GetError().ToActionResult<Guid>();
     }
@@ -140,7 +140,7 @@ public class FilesController : BaseController
             return BadRequest(ApiResponse<object>.Failure("No files specified", 400));
 
         var result = await _fileService.DownloadMultipleFilesAsZipAsync(request.FileIds, UserId);
-    
+
         if (result.IsFailure)
             return result.GetError().ToActionResult<object>();
 
@@ -149,17 +149,17 @@ public class FilesController : BaseController
 
         return File(zipContent, "application/zip", fileName);
     }
-    
-    [HttpDelete("{fileId}")]
-    public async Task<IActionResult> DeleteFile(Guid fileId)
+
+    [HttpDelete("{fileId}/permanent")]
+    public async Task<IActionResult> PermanentlyDeleteFile(Guid fileId)
     {
         if (string.IsNullOrWhiteSpace(UserId))
             return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
 
-        var result = await _fileService.DeleteFileAsync(fileId, UserId);
+        var result = await _fileService.PermanentlyDeleteFilesAsync(new List<Guid> { fileId }, UserId);
 
-        return result.IsSuccess 
-            ? NoContent() 
+        return result.IsSuccess
+            ? Ok(ApiResponse<EmptyResponse>.Success(message: "File permanently deleted"))
             : result.GetError().ToActionResult<EmptyResponse>();
     }
 
@@ -209,7 +209,7 @@ public class FilesController : BaseController
             return Unauthorized();
 
         var result = await _fileService.PermanentlyDeleteFilesAsync(request.FileIds, UserId);
-        
+
         return result.IsSuccess
             ? Ok(ApiResponse<EmptyResponse>.Success(message: "Files deleted successfully"))
             : result.GetError().ToActionResult<EmptyResponse>();
@@ -222,12 +222,12 @@ public class FilesController : BaseController
             return Unauthorized();
 
         var result = await _fileService.SoftDeleteFilesAsync(request.FileIds, UserId);
-        
+
         return result.IsSuccess
             ? Ok(ApiResponse<EmptyResponse>.Success(message: "Files moved to trash"))
             : result.GetError().ToActionResult<EmptyResponse>();
     }
-    
+
     [HttpPut("{fileId:guid}")]
     public async Task<IActionResult> UpdateFile(Guid fileId, [FromBody] UpdateFileRequest request)
     {
@@ -235,7 +235,8 @@ public class FilesController : BaseController
             return Unauthorized(ApiResponse<EmptyResponse>.Failure("User is not authenticated", 401));
 
         if (fileId != request.FileId)
-            return BadRequest(ApiResponse<EmptyResponse>.Failure("File ID in route and request body do not match", 400));
+            return BadRequest(
+                ApiResponse<EmptyResponse>.Failure("File ID in route and request body do not match", 400));
 
         var result = await _fileService.UpdateFileAsync(request.FileId, request, UserId);
 
