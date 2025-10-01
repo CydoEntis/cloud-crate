@@ -917,7 +917,8 @@ public class FolderService : IFolderService
                 parameters.UserId,
                 ownerManagerCrateIds,
                 memberCrateIds,
-                deletedFolderIds);
+                deletedFolderIds)
+            .Where(f => !f.CrateFolderId.HasValue || !deletedFolderIds.Contains(f.CrateFolderId.Value));
 
         if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             query = query.ApplyTrashSearch(parameters.SearchTerm);
