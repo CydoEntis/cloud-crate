@@ -15,14 +15,11 @@ public static class TrashQueryBuilder
     {
         query = query.Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
 
+        // Owners/Managers see everything in their crates, Members only see their own
         query = query.Where(f =>
             ownerManagerCrateIds.Contains(f.CrateId) ||
             (memberCrateIds.Contains(f.CrateId) &&
              (f.UploadedByUserId == userId || f.DeletedByUserId == userId)));
-
-        query = query.Where(f =>
-            f.CrateFolderId == null ||
-            !deletedFolderIds.Contains(f.CrateFolderId.Value));
 
         return query;
     }
@@ -37,14 +34,11 @@ public static class TrashQueryBuilder
     {
         query = query.Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
 
+        // Owners/Managers see everything in their crates, Members only see their own
         query = query.Where(f =>
             ownerManagerCrateIds.Contains(f.CrateId) ||
             (memberCrateIds.Contains(f.CrateId) &&
              (f.CreatedByUserId == userId || f.DeletedByUserId == userId)));
-
-        query = query.Where(f =>
-            f.ParentFolderId == null ||
-            !deletedFolderIds.Contains(f.ParentFolderId.Value));
 
         return query;
     }

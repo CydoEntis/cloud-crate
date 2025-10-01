@@ -882,9 +882,14 @@ public class FolderService : IFolderService
         List<Guid> crateIds,
         HashSet<Guid> deletedFolderIds)
     {
+        _logger.LogInformation("GetDeletedFilesAsync - CrateIds: {CrateIds}, DeletedFolderIds: {DeletedFolderIds}",
+            string.Join(",", crateIds), string.Join(",", deletedFolderIds));
+
         var userRoles = await _context.CrateMembers
             .Where(cm => cm.UserId == parameters.UserId && crateIds.Contains(cm.CrateId))
             .ToDictionaryAsync(cm => cm.CrateId, cm => cm.Role);
+
+        _logger.LogInformation("User roles: {Roles}", string.Join(",", userRoles.Select(r => $"{r.Key}={r.Value}")));
 
         var ownerManagerCrateIds = userRoles
             .Where(kvp => kvp.Value == CrateRole.Owner || kvp.Value == CrateRole.Manager)
@@ -895,6 +900,9 @@ public class FolderService : IFolderService
             .Where(kvp => kvp.Value == CrateRole.Member)
             .Select(kvp => kvp.Key)
             .ToList();
+
+        _logger.LogInformation("OwnerManager crates: {Owner}, Member crates: {Member}",
+            string.Join(",", ownerManagerCrateIds), string.Join(",", memberCrateIds));
 
         var query = _context.CrateFiles
             .IgnoreQueryFilters()
@@ -911,7 +919,10 @@ public class FolderService : IFolderService
         if (!string.IsNullOrWhiteSpace(parameters.SearchTerm))
             query = query.ApplyTrashSearch(parameters.SearchTerm);
 
-        return await query.ToListAsync();
+        var result = await query.ToListAsync();
+        _logger.LogInformation("Query returned {Count} files", result.Count);
+
+        return result;
     }
 
     private async Task<List<CrateFolderEntity>> GetDeletedFoldersAsync(
