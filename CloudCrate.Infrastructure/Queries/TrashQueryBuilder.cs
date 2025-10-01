@@ -7,19 +7,18 @@ public static class TrashQueryBuilder
 {
     public static IQueryable<CrateFileEntity> ApplyTrashFileFiltering(
         this IQueryable<CrateFileEntity> query,
-        Guid crateId,
+        List<Guid> crateIds,
         string userId,
-        bool isOwnerOrManager,
+        List<Guid> ownerManagerCrateIds,
+        List<Guid> memberCrateIds,
         HashSet<Guid> deletedFolderIds)
     {
-        query = query.Where(f => f.CrateId == crateId && f.IsDeleted);
+        query = query.Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
 
-        if (!isOwnerOrManager)
-        {
-            query = query.Where(f =>
-                f.UploadedByUserId == userId ||
-                f.DeletedByUserId == userId);
-        }
+        query = query.Where(f =>
+            ownerManagerCrateIds.Contains(f.CrateId) ||
+            (memberCrateIds.Contains(f.CrateId) &&
+             (f.UploadedByUserId == userId || f.DeletedByUserId == userId)));
 
         query = query.Where(f =>
             f.CrateFolderId == null ||
@@ -30,19 +29,18 @@ public static class TrashQueryBuilder
 
     public static IQueryable<CrateFolderEntity> ApplyTrashFolderFiltering(
         this IQueryable<CrateFolderEntity> query,
-        Guid crateId,
+        List<Guid> crateIds,
         string userId,
-        bool isOwnerOrManager,
+        List<Guid> ownerManagerCrateIds,
+        List<Guid> memberCrateIds,
         HashSet<Guid> deletedFolderIds)
     {
-        query = query.Where(f => f.CrateId == crateId && f.IsDeleted);
+        query = query.Where(f => crateIds.Contains(f.CrateId) && f.IsDeleted);
 
-        if (!isOwnerOrManager)
-        {
-            query = query.Where(f =>
-                f.CreatedByUserId == userId ||
-                f.DeletedByUserId == userId);
-        }
+        query = query.Where(f =>
+            ownerManagerCrateIds.Contains(f.CrateId) ||
+            (memberCrateIds.Contains(f.CrateId) &&
+             (f.CreatedByUserId == userId || f.DeletedByUserId == userId)));
 
         query = query.Where(f =>
             f.ParentFolderId == null ||
@@ -59,7 +57,6 @@ public static class TrashQueryBuilder
             return query;
 
         var normalizedSearchTerm = searchTerm.Trim().ToLowerInvariant();
-
         return query.Where(item =>
             EF.Functions.ILike(EF.Property<string>(item, "Name"), $"%{normalizedSearchTerm}%"));
     }

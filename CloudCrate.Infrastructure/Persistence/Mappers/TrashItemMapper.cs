@@ -55,23 +55,17 @@ public static class TrashItemMapper
         string userId)
     {
         var trashItems = new List<TrashItemResponse>(files.Count + folders.Count);
-        
+
         foreach (var file in files)
         {
-            var canModify = file.UploadedByUserId == userId || 
-                           file.DeletedByUserId == userId;
-            
-            trashItems.Add(ToTrashItemResponse(file, canModify));
+            trashItems.Add(ToTrashItemResponse(file, canModify: true));
         }
-        
+
         foreach (var folder in folders)
         {
-            var canModify = folder.CreatedByUserId == userId || 
-                           folder.DeletedByUserId == userId;
-            
-            trashItems.Add(ToTrashItemResponse(folder, canModify));
+            trashItems.Add(ToTrashItemResponse(folder, canModify: true));
         }
-        
+
         return trashItems;
     }
 }
