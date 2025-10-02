@@ -178,10 +178,6 @@ public class FileService : IFileService
                 return Result<List<Guid>>.Failure(Error.NotFound($"Folder not found for file {req.FileName}"));
         }
 
-        var userCanConsume = await _userService.CanConsumeStorageAsync(userId, totalSize);
-        if (userCanConsume.IsFailure)
-            return Result<List<Guid>>.Failure(userCanConsume.GetError());
-
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == crateId);
         if (crateEntity == null)
             return Result<List<Guid>>.Failure(Error.NotFound(CRATE_NOT_FOUND_MESSAGE));
@@ -189,6 +185,18 @@ public class FileService : IFileService
         var crate = crateEntity.ToDomain();
         if (crate.RemainingStorage.Bytes < totalSize)
             return Result<List<Guid>>.Failure(Error.Validation("Crate storage limit exceeded.", "Storage"));
+
+        var crateOwner = await _context.CrateMembers
+            .FirstOrDefaultAsync(m => m.CrateId == crateId && m.Role == CrateRole.Owner);
+
+        if (crateOwner == null)
+            return Result<List<Guid>>.Failure(Error.NotFound("Crate owner not found"));
+
+        var crateOwnerId = crateOwner.UserId;
+
+        var userCanConsume = await _userService.CanConsumeStorageAsync(crateOwnerId, totalSize);
+        if (userCanConsume.IsFailure)
+            return Result<List<Guid>>.Failure(userCanConsume.GetError());
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
@@ -221,7 +229,7 @@ public class FileService : IFileService
             crate.ConsumeStorage(StorageSize.FromBytes(totalSize));
             crateEntity.UpdateEntity(crate);
 
-            var userStorageResult = await _userService.IncrementUsedStorageAsync(userId, totalSize);
+            var userStorageResult = await _userService.IncrementUsedStorageAsync(crateOwnerId, totalSize);
             if (userStorageResult.IsFailure)
             {
                 await transaction.RollbackAsync();
@@ -243,7 +251,6 @@ public class FileService : IFileService
             return Result<List<Guid>>.Failure(new InternalError(ex.Message));
         }
     }
-
 
     public async Task<Result<CrateFileResponse>> GetFileAsync(Guid fileId, string userId)
     {
