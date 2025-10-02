@@ -307,7 +307,6 @@ public class CrateService : ICrateService
         _logger.LogInformation("DELETE ATTEMPT - CrateId: {CrateId}, UserId: '{UserId}'", crateId, userId);
 
         var role = await _crateRoleService.GetUserRole(crateId, userId);
-
         _logger.LogInformation("GetUserRole returned: {Role}", role?.ToString() ?? "NULL");
 
         if (role == null)
@@ -316,9 +315,7 @@ public class CrateService : ICrateService
                 .Where(m => m.CrateId == crateId)
                 .Select(m => new { m.UserId, m.Role })
                 .ToListAsync();
-
             _logger.LogError("AUTH FAILED - Expected UserId: '{UserId}', Found members: {@Members}", userId, members);
-
             return Result.Failure(new CrateUnauthorizedError("Not a member of this crate"));
         }
 
@@ -334,12 +331,21 @@ public class CrateService : ICrateService
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
+            var usedStorageBytes = crateDomain.UsedStorage.Bytes;
+
             var deallocationResult =
                 await _userService.DeallocateStorageAsync(userId, crateDomain.AllocatedStorage.Bytes);
             if (!deallocationResult.IsSuccess)
             {
                 await transaction.RollbackAsync();
                 return Result.Failure(deallocationResult.GetError());
+            }
+
+            var releaseStorageResult = await _userService.DecrementUsedStorageAsync(userId, usedStorageBytes);
+            if (!releaseStorageResult.IsSuccess)
+            {
+                await transaction.RollbackAsync();
+                return Result.Failure(releaseStorageResult.GetError());
             }
 
             var storageResult = await _storageService.DeleteAllFilesForCrateAsync(crateId);
