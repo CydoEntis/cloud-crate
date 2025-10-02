@@ -252,7 +252,10 @@ public class FolderService : IFolderService
 
     public async Task<Result> PermanentlyDeleteFolderAsync(Guid folderId, string userId)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
+        var shouldManageTransaction = _context.Database.CurrentTransaction == null;
+        var transaction = shouldManageTransaction
+            ? await _context.Database.BeginTransactionAsync()
+            : null;
 
         try
         {
@@ -289,7 +292,7 @@ public class FolderService : IFolderService
             var fileDeleteResult = await DeleteFilesInFoldersAsync(folderIdsToDelete, userId);
             if (fileDeleteResult.IsFailure)
             {
-                await transaction.RollbackAsync();
+                if (shouldManageTransaction) await transaction!.RollbackAsync();
                 return fileDeleteResult;
             }
 
@@ -301,16 +304,21 @@ public class FolderService : IFolderService
             _context.CrateFolders.RemoveRange(foldersToDelete);
 
             await _context.SaveChangesAsync();
-            await transaction.CommitAsync();
+
+            if (shouldManageTransaction) await transaction!.CommitAsync();
 
             return Result.Success();
         }
         catch (Exception ex)
         {
+            if (shouldManageTransaction) await transaction?.RollbackAsync();
             _logger.LogError(ex, "Exception in PermanentlyDeleteFolderAsync for FolderId {FolderId}, UserId {UserId}",
                 folderId, userId);
-            await transaction.RollbackAsync();
             return Result.Failure(new InternalError(ex.Message));
+        }
+        finally
+        {
+            transaction?.Dispose();
         }
     }
 

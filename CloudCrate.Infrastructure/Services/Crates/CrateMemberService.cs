@@ -15,6 +15,8 @@ using CloudCrate.Infrastructure.Services.RolesAndPermissions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
+namespace CloudCrate.Infrastructure.Services.Crates;
+
 public class CrateMemberService : ICrateMemberService
 {
     private readonly AppDbContext _context;

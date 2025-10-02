@@ -78,10 +78,6 @@ public class FileService : IFileService
                 return Result<Guid>.Failure(Error.NotFound(FOLDER_NOT_FOUND_MESSAGE));
         }
 
-        var userCanConsume = await _userService.CanConsumeStorageAsync(userId, request.SizeInBytes);
-        if (userCanConsume.IsFailure)
-            return Result<Guid>.Failure(userCanConsume.GetError());
-
         var crateEntity = await _context.Crates.FirstOrDefaultAsync(c => c.Id == request.CrateId);
         if (crateEntity == null)
             return Result<Guid>.Failure(Error.NotFound(CRATE_NOT_FOUND_MESSAGE));
@@ -89,6 +85,18 @@ public class FileService : IFileService
         var crate = crateEntity.ToDomain();
         if (crate.RemainingStorage.Bytes < request.SizeInBytes)
             return Result<Guid>.Failure(Error.Validation("Crate storage limit exceeded.", "Storage"));
+
+        var crateOwner = await _context.CrateMembers
+            .FirstOrDefaultAsync(m => m.CrateId == request.CrateId && m.Role == CrateRole.Owner);
+
+        if (crateOwner == null)
+            return Result<Guid>.Failure(Error.NotFound("Crate owner not found"));
+
+        var crateOwnerId = crateOwner.UserId;
+
+        var userCanConsume = await _userService.CanConsumeStorageAsync(crateOwnerId, request.SizeInBytes);
+        if (userCanConsume.IsFailure)
+            return Result<Guid>.Failure(userCanConsume.GetError());
 
         await using var transaction = await _context.Database.BeginTransactionAsync();
         try
@@ -113,7 +121,7 @@ public class FileService : IFileService
             crate.ConsumeStorage(StorageSize.FromBytes(request.SizeInBytes));
             crateEntity.UpdateEntity(crate);
 
-            var userStorageResult = await _userService.IncrementUsedStorageAsync(userId, request.SizeInBytes);
+            var userStorageResult = await _userService.IncrementUsedStorageAsync(crateOwnerId, request.SizeInBytes);
             if (userStorageResult.IsFailure)
             {
                 await transaction.RollbackAsync();
