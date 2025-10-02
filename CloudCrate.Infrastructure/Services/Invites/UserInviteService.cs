@@ -1,6 +1,7 @@
 ﻿using CloudCrate.Application.DTOs.Invite.Request;
 using CloudCrate.Application.DTOs.Invite.Response;
 using CloudCrate.Application.Errors;
+using CloudCrate.Application.Interfaces.Email;
 using CloudCrate.Application.Interfaces.Invite;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
@@ -17,15 +18,18 @@ public class UserInviteService : IUserInviteService
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
     private readonly ILogger<UserInviteService> _logger;
+    private readonly IEmailService _emailService;
 
     public UserInviteService(
         AppDbContext context,
         IConfiguration configuration,
-        ILogger<UserInviteService> logger)
+        ILogger<UserInviteService> logger,
+        IEmailService emailService)
     {
         _context = context;
         _configuration = configuration;
         _logger = logger;
+        _emailService = emailService;
     }
 
     public async Task<Result<InviteUserResponse>> CreateInviteAsync(string createdByUserId,
@@ -48,6 +52,26 @@ public class UserInviteService : IUserInviteService
 
             var frontendUrl = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
             var inviteUrl = $"{frontendUrl}/register?inviteToken={inviteDomain.Token}";
+
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                var emailResult = await _emailService.SendEmailAsync(
+                    request.Email,
+                    "You're Invited to Join CloudCrate",
+                    "AdminInvite",
+                    new { InviteLink = inviteUrl }
+                );
+
+                if (emailResult.IsFailure)
+                {
+                    _logger.LogError("Failed to send invite email to {Email}: {Error}",
+                        request.Email, emailResult.GetError().Message);
+                }
+                else
+                {
+                    _logger.LogInformation("Invite email sent successfully to {Email}", request.Email);
+                }
+            }
 
             var response = new InviteUserResponse
             {
@@ -209,6 +233,48 @@ public class UserInviteService : IUserInviteService
         {
             _logger.LogError(ex, "Error deleting expired invite tokens");
             return Result.Failure(Error.Internal("Failed to delete expired invites"));
+        }
+    }
+
+    public async Task<Result<ValidateInviteTokenResponse>> ValidateTokenForRegistrationAsync(string token)
+    {
+        try
+        {
+            var inviteEntity = await _context.InviteTokens
+                .FirstOrDefaultAsync(i => i.Token == token);
+
+            if (inviteEntity == null)
+            {
+                return Result<ValidateInviteTokenResponse>.Success(new ValidateInviteTokenResponse
+                {
+                    IsValid = false,
+                    ErrorMessage = "Invalid invite token"
+                });
+            }
+
+            var inviteDomain = inviteEntity.ToDomain();
+
+            if (!inviteDomain.IsValid)
+            {
+                var reason = inviteDomain.IsUsed ? "This invite has already been used" : "This invite has expired";
+                return Result<ValidateInviteTokenResponse>.Success(new ValidateInviteTokenResponse
+                {
+                    IsValid = false,
+                    ErrorMessage = reason
+                });
+            }
+
+            return Result<ValidateInviteTokenResponse>.Success(new ValidateInviteTokenResponse
+            {
+                IsValid = true,
+                Email = inviteDomain.Email,
+                ExpiresAt = inviteDomain.ExpiresAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error validating invite token for registration {Token}", token);
+            return Result<ValidateInviteTokenResponse>.Failure(Error.Internal("Failed to validate invite token"));
         }
     }
 

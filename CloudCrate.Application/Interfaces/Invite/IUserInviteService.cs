@@ -12,4 +12,5 @@ public interface IUserInviteService
     Task<Result> MarkInviteAsUsedAsync(string token, string usedByUserId);
     Task<Result<IEnumerable<InviteUserResponse>>> GetInvitesByUserAsync(string userId);
     Task<Result> DeleteExpiredInvitesAsync();
+    Task<Result<ValidateInviteTokenResponse>> ValidateTokenForRegistrationAsync(string token);
 }

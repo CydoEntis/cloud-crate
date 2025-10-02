@@ -212,4 +212,20 @@ public class AdminController : BaseController
 
         return result.GetError().ToActionResult<EmptyResponse>();
     }
+
+    [HttpGet("invites/validate/{token}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ValidateInviteToken(string token)
+    {
+        var result = await _inviteService.ValidateTokenForRegistrationAsync(token);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<ValidateInviteTokenResponse>.Success(
+                data: result.GetValue(),
+                message: "Invite token validated"));
+        }
+
+        return result.GetError().ToActionResult<ValidateInviteTokenResponse>();
+    }
 }

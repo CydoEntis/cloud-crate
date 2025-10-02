@@ -12,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using System.Security.Cryptography;
 using CloudCrate.Application.Interfaces.Invite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace CloudCrate.Infrastructure.Services.Auth;
 
@@ -22,19 +23,21 @@ public class AuthService : IAuthService
     private readonly IEmailService _emailService;
     private readonly IUserInviteService _userInviteService;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<AuthService> _logger;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IJwtTokenService jwtTokenService,
         IEmailService emailService,
         IUserInviteService userInviteService,
-        IConfiguration configuration)
+        IConfiguration configuration, ILogger<AuthService> logger)
     {
         _userManager = userManager;
         _jwtTokenService = jwtTokenService;
         _emailService = emailService;
         _userInviteService = userInviteService;
         _configuration = configuration;
+        _logger = logger;
     }
 
     public async Task<Result<AuthResponse>> RegisterAsync(RegisterRequest request)
@@ -52,10 +55,20 @@ public class AuthService : IAuthService
 
         var invite = inviteResult.GetValue();
 
-        if (!string.IsNullOrWhiteSpace(invite.Email) &&
-            !invite.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrEmpty(invite.Email))
         {
-            return Result<AuthResponse>.Failure(Error.Unauthorized("This invite is for a different email address"));
+            if (!invite.Email.Equals(request.Email, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Registration attempt with mismatched email. Invite: {InviteEmail}, Attempted: {AttemptedEmail}",
+                    invite.Email,
+                    request.Email);
+
+                return Result<AuthResponse>.Failure(
+                    Error.Validation(
+                        "You must register with the email address this invite was sent to",
+                        "Email"));
+            }
         }
 
         var domainUser = UserAccount.Create(

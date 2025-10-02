@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>You're Invited to Join CloudCrate!</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f9fafb;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 2rem auto;
+            background-color: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2563eb;
+        }
+        a.button {
+            display: inline-block;
+            margin-top: 1.5rem;
+            padding: 12px 24px;
+            background-color: #2563eb;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+        p.footer {
+            margin-top: 3rem;
+            font-size: 0.9rem;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hello!</h1>
+        <p>You've been invited to join CloudCrate by an administrator.</p>
+
+        <p>To accept the invitation and create your account, please click the button below:</p>
+
+        <a href="@Model.InviteLink" class="button" target="_blank" rel="noopener noreferrer">Accept Invitation</a>
+
+        <p>If the button doesn't work, copy and paste this link into your browser:</p>
+        <p><a href="@Model.InviteLink" target="_blank" rel="noopener noreferrer">@Model.InviteLink</a></p>
+
+        <p class="footer">
+            If you did not expect this invitation, you can safely ignore this email.<br />
+            Thanks for using CloudCrate!
+        </p>
+    </div>
+</body>
+</html>

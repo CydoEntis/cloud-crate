@@ -10,6 +10,7 @@ public static class ApplicationUserMapper
         {
             Id = domain.Id,
             Email = domain.Email,
+            UserName = domain.Email,
             DisplayName = domain.DisplayName,
             ProfilePictureUrl = domain.ProfilePictureUrl,
             Plan = domain.Plan,
