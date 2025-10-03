@@ -7,49 +7,69 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f9fafb;
+            background-color: #0F0F1A;
             margin: 0;
             padding: 0;
-            color: #333;
+            color: #A0A0C0;
         }
         .container {
             max-width: 600px;
             margin: 2rem auto;
-            background-color: white;
+            background-color: #1a1a2e;
             padding: 2rem;
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            box-shadow: 0 0 20px rgba(164, 143, 255, 0.1);
         }
         h1 {
-            color: #2563eb;
+            color: #A48FFF;
+            margin-bottom: 1.5rem;
+        }
+        p {
+            line-height: 1.6;
+            margin-bottom: 1rem;
+        }
+        strong {
+            color: #A48FFF;
         }
         a.button {
             display: inline-block;
             margin-top: 1.5rem;
             padding: 12px 24px;
-            background-color: #2563eb;
-            color: white !important;
+            background-color: #A48FFF;
+            color: #0F0F1A !important;
             text-decoration: none;
             border-radius: 6px;
             font-weight: bold;
         }
+        a.button:hover {
+            background-color: #b5a3ff;
+        }
+        a {
+            color: #A48FFF;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
         p.footer {
             margin-top: 3rem;
             font-size: 0.9rem;
-            color: #777;
+            color: #6b6b8c;
+            border-top: 1px solid #2a2a3e;
+            padding-top: 1.5rem;
         }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>Hello!</h1>
-        <p>You’ve been invited to collaborate on the crate <strong>@Model.CrateName</strong> in CloudCrate.</p>
+        <p>You've been invited to collaborate on the crate <strong>@Model.CrateName</strong> in CloudCrate.</p>
 
         <p>To accept the invitation and get started, please click the button below:</p>
 
         <a href="@Model.InviteLink" class="button" target="_blank" rel="noopener noreferrer">Accept Invitation</a>
 
-        <p>If the button doesn’t work, copy and paste this link into your browser:</p>
+        <p style="margin-top: 1.5rem;">If the button doesn't work, copy and paste this link into your browser:</p>
         <p><a href="@Model.InviteLink" target="_blank" rel="noopener noreferrer">@Model.InviteLink</a></p>
 
         <p class="footer">
