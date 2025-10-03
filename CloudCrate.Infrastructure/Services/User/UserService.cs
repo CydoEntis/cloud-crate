@@ -367,6 +367,45 @@ public class UserService : IUserService
         }
     }
 
+    public async Task<Result> UpdateDisplayNameAsync(string userId, string displayName)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+                return Result.Failure(new ValidationError("Display name cannot be empty", "DisplayName"));
+
+            if (displayName.Length < 2)
+                return Result.Failure(new ValidationError("Display name must be at least 2 characters", "DisplayName"));
+
+            if (displayName.Length > 50)
+                return Result.Failure(
+                    new ValidationError("Display name must be less than 50 characters", "DisplayName"));
+
+            var userEntity = await _userManager.FindByIdAsync(userId);
+            if (userEntity == null)
+                return Result.Failure(new NotFoundError("User not found"));
+
+            userEntity.DisplayName = displayName;
+            userEntity.UpdatedAt = DateTime.UtcNow;
+
+            var result = await _userManager.UpdateAsync(userEntity);
+            if (!result.Succeeded)
+            {
+                var errors = string.Join("; ", result.Errors.Select(e => e.Description));
+                return Result.Failure(new InternalError($"Failed to update display name: {errors}"));
+            }
+
+            _logger.LogInformation("Display name updated for user {UserId}", userId);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in UpdateDisplayNameAsync for UserId {UserId}", userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
+
     private async Task UpdateUserReferencesAsync(string targetUserId, string replacementUserId)
     {
         await _context.CrateFiles

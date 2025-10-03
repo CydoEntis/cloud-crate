@@ -284,6 +284,45 @@ public class AuthService : IAuthService
         return Result.Success();
     }
 
+    public async Task<Result> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+    {
+        try
+        {
+            var userEntity = await _userManager.FindByIdAsync(userId);
+            if (userEntity == null)
+                return Result.Failure(new NotFoundError("User not found"));
+
+            var isCurrentPasswordCorrect = await _userManager.CheckPasswordAsync(userEntity, currentPassword);
+            if (!isCurrentPasswordCorrect)
+                return Result.Failure(new ValidationError("Current password is incorrect", "CurrentPassword"));
+
+            var result = await _userManager.ChangePasswordAsync(userEntity, currentPassword, newPassword);
+            if (!result.Succeeded)
+            {
+                var mappedErrors = result.Errors
+                    .Select(e => IdentityErrorMapper.Map(e.Code, e.Description))
+                    .ToArray();
+
+                Error errorToReturn = mappedErrors.Length == 1
+                    ? mappedErrors[0]
+                    : Error.Validations(mappedErrors.OfType<ValidationError>());
+
+                return Result.Failure(errorToReturn);
+            }
+
+            userEntity.UpdatedAt = DateTime.UtcNow;
+            await _userManager.UpdateAsync(userEntity);
+
+            _logger.LogInformation("Password changed for user {UserId}", userId);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in ChangePasswordAsync for UserId {UserId}", userId);
+            return Result.Failure(new InternalError(ex.Message));
+        }
+    }
+
     private string GeneratePasswordResetToken()
     {
         var randomBytes = new byte[32];

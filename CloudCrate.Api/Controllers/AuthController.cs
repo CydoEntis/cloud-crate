@@ -156,6 +156,27 @@ public class AuthController : BaseController
         return result.GetError().ToActionResult<object>();
     }
 
+    [Authorize]
+    [HttpPut("password")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(UserId))
+        {
+            return Unauthorized(ApiResponse<object>.Failure("User is not authenticated", 401));
+        }
+
+        var result = await _authService.ChangePasswordAsync(UserId, request.CurrentPassword, request.NewPassword);
+
+        if (result.IsSuccess)
+        {
+            return Ok(ApiResponse<object>.Success(
+                data: null,
+                message: "Password changed successfully"));
+        }
+
+        return result.GetError().ToActionResult<object>();
+    }
+
     private void SetRefreshTokenCookie(string refreshToken, DateTime expires)
     {
         var cookieOptions = new CookieOptions
