@@ -29,6 +29,7 @@ using CloudCrate.Infrastructure.Services;
 using CloudCrate.Infrastructure.Services.Admin;
 using CloudCrate.Infrastructure.Services.Auth;
 using CloudCrate.Infrastructure.Services.Crates;
+using CloudCrate.Infrastructure.Services.Email;
 using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
 using CloudCrate.Infrastructure.Services.Invites;
@@ -137,7 +138,7 @@ builder.Services.AddScoped<ICrateRoleService, CrateRoleService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
-builder.Services.AddTransient<IEmailService, MailtrapEmailService>();
+builder.Services.AddTransient<IEmailService, ResendEmailService>();
 builder.Services.AddScoped<IUserInviteService, UserInviteService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 
@@ -199,7 +200,7 @@ app.UseCors("AllowFrontend");
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
-app.UseMiddleware<JwtBanCheckMiddleware>(); 
+app.UseMiddleware<JwtBanCheckMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
