@@ -22,4 +22,5 @@ public interface IUserService
     Task<Result> CanAllocateStorageAsync(string userId, long bytesToAllocate);
 
     Task<Result> UpdateDisplayNameAsync(string userId, string displayName);
+    Task<Result<UserResponse>> GetUserByEmailAsync(string email);
 }

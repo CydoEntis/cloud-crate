@@ -39,4 +39,6 @@ public class ApplicationUser : IdentityUser
 
     public string? PasswordResetToken { get; set; }
     public DateTime? PasswordResetTokenExpires { get; set; }
+
+    public bool IsDemoAccount { get; set; }
 }

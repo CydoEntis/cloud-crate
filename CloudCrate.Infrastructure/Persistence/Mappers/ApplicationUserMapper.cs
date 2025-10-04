@@ -19,6 +19,7 @@ public static class ApplicationUserMapper
             CreatedAt = domain.CreatedAt,
             UpdatedAt = domain.UpdatedAt,
             IsAdmin = domain.IsAdmin,
+            IsDemoAccount = domain.IsDemoAccount
         };
     }
 
@@ -34,7 +35,8 @@ public static class ApplicationUserMapper
             usedStorageBytes: entity.UsedStorageBytes,
             createdAt: entity.CreatedAt,
             updatedAt: entity.UpdatedAt,
-            isAdmin: entity.IsAdmin
+            isAdmin: entity.IsAdmin,
+            isDemoAccount: entity.IsDemoAccount
         );
     }
 }

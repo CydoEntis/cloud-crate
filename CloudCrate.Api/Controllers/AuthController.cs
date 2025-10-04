@@ -5,6 +5,7 @@ using CloudCrate.Application.DTOs.User.Response;
 using CloudCrate.Application.Interfaces.Auth;
 using CloudCrate.Application.Interfaces.User;
 using CloudCrate.Api.Common.Extensions;
+using CloudCrate.Infrastructure.Services.Demo;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -16,11 +17,19 @@ public class AuthController : BaseController
 {
     private readonly IAuthService _authService;
     private readonly IUserService _userService;
+    private readonly DemoService _demoService;
+    private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IAuthService authService, IUserService userService)
+    public AuthController(
+        IAuthService authService,
+        IUserService userService,
+        DemoService demoService,
+        ILogger<AuthController> logger)
     {
         _authService = authService;
         _userService = userService;
+        _demoService = demoService;
+        _logger = logger;
     }
 
     [HttpPost("register")]
@@ -55,6 +64,22 @@ public class AuthController : BaseController
         if (result.IsSuccess)
         {
             var authData = result.GetValue();
+
+            var userResult = await _userService.GetUserByEmailAsync(request.Email);
+            if (userResult.IsSuccess && userResult.GetValue().IsDemoAccount)
+            {
+                try
+                {
+                    _logger.LogInformation("Resetting demo account for user: {Email}", request.Email);
+                    await _demoService.ResetDemoAccountAsync(userResult.GetValue().Id);
+                    _logger.LogInformation("Demo account reset completed for user: {Email}", request.Email);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to reset demo account for user {Email}", request.Email);
+                }
+            }
+
             SetRefreshTokenCookie(authData.RefreshToken, authData.RefreshTokenExpires);
 
             return Ok(ApiResponse<object>.Success(

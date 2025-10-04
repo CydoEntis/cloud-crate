@@ -17,4 +17,5 @@ public class UserResponse
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public bool IsAdmin { get; set; }
+    public bool IsDemoAccount { get; set; }
 }

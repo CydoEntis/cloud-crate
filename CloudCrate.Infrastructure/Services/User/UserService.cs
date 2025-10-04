@@ -404,6 +404,26 @@ public class UserService : IUserService
             return Result.Failure(new InternalError(ex.Message));
         }
     }
+    
+    public async Task<Result<UserResponse>> GetUserByEmailAsync(string email)
+    {
+        try
+        {
+            var userEntity = await _userManager.FindByEmailAsync(email);
+            if (userEntity == null)
+                return Result<UserResponse>.Failure(new NotFoundError("User not found"));
+
+            var domainUser = userEntity.ToDomain();
+            var response = MapToUserResponse(domainUser);
+
+            return Result<UserResponse>.Success(response);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Exception in GetUserByEmailAsync for Email {Email}", email);
+            return Result<UserResponse>.Failure(new InternalError(ex.Message));
+        }
+    }
 
 
     private async Task UpdateUserReferencesAsync(string targetUserId, string replacementUserId)
@@ -455,7 +475,8 @@ public class UserService : IUserService
             RemainingUsageBytes = domainUser.RemainingUsageBytes,
             CreatedAt = domainUser.CreatedAt,
             UpdatedAt = domainUser.UpdatedAt,
-            IsAdmin = domainUser.IsAdmin
+            IsAdmin = domainUser.IsAdmin,
+            IsDemoAccount = domainUser.IsDemoAccount,
         };
     }
 }

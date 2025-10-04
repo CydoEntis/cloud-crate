@@ -29,6 +29,7 @@ using CloudCrate.Infrastructure.Services;
 using CloudCrate.Infrastructure.Services.Admin;
 using CloudCrate.Infrastructure.Services.Auth;
 using CloudCrate.Infrastructure.Services.Crates;
+using CloudCrate.Infrastructure.Services.Demo;
 using CloudCrate.Infrastructure.Services.Email;
 using CloudCrate.Infrastructure.Services.Files;
 using CloudCrate.Infrastructure.Services.Folder;
@@ -141,6 +142,7 @@ builder.Services.AddScoped<IBatchMembershipService, BatchMembershipService>();
 builder.Services.AddTransient<IEmailService, ResendEmailService>();
 builder.Services.AddScoped<IUserInviteService, UserInviteService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
+builder.Services.AddScoped<DemoService>();
 
 builder.Services.AddScoped<DatabaseSeederService>();
 
@@ -174,6 +176,25 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        logger.LogInformation("Starting demo account seeding...");
+        var demoService = services.GetRequiredService<DemoService>();
+        await demoService.SeedDemoAccountsAsync();
+        logger.LogInformation("Demo account seeding completed successfully");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "An error occurred while seeding demo accounts");
+    }
+}
+
 
 using (var scope = app.Services.CreateScope())
 {

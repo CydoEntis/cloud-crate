@@ -26,10 +26,11 @@ public class UserAccount
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
 
-    // Soft Delete Properties
     public bool IsDeleted { get; private set; } = false;
     public DateTime? DeletedAt { get; private set; }
     public string? DeletedByUserId { get; private set; }
+
+    public bool IsDemoAccount { get; private set; }
 
     private UserAccount()
     {
@@ -38,7 +39,7 @@ public class UserAccount
     internal UserAccount(string id, string email, string displayName, string profilePictureUrl,
         SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes,
         DateTime createdAt, DateTime updatedAt, bool isAdmin = false,
-        bool isDeleted = false, DateTime? deletedAt = null, string? deletedByUserId = null)
+        bool isDeleted = false, DateTime? deletedAt = null, string? deletedByUserId = null, bool isDemoAccount = false)
     {
         Id = id;
         Email = email;
@@ -53,16 +54,17 @@ public class UserAccount
         IsDeleted = isDeleted;
         DeletedAt = deletedAt;
         DeletedByUserId = deletedByUserId;
+        IsDemoAccount = isDemoAccount;
     }
 
     public static UserAccount Rehydrate(string id, string email, string displayName, string profilePictureUrl,
         SubscriptionPlan plan, long allocatedStorageBytes, long usedStorageBytes,
         DateTime createdAt, DateTime updatedAt, bool isAdmin = false,
-        bool isDeleted = false, DateTime? deletedAt = null, string? deletedByUserId = null)
+        bool isDeleted = false, DateTime? deletedAt = null, string? deletedByUserId = null, bool isDemoAccount = false)
     {
         return new UserAccount(id, email, displayName, profilePictureUrl, plan,
             allocatedStorageBytes, usedStorageBytes, createdAt, updatedAt, isAdmin,
-            isDeleted, deletedAt, deletedByUserId);
+            isDeleted, deletedAt, deletedByUserId, isDemoAccount);
     }
 
     public static UserAccount Create(string id, string email, string displayName = "",
@@ -83,11 +85,11 @@ public class UserAccount
             IsAdmin = isAdmin,
             IsDeleted = false,
             DeletedAt = null,
-            DeletedByUserId = null
+            DeletedByUserId = null,
+            IsDemoAccount = false
         };
     }
 
-    // Soft Delete Methods
     public void MarkAsDeleted(string deletedByUserId)
     {
         if (IsDeleted)

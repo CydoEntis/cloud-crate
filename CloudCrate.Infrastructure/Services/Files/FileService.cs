@@ -63,8 +63,8 @@ public class FileService : IFileService
         if (request.SizeInBytes > MaxFileSize)
             return Result<Guid>.Failure(new FileTooLargeError());
 
-        if (request.MimeType.StartsWith(VIDEO_MIME_PREFIX, StringComparison.OrdinalIgnoreCase))
-            return Result<Guid>.Failure(new VideoNotAllowedError());
+        // if (request.MimeType.StartsWith(VIDEO_MIME_PREFIX, StringComparison.OrdinalIgnoreCase))
+        //     return Result<Guid>.Failure(new VideoNotAllowedError());
 
         var role = await _crateRoleService.GetUserRole(request.CrateId, userId);
         if (role == null)
