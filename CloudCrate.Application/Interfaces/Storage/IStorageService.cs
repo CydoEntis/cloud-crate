@@ -17,4 +17,5 @@ public interface IStorageService
     Task<Result> MoveFileAsync(Guid crateId, Guid? oldFolderId, Guid? newFolderId, string fileName);
     Task<Result> MoveFolderAsync(Guid crateId, Guid folderId, Guid? newParentId);
     Task<Result> RenameFileAsync(Guid crateId, Guid? folderId, string oldFileName, string newFileName);
+    Task<Result<byte[]>> ReadFileByKeyAsync(string storageKey);
 }

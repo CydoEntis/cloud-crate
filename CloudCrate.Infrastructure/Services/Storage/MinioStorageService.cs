@@ -127,6 +127,26 @@ public class MinioStorageService : IStorageService
         }
     }
 
+    public async Task<Result<byte[]>> ReadFileByKeyAsync(string storageKey)
+    {
+        try
+        {
+            var response = await _s3Client.GetObjectAsync(BucketName, storageKey);
+            using var ms = new MemoryStream();
+            await response.ResponseStream.CopyToAsync(ms);
+            return Result<byte[]>.Success(ms.ToArray());
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return Result<byte[]>.Failure(new FileNotFoundError($"File not found at key {storageKey}"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to read file {Key}", storageKey);
+            return Result<byte[]>.Failure(new FileReadError($"Failed to read file. ({ex.Message})"));
+        }
+    }
+
     public async Task<bool> FileExistsAsync(Guid crateId, Guid? folderId, string fileName)
     {
         var key = GetObjectKey(crateId, folderId, fileName);

@@ -295,7 +295,22 @@ public class FileService : IFileService
         if (role == null)
             return Result<byte[]>.Failure(new CrateUnauthorizedError("Not a member of this crate"));
 
-        return await _storageService.ReadFileAsync(file.CrateId, file.CrateFolderId, file.Name);
+        _logger.LogInformation("Attempting to download file - ObjectKey: {ObjectKey}, Expected size: {Size}",
+            file.ObjectKey, file.SizeInBytes);
+
+        var result = await _storageService.ReadFileByKeyAsync(file.ObjectKey);
+
+        if (result.IsSuccess)
+        {
+            var bytes = result.GetValue();
+            _logger.LogInformation("Successfully read {ByteCount} bytes from storage", bytes.Length);
+        }
+        else
+        {
+            _logger.LogError("Failed to read file: {Error}", result.GetError().Message);
+        }
+
+        return result;
     }
 
     public async Task<Result<byte[]>> DownloadMultipleFilesAsZipAsync(List<Guid> fileIds, string userId)

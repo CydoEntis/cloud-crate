@@ -16,10 +16,12 @@ namespace CloudCrate.Api.Controllers;
 public class FilesController : BaseController
 {
     private readonly IFileService _fileService;
+    private readonly ILogger<FilesController> _logger; // ✅ Correct
 
-    public FilesController(IFileService fileService)
+    public FilesController(IFileService fileService, ILogger<FilesController> logger) // ✅ Correct
     {
         _fileService = fileService;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -111,15 +113,17 @@ public class FilesController : BaseController
     [HttpGet("{fileId}/download")]
     public async Task<IActionResult> DownloadFile(Guid fileId)
     {
+        _logger.LogInformation("Download endpoint hit for fileId: {FileId}", fileId);
+
         if (string.IsNullOrWhiteSpace(UserId))
             return Unauthorized();
 
-        // Get file metadata
+
         var fileResult = await _fileService.GetFileAsync(fileId, UserId);
         if (fileResult.IsFailure)
             return fileResult.GetError().ToActionResult<CrateFileResponse>();
 
-        // Get file content
+
         var contentResult = await _fileService.DownloadFileAsync(fileId, UserId);
         if (contentResult.IsFailure)
             return contentResult.GetError().ToActionResult<byte[]>();
