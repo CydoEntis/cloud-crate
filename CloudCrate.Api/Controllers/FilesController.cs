@@ -16,9 +16,8 @@ namespace CloudCrate.Api.Controllers;
 public class FilesController : BaseController
 {
     private readonly IFileService _fileService;
-    private readonly ILogger<FilesController> _logger; // ✅ Correct
-
-    public FilesController(IFileService fileService, ILogger<FilesController> logger) // ✅ Correct
+    private readonly ILogger<FilesController> _logger; 
+    public FilesController(IFileService fileService, ILogger<FilesController> logger) 
     {
         _fileService = fileService;
         _logger = logger;
