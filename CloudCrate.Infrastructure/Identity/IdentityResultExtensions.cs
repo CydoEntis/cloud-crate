@@ -2,7 +2,7 @@
 using CloudCrate.Application.Models;
 using Microsoft.AspNetCore.Identity;
 
-namespace CloudCrate.Application.Common.Extensions;
+namespace CloudCrate.Infrastructure.Identity;
 
 public static class IdentityResultExtensions
 {

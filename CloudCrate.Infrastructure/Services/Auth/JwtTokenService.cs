@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using CloudCrate.Application.DTOs.Auth.Response;
 using CloudCrate.Application.Interfaces.Auth;
+using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;

@@ -1,4 +1,4 @@
-﻿namespace CloudCrate.Application.Common.Settings;
+﻿namespace CloudCrate.Application.Settings;
 
 public class StorageSettings
 {

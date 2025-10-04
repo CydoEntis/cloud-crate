@@ -1,5 +1,6 @@
 ﻿using CloudCrate.Application.DTOs.Admin.Request;
 using CloudCrate.Domain.Enums;
+using CloudCrate.Infrastructure.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudCrate.Infrastructure.Queries;

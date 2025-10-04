@@ -1,6 +1,8 @@
-﻿using CloudCrate.Application.Common.Utils;
-using CloudCrate.Application.DTOs.File.Response;
+﻿using CloudCrate.Application.DTOs.File.Response;
+using CloudCrate.Application.Utils;
 using CloudCrate.Domain.Entities;
+
+namespace CloudCrate.Application.Common.Utils;
 
 public static class FileBreakdownHelper
 {

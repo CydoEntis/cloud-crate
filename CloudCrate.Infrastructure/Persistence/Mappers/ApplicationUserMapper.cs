@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Domain.Entities;
+using CloudCrate.Infrastructure.Identity;
 
 namespace CloudCrate.Infrastructure.Persistence.Mappers;
 

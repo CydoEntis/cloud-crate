@@ -1,5 +1,4 @@
 ﻿using CloudCrate.Api.Common.Extensions;
-using CloudCrate.Api.Controllers;
 using CloudCrate.Api.Models;
 using CloudCrate.Application.DTOs.Admin.Request;
 using CloudCrate.Application.DTOs.Admin.Response;
@@ -11,6 +10,8 @@ using CloudCrate.Application.Interfaces.Invite;
 using CloudCrate.Domain.Enums;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+
+namespace CloudCrate.Api.Controllers;
 
 [ApiController]
 [Route("api/admin")]

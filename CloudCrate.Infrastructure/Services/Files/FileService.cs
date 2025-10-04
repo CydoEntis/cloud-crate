@@ -1,5 +1,4 @@
-﻿using CloudCrate.Application.DTOs.File;
-using CloudCrate.Application.DTOs.File.Request;
+﻿using CloudCrate.Application.DTOs.File.Request;
 using CloudCrate.Application.DTOs.File.Response;
 using CloudCrate.Application.DTOs.Folder.Request;
 using CloudCrate.Application.DTOs.Pagination;

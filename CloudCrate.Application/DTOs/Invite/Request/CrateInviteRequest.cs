@@ -1,6 +1,4 @@
-﻿using CloudCrate.Domain.Enums;
-
-namespace CloudCrate.Application.DTOs.Invite.Request;
+﻿namespace CloudCrate.Application.DTOs.Invite.Request;
 
 public class CrateInviteRequest
 {

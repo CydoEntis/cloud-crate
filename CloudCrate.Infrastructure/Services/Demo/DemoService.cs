@@ -3,6 +3,7 @@ using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.ValueObjects;
+using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.AspNetCore.Hosting;
@@ -111,7 +112,8 @@ public class DemoService
                 Plan = SubscriptionPlan.Max,
                 AllocatedStorageBytes = 0,
                 UsedStorageBytes = 0,
-                ProfilePictureUrl = $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Demo User")}",
+                ProfilePictureUrl =
+                    $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Demo User")}",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             },
@@ -124,7 +126,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
-                ProfilePictureUrl = $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Alice Cooper")}",
+                ProfilePictureUrl =
+                    $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Alice Cooper")}",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             },
@@ -137,7 +140,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
-                ProfilePictureUrl = $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Bob Smith")}",
+                ProfilePictureUrl =
+                    $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Bob Smith")}",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             },
@@ -150,7 +154,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
-                ProfilePictureUrl = $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Charlie Davis")}",
+                ProfilePictureUrl =
+                    $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Charlie Davis")}",
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             }
@@ -245,7 +250,7 @@ public class DemoService
     {
         var assembly = typeof(DemoService).Assembly;
         var prefix = $"CloudCrate.Infrastructure.DemoData.Files.{folderName}.";
-        
+
         var filesInFolder = assembly.GetManifestResourceNames()
             .Where(r => r.StartsWith(prefix))
             .ToList();
@@ -255,18 +260,20 @@ public class DemoService
         foreach (var resourceName in filesInFolder)
         {
             var fileName = resourceName.Substring(prefix.Length);
-            
+
             await CreateDemoFileFromEmbeddedAsync(crateId, folderId, folderName, fileName, userId);
         }
     }
 
-    private async Task CreateDemoFileFromEmbeddedAsync(Guid crateId, Guid folderId, string folderName, string fileName, string userId)
+    private async Task CreateDemoFileFromEmbeddedAsync(Guid crateId, Guid folderId, string folderName, string fileName,
+        string userId)
     {
         try
         {
             var fileBytes = await LoadEmbeddedFileAsync(folderName, fileName);
-            
-            if (fileBytes.Length < 100 && System.Text.Encoding.UTF8.GetString(fileBytes).StartsWith("[Demo file placeholder"))
+
+            if (fileBytes.Length < 100 &&
+                System.Text.Encoding.UTF8.GetString(fileBytes).StartsWith("[Demo file placeholder"))
             {
                 _logger.LogWarning("Skipping placeholder file: {FileName}", fileName);
                 return;
@@ -313,8 +320,16 @@ public class DemoService
                 crateEntity.UpdateEntity(crate);
                 await _context.SaveChangesAsync();
             }
-            
-            _logger.LogInformation("Successfully uploaded {FileName} ({Size} bytes) to {FolderName}", 
+
+            var userEntity = await _userManager.FindByIdAsync(userId);
+            if (userEntity != null)
+            {
+                userEntity.UsedStorageBytes += fileBytes.Length;
+                userEntity.UpdatedAt = DateTime.UtcNow;
+                await _userManager.UpdateAsync(userEntity);
+            }
+
+            _logger.LogInformation("Successfully uploaded {FileName} ({Size} bytes) to {FolderName}",
                 fileName, fileBytes.Length, folderName);
         }
         catch (Exception ex)
@@ -402,5 +417,4 @@ public class DemoService
         var user = await _userManager.FindByIdAsync(userId);
         return user?.IsDemoAccount == true;
     }
-
 }

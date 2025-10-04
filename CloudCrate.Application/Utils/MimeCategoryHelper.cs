@@ -1,4 +1,5 @@
-﻿namespace CloudCrate.Application.Common.Utils;
+﻿
+namespace CloudCrate.Application.Utils;
 
 public static class MimeCategoryHelper
 {

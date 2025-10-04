@@ -1,5 +1,4 @@
 ﻿using CloudCrate.Application.DTOs.Pagination;
-using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.DTOs.CrateMember.Request;
 

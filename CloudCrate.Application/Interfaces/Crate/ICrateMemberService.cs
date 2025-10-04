@@ -3,7 +3,6 @@ using CloudCrate.Application.DTOs.CrateMember.Request;
 using CloudCrate.Application.DTOs.Pagination;
 using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
-using CloudCrate.Domain.Enums;
 
 namespace CloudCrate.Application.Interfaces.Crate
 {

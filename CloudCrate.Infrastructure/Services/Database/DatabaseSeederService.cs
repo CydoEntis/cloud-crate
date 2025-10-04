@@ -1,12 +1,10 @@
-﻿// CloudCrate.Infrastructure.Services/DatabaseSeederService.cs
-
-using CloudCrate.Application.Models;
-using CloudCrate.Domain.Enums;
+﻿using CloudCrate.Domain.Enums;
+using CloudCrate.Infrastructure.Identity;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace CloudCrate.Infrastructure.Services;
+namespace CloudCrate.Infrastructure.Services.Database;
 
 public class DatabaseSeederService
 {

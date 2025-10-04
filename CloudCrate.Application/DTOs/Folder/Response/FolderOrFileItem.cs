@@ -1,6 +1,4 @@
-﻿using CloudCrate.Domain.Enums;
-
-namespace CloudCrate.Application.DTOs.Folder.Response;
+﻿namespace CloudCrate.Application.DTOs.Folder.Response;
 
 public class FolderOrFileItem
 {

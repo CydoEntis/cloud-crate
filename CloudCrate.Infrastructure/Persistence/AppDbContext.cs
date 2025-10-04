@@ -1,4 +1,5 @@
-﻿using CloudCrate.Infrastructure.Persistence.Configurations;
+﻿using CloudCrate.Infrastructure.Identity;
+using CloudCrate.Infrastructure.Persistence.Configurations;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;

@@ -1,6 +1,4 @@
-﻿using CloudCrate.Domain.Enums;
-
-namespace CloudCrate.Application.DTOs.Crate.Response;
+﻿namespace CloudCrate.Application.DTOs.Crate.Response;
 
 public class CrateMemberResponse
 {

@@ -5,6 +5,8 @@ using CloudCrate.Domain.Enums;
 using CloudCrate.Infrastructure.Persistence.Entities;
 using Microsoft.AspNetCore.Identity;
 
+namespace CloudCrate.Infrastructure.Identity;
+
 public class ApplicationUser : IdentityUser
 {
     [MaxLength(100)] public string DisplayName { get; set; } = string.Empty;

@@ -7,6 +7,7 @@ using CloudCrate.Application.Models;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
 using CloudCrate.Domain.ValueObjects;
+using CloudCrate.Infrastructure.Identity;
 using CloudCrate.Infrastructure.Persistence;
 using CloudCrate.Infrastructure.Persistence.Mappers;
 using Microsoft.AspNetCore.Identity;

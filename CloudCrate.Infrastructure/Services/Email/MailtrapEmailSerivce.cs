@@ -6,7 +6,7 @@ using CloudCrate.Application.Models;
 using Microsoft.Extensions.Configuration;
 using RazorLight;
 
-namespace CloudCrate.Infrastructure.Services.Storage;
+namespace CloudCrate.Infrastructure.Services.Email;
 
 public class MailtrapEmailService : IEmailService
 {
