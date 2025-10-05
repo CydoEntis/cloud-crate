@@ -109,7 +109,7 @@ public class DemoService
                 EmailConfirmed = true,
                 IsDemoAccount = true,
                 IsAdmin = false,
-                Plan = SubscriptionPlan.Max,
+                Plan = SubscriptionPlan.Mini,
                 AllocatedStorageBytes = 0,
                 UsedStorageBytes = 0,
                 ProfilePictureUrl =
