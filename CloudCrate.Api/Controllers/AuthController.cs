@@ -59,27 +59,26 @@ public class AuthController : BaseController
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
+        var userResult = await _userService.GetUserByEmailAsync(request.Email);
+        if (userResult.IsSuccess && userResult.GetValue().IsDemoAccount)
+        {
+            try
+            {
+                _logger.LogInformation("Resetting demo account for user: {Email}", request.Email);
+                await _demoService.ResetDemoAccountAsync(userResult.GetValue().Id);
+                _logger.LogInformation("Demo account reset completed for user: {Email}", request.Email);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to reset demo account for user {Email}", request.Email);
+            }
+        }
+
         var result = await _authService.LoginAsync(request.Email, request.Password);
 
         if (result.IsSuccess)
         {
             var authData = result.GetValue();
-
-            var userResult = await _userService.GetUserByEmailAsync(request.Email);
-            if (userResult.IsSuccess && userResult.GetValue().IsDemoAccount)
-            {
-                try
-                {
-                    _logger.LogInformation("Resetting demo account for user: {Email}", request.Email);
-                    await _demoService.ResetDemoAccountAsync(userResult.GetValue().Id);
-                    _logger.LogInformation("Demo account reset completed for user: {Email}", request.Email);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to reset demo account for user {Email}", request.Email);
-                }
-            }
-
             SetRefreshTokenCookie(authData.RefreshToken, authData.RefreshTokenExpires);
 
             return Ok(ApiResponse<object>.Success(

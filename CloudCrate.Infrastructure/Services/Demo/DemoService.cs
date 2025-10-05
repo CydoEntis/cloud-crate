@@ -1,4 +1,5 @@
 ﻿using CloudCrate.Application.DTOs.File.Request;
+using CloudCrate.Application.Interfaces.Folder;
 using CloudCrate.Application.Interfaces.Storage;
 using CloudCrate.Domain.Entities;
 using CloudCrate.Domain.Enums;
@@ -20,19 +21,21 @@ public class DemoService
     private readonly ILogger<DemoService> _logger;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IStorageService _storageService;
+    private readonly IFolderService _folderService;
 
     public DemoService(
         AppDbContext context,
         IWebHostEnvironment env,
         ILogger<DemoService> logger,
         UserManager<ApplicationUser> userManager,
-        IStorageService storageService)
+        IStorageService storageService, IFolderService folderService)
     {
         _context = context;
         _env = env;
         _logger = logger;
         _userManager = userManager;
         _storageService = storageService;
+        _folderService = folderService;
     }
 
     public async Task SeedDemoAccountsAsync()
@@ -397,8 +400,22 @@ public class DemoService
                     crateId, storageResult.GetError().Message);
             }
 
-            await _context.CrateFiles.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
-            await _context.CrateFolders.Where(f => f.CrateId == crateId).ExecuteDeleteAsync();
+            var rootFolderIds = await _context.CrateFolders
+                .IgnoreQueryFilters()
+                .Where(f => f.CrateId == crateId && f.ParentFolderId == null)
+                .Select(f => f.Id)
+                .ToListAsync();
+
+            foreach (var rootFolderId in rootFolderIds)
+            {
+                var result = await _folderService.PermanentlyDeleteFolderAsync(rootFolderId, userId);
+                if (result.IsFailure)
+                {
+                    _logger.LogWarning("Failed to delete folder {FolderId}: {Error}",
+                        rootFolderId, result.GetError().Message);
+                }
+            }
+
             await _context.CrateMembers.Where(m => m.CrateId == crateId).ExecuteDeleteAsync();
             await _context.Crates.Where(c => c.Id == crateId).ExecuteDeleteAsync();
         }
