@@ -33,25 +33,41 @@ public class ResendEmailService : IEmailService
     {
         try
         {
-            string html = await _razor.CompileRenderAsync($"{templateName}.cshtml", model);
+            string html;
+            try
+            {
+                html = await _razor.CompileRenderAsync($"{templateName}.cshtml", model);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to render email template {TemplateName}", templateName);
+                return Result.Failure(new EmailSendError($"Template rendering failed: {ex.Message}"));
+            }
 
             var message = new EmailMessage
             {
                 From = $"{_fromName} <{_fromEmail}>",
                 To = toEmail,
                 Subject = subject,
-                HtmlBody = html
+                HtmlBody = html,
+                TextBody = $"Hello,\n\nPlease view this email in an HTML-capable client.\nSubject: {subject}"
             };
 
-            await _resend.EmailSendAsync(message);
+            var response = await _resend.EmailSendAsync(message);
 
-            _logger.LogInformation("Email sent successfully to {ToEmail}", toEmail);
+            _logger.LogInformation("Email sent to {ToEmail}. Resend response: {@Response}", toEmail, response);
+
+            if (string.IsNullOrWhiteSpace(response.ToString()))
+            {
+                _logger.LogWarning("Email was sent but no Resend message ID was returned for {ToEmail}", toEmail);
+            }
 
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to send email to {ToEmail}", toEmail);
+            _logger.LogError(ex, "Unexpected error sending email to {ToEmail} with template {TemplateName} and model {@Model}",
+                toEmail, templateName, model);
             return Result.Failure(new EmailSendError($"Failed to send email: {ex.Message}"));
         }
     }
