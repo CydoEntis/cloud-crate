@@ -49,22 +49,25 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 Console.WriteLine("🚀 App starting...");
 
-// Make sure connection string uses the **Postgres container hostname**, not localhost
+// --- Dynamic port for Coolify ---
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://*:{port}");
+
+// --- Database ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Database connection string is not configured!");
 
-// DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Identity
+// --- Identity ---
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddErrorDescriber<CustomIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
-// Storage and Resend
+// --- Storage / Resend ---
 builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("Storage"));
 builder.Services.AddOptions();
 builder.Services.AddHttpClient<ResendClient>();
@@ -74,50 +77,49 @@ builder.Services.Configure<ResendClientOptions>(o =>
 });
 builder.Services.AddTransient<IResend, ResendClient>();
 
-// RazorLight engine
+// --- RazorLight engine (fixed for Docker) ---
 builder.Services.AddSingleton(sp =>
     new RazorLightEngineBuilder()
-        .UseFileSystemProject(Path.Combine(Directory.GetCurrentDirectory(), "..", "CloudCrate.Infrastructure",
-            "EmailTemplates"))
+        .UseFileSystemProject(Path.Combine(AppContext.BaseDirectory, "EmailTemplates"))
         .UseMemoryCachingProvider()
         .Build());
 
-// JWT Authentication
+// --- JWT Authentication ---
 builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuer = true,
-        ValidateAudience = true,
-        ValidateLifetime = true,
-        ValidateIssuerSigningKey = true,
-        ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["Jwt:Audience"],
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-        NameClaimType = ClaimTypes.NameIdentifier,
-        RoleClaimType = ClaimTypes.Role,
-    };
-    options.Events = new JwtBearerEvents
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
     {
-        OnAuthenticationFailed = context =>
+        options.TokenValidationParameters = new TokenValidationParameters
         {
-            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
-            return Task.CompletedTask;
-        },
-        OnTokenValidated = context =>
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = builder.Configuration["Jwt:Issuer"],
+            ValidAudience = builder.Configuration["Jwt:Audience"],
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+            NameClaimType = ClaimTypes.NameIdentifier,
+            RoleClaimType = ClaimTypes.Role,
+        };
+        options.Events = new JwtBearerEvents
         {
-            Console.WriteLine("Token validated successfully.");
-            return Task.CompletedTask;
-        }
-    };
-});
+            OnAuthenticationFailed = context =>
+            {
+                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+                return Task.CompletedTask;
+            },
+            OnTokenValidated = context =>
+            {
+                Console.WriteLine("Token validated successfully.");
+                return Task.CompletedTask;
+            }
+        };
+    });
 
-// Controllers & JSON
+// --- Controllers / JSON ---
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -125,12 +127,12 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
 
-// FluentValidation
+// --- FluentValidation ---
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddOpenApi();
 
-// App services
+// --- App Services ---
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -147,7 +149,7 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<DemoService>();
 builder.Services.AddScoped<DatabaseSeederService>();
 
-// Minio Storage
+// --- Minio Storage ---
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var config = builder.Configuration.GetSection("Storage").Get<StorageSettings>();
@@ -161,7 +163,7 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
 });
 builder.Services.AddScoped<IStorageService, MinioStorageService>();
 
-// CORS
+// --- CORS ---
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -191,7 +193,7 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("Checking database connection...");
             using var conn = new NpgsqlConnection(connectionString);
-            conn.Open(); // Will throw if DB unreachable
+            conn.Open();
             conn.Close();
 
             logger.LogInformation("Database reachable, applying migrations...");
@@ -217,13 +219,14 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// OpenAPI / dev tools
+// --- OpenAPI / dev tools ---
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.MapScalarApiReference();
 }
 
+// --- Middleware ---
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseCookiePolicy(new CookiePolicyOptions
@@ -233,11 +236,11 @@ app.UseCookiePolicy(new CookiePolicyOptions
 });
 
 app.UseCors("AllowFrontend");
-app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
 app.UseMiddleware<JwtBanCheckMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 
+// --- Run App ---
 app.Run();
