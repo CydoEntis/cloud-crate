@@ -2,7 +2,7 @@
 
 Backend for **CloudCrate** — a collaborative cloud storage platform built with **.NET** and **Clean Architecture**.  
 
-![CloudCrate Screenshot](./docs/screenshot.png)  
+![CloudCrate Screenshot](./docs/demo.gif)  
 
 ---
 
