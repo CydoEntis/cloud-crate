@@ -19,8 +19,9 @@
     <PackageReference Include="Stripe.net" Version="48.5.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.0.1" />
   </ItemGroup>
-  
+
   <ItemGroup>
+    <EmbeddedResource Include="EmailTemplates\*.cshtml" />
     <EmbeddedResource Include="DemoData\Files\**\*" />
   </ItemGroup>
   

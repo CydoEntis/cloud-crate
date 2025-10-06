@@ -80,7 +80,7 @@ builder.Services.AddTransient<IResend, ResendClient>();
 // --- RazorLight engine (fixed for Docker) ---
 builder.Services.AddSingleton(sp =>
     new RazorLightEngineBuilder()
-        .UseFileSystemProject(Path.Combine(AppContext.BaseDirectory, "EmailTemplates"))
+        .UseEmbeddedResourcesProject(typeof(Program)) 
         .UseMemoryCachingProvider()
         .Build());
 
