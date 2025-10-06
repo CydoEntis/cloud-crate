@@ -50,8 +50,8 @@ builder.Logging.AddConsole();
 Console.WriteLine("🚀 App starting...");
 
 // --- Dynamic port for Coolify ---
-// var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-// builder.WebHost.UseUrls($"http://*:{port}");
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://*:{port}");
 
 // --- Database ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
