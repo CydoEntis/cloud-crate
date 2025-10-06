@@ -41,6 +41,7 @@ using CloudCrate.Infrastructure.Services.User;
 using RazorLight;
 using Resend;
 using Scalar.AspNetCore;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -48,8 +49,8 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 Console.WriteLine("🚀 App starting...");
 
+// Make sure connection string uses the **Postgres container hostname**, not localhost
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-Console.WriteLine($"Connection string: {connectionString}");
 if (string.IsNullOrEmpty(connectionString))
     throw new InvalidOperationException("Database connection string is not configured!");
 
@@ -57,16 +58,14 @@ if (string.IsNullOrEmpty(connectionString))
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// Identity setup
+// Identity
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddEntityFrameworkStores<AppDbContext>()
     .AddErrorDescriber<CustomIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
-// Configure StorageSettings
+// Storage and Resend
 builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("Storage"));
-
-// Configure Resend Settings
 builder.Services.AddOptions();
 builder.Services.AddHttpClient<ResendClient>();
 builder.Services.Configure<ResendClientOptions>(o =>
@@ -75,7 +74,7 @@ builder.Services.Configure<ResendClientOptions>(o =>
 });
 builder.Services.AddTransient<IResend, ResendClient>();
 
-// Setup RazorLightEngine
+// RazorLight engine
 builder.Services.AddSingleton(sp =>
     new RazorLightEngineBuilder()
         .UseFileSystemProject(Path.Combine(Directory.GetCurrentDirectory(), "..", "CloudCrate.Infrastructure",
@@ -83,40 +82,40 @@ builder.Services.AddSingleton(sp =>
         .UseMemoryCachingProvider()
         .Build());
 
-// === Authentication & JWT Setup ===
+// JWT Authentication
 builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new TokenValidationParameters
     {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Jwt:Issuer"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
+        NameClaimType = ClaimTypes.NameIdentifier,
+        RoleClaimType = ClaimTypes.Role,
+    };
+    options.Events = new JwtBearerEvents
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        OnAuthenticationFailed = context =>
         {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]!)),
-            NameClaimType = ClaimTypes.NameIdentifier,
-            RoleClaimType = ClaimTypes.Role,
-        };
-        options.Events = new JwtBearerEvents
+            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
         {
-            OnAuthenticationFailed = context =>
-            {
-                Console.WriteLine($"Authentication failed: {context.Exception.Message}");
-                return Task.CompletedTask;
-            },
-            OnTokenValidated = context =>
-            {
-                Console.WriteLine("Token validated successfully.");
-                return Task.CompletedTask;
-            }
-        };
-    });
+            Console.WriteLine("Token validated successfully.");
+            return Task.CompletedTask;
+        }
+    };
+});
 
 // Controllers & JSON
 builder.Services.AddControllers()
@@ -126,7 +125,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
 
-// FluentValidation Setup
+// FluentValidation
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddOpenApi();
@@ -148,7 +147,7 @@ builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<DemoService>();
 builder.Services.AddScoped<DatabaseSeederService>();
 
-// Registering Minio Storage
+// Minio Storage
 builder.Services.AddSingleton<IAmazonS3>(sp =>
 {
     var config = builder.Configuration.GetSection("Storage").Get<StorageSettings>();
@@ -167,10 +166,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins(
-                "https://localhost:5173",
-                "http://localhost:5173"
-            )
+        policy.WithOrigins("https://localhost:5173", "http://localhost:5173")
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
@@ -180,33 +176,44 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// === Automatic DB migration and seeding ===
+// --- DATABASE MIGRATION WITH RETRY ---
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
     var logger = services.GetRequiredService<ILogger<Program>>();
+    var context = services.GetRequiredService<AppDbContext>();
 
-    try
+    const int maxRetries = 10;
+    var retryDelay = TimeSpan.FromSeconds(5);
+    for (int attempt = 1; attempt <= maxRetries; attempt++)
     {
-        logger.LogInformation("Applying database migrations...");
-        var context = services.GetRequiredService<AppDbContext>();
-        context.Database.Migrate();
-        logger.LogInformation("Database migrations applied.");
+        try
+        {
+            logger.LogInformation("Checking database connection...");
+            using var conn = new NpgsqlConnection(connectionString);
+            conn.Open(); // Will throw if DB unreachable
+            conn.Close();
 
-        logger.LogInformation("Seeding main database...");
-        var seeder = services.GetRequiredService<DatabaseSeederService>();
-        await seeder.SeedAsync();
+            logger.LogInformation("Database reachable, applying migrations...");
+            context.Database.Migrate();
 
-        logger.LogInformation("Seeding demo accounts...");
-        var demoService = services.GetRequiredService<DemoService>();
-        await demoService.SeedDemoAccountsAsync();
+            logger.LogInformation("Seeding main database...");
+            var seeder = services.GetRequiredService<DatabaseSeederService>();
+            await seeder.SeedAsync();
 
-        logger.LogInformation("Database setup completed successfully.");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred during database setup.");
-        throw; // Prevent app start if DB fails
+            logger.LogInformation("Seeding demo accounts...");
+            var demoService = services.GetRequiredService<DemoService>();
+            await demoService.SeedDemoAccountsAsync();
+
+            logger.LogInformation("Database setup complete.");
+            break;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, $"Attempt {attempt} failed, retrying in {retryDelay.TotalSeconds}s...");
+            if (attempt == maxRetries) throw;
+            await Task.Delay(retryDelay);
+        }
     }
 }
 
@@ -219,7 +226,6 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-// Cookie policy for HTTPS cookies
 app.UseCookiePolicy(new CookiePolicyOptions
 {
     MinimumSameSitePolicy = SameSiteMode.Strict,
