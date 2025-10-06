@@ -80,7 +80,7 @@ builder.Services.AddTransient<IResend, ResendClient>();
 // --- RazorLight engine (fixed for Docker) ---
 builder.Services.AddSingleton(sp =>
     new RazorLightEngineBuilder()
-        .UseEmbeddedResourcesProject(typeof(Program)) 
+        .UseEmbeddedResourcesProject(typeof(Program))
         .UseMemoryCachingProvider()
         .Build());
 
@@ -168,7 +168,11 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
     {
-        policy.WithOrigins("https://localhost:5173", "http://localhost:5173")
+        policy.WithOrigins(
+                "https://localhost:5173",
+                "http://localhost:5173",
+                "https://cloudcrate.codystine.com"
+            )
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials()
