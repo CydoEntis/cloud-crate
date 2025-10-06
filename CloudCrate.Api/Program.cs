@@ -84,6 +84,12 @@ builder.Services.AddSingleton(sp =>
         .UseMemoryCachingProvider()
         .Build());
 
+builder.Services.AddSingleton(sp =>
+    new RazorLightEngineBuilder()
+        .UseEmbeddedResourcesProject(typeof(ResendEmailService)) 
+        .UseMemoryCachingProvider()
+        .Build());
+
 // --- JWT Authentication ---
 builder.Services.AddAuthentication(options =>
     {
