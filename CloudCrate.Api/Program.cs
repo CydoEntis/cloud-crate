@@ -50,15 +50,12 @@ Console.WriteLine("🚀 App starting...");
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 Console.WriteLine($"Connection string: {connectionString}");
-
 if (string.IsNullOrEmpty(connectionString))
-{
     throw new InvalidOperationException("Database connection string is not configured!");
-}
 
 // DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+    options.UseNpgsql(connectionString));
 
 // Identity setup
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
@@ -67,8 +64,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddDefaultTokenProviders();
 
 // Configure StorageSettings
-builder.Services.Configure<StorageSettings>(
-    builder.Configuration.GetSection("Storage"));
+builder.Services.Configure<StorageSettings>(builder.Configuration.GetSection("Storage"));
 
 // Configure Resend Settings
 builder.Services.AddOptions();
@@ -127,14 +123,12 @@ builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.Converters.Add(
-            new System.Text.Json.Serialization.JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
     });
 
-// ✅ FluentValidation Setup
+// FluentValidation Setup
 builder.Services.AddValidatorsFromAssemblyContaining<CreateCrateRequestValidator>();
 builder.Services.AddFluentValidationAutoValidation();
-
 builder.Services.AddOpenApi();
 
 // App services
@@ -152,7 +146,6 @@ builder.Services.AddTransient<IEmailService, ResendEmailService>();
 builder.Services.AddScoped<IUserInviteService, UserInviteService>();
 builder.Services.AddScoped<IAdminService, AdminService>();
 builder.Services.AddScoped<DemoService>();
-
 builder.Services.AddScoped<DatabaseSeederService>();
 
 // Registering Minio Storage
@@ -162,13 +155,14 @@ builder.Services.AddSingleton<IAmazonS3>(sp =>
     var s3Config = new AmazonS3Config
     {
         ServiceURL = config.Endpoint,
-        ForcePathStyle = true, // required for MinIO
+        ForcePathStyle = true,
         UseHttp = config.Endpoint.StartsWith("http://")
     };
     return new AmazonS3Client(config.AccessKey, config.SecretKey, s3Config);
 });
 builder.Services.AddScoped<IStorageService, MinioStorageService>();
 
+// CORS
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
@@ -186,6 +180,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// === Automatic DB migration and seeding ===
 using (var scope = app.Services.CreateScope())
 {
     var services = scope.ServiceProvider;
@@ -193,24 +188,29 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        logger.LogInformation("Starting demo account seeding...");
+        logger.LogInformation("Applying database migrations...");
+        var context = services.GetRequiredService<AppDbContext>();
+        context.Database.Migrate();
+        logger.LogInformation("Database migrations applied.");
+
+        logger.LogInformation("Seeding main database...");
+        var seeder = services.GetRequiredService<DatabaseSeederService>();
+        await seeder.SeedAsync();
+
+        logger.LogInformation("Seeding demo accounts...");
         var demoService = services.GetRequiredService<DemoService>();
         await demoService.SeedDemoAccountsAsync();
-        logger.LogInformation("Demo account seeding completed successfully");
+
+        logger.LogInformation("Database setup completed successfully.");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "An error occurred while seeding demo accounts");
+        logger.LogError(ex, "An error occurred during database setup.");
+        throw; // Prevent app start if DB fails
     }
 }
 
-
-using (var scope = app.Services.CreateScope())
-{
-    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeederService>();
-    await seeder.SeedAsync();
-}
-
+// OpenAPI / dev tools
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
