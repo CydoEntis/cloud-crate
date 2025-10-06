@@ -21,7 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="EmailTemplates\*.cshtml" />
+    <None Include="EmailTemplates\*.cshtml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <EmbeddedResource Include="DemoData\Files\**\*" />
   </ItemGroup>
   

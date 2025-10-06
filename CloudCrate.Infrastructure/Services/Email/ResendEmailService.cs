@@ -36,7 +36,7 @@ public class ResendEmailService : IEmailService
             string html;
             try
             {
-                html = await _razor.CompileRenderAsync($"{templateName}.cshtml", model);
+                html = await _razor.CompileRenderAsync(templateName, model);
             }
             catch (Exception ex)
             {
@@ -66,7 +66,8 @@ public class ResendEmailService : IEmailService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Unexpected error sending email to {ToEmail} with template {TemplateName} and model {@Model}",
+            _logger.LogError(ex,
+                "Unexpected error sending email to {ToEmail} with template {TemplateName} and model {@Model}",
                 toEmail, templateName, model);
             return Result.Failure(new EmailSendError($"Failed to send email: {ex.Message}"));
         }

@@ -42,6 +42,7 @@ using RazorLight;
 using Resend;
 using Scalar.AspNetCore;
 using Npgsql;
+using RazorLight.Razor;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,18 +78,19 @@ builder.Services.Configure<ResendClientOptions>(o =>
 });
 builder.Services.AddTransient<IResend, ResendClient>();
 
-// --- RazorLight engine (fixed for Docker) ---
+// --- RazorLight engine  ---
 builder.Services.AddSingleton(sp =>
-    new RazorLightEngineBuilder()
-        .UseEmbeddedResourcesProject(typeof(Program))
-        .UseMemoryCachingProvider()
-        .Build());
+{
+    var templateFolder = Path.Combine(AppContext.BaseDirectory, "EmailTemplates");
 
-builder.Services.AddSingleton(sp =>
-    new RazorLightEngineBuilder()
-        .UseEmbeddedResourcesProject(typeof(ResendEmailService)) 
+    var project = new FileSystemRazorProject(templateFolder);
+
+    return new RazorLightEngineBuilder()
+        .UseProject(project)
         .UseMemoryCachingProvider()
-        .Build());
+        .Build();
+});
+
 
 // --- JWT Authentication ---
 builder.Services.AddAuthentication(options =>
