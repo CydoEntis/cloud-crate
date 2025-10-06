@@ -57,9 +57,6 @@ public class CrateService : ICrateService
             request.UserId, request.AllocatedStorageGb);
         if (validationResult.IsFailure) return Result<Guid>.Failure(validationResult.GetError());
 
-        var bucketResult = await _storageService.EnsureBucketExistsAsync();
-        if (bucketResult.IsFailure) return Result<Guid>.Failure(bucketResult.GetError());
-
         try
         {
             var crate = Crate.Create(request.Name, request.UserId, request.AllocatedStorageGb, request.Color);

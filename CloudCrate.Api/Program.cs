@@ -50,8 +50,8 @@ builder.Logging.AddConsole();
 Console.WriteLine("🚀 App starting...");
 
 // --- Dynamic port for Coolify ---
-var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
-builder.WebHost.UseUrls($"http://*:{port}");
+// var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+// builder.WebHost.UseUrls($"http://*:{port}");
 
 // --- Database ---
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -206,6 +206,18 @@ using (var scope = app.Services.CreateScope())
             logger.LogInformation("Seeding main database...");
             var seeder = services.GetRequiredService<DatabaseSeederService>();
             await seeder.SeedAsync();
+
+            // --- ENSURE MINIO BUCKET EXISTS ---
+            logger.LogInformation("Ensuring MinIO bucket exists...");
+            var storageService = services.GetRequiredService<IStorageService>();
+            var bucketResult = await storageService.EnsureBucketExistsAsync();
+            if (bucketResult.IsFailure)
+            {
+                logger.LogError("Failed to create MinIO bucket: {Error}", bucketResult.GetError().Message);
+                throw new Exception($"MinIO bucket creation failed: {bucketResult.GetError().Message}");
+            }
+
+            logger.LogInformation("MinIO bucket ready");
 
             logger.LogInformation("Seeding demo accounts...");
             var demoService = services.GetRequiredService<DemoService>();

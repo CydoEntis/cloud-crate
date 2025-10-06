@@ -28,7 +28,8 @@ public class DemoService
         IWebHostEnvironment env,
         ILogger<DemoService> logger,
         UserManager<ApplicationUser> userManager,
-        IStorageService storageService, IFolderService folderService)
+        IStorageService storageService,
+        IFolderService folderService)
     {
         _context = context;
         _env = env;
@@ -81,6 +82,7 @@ public class DemoService
         try
         {
             await DeleteAllDemoDataAsync(userId);
+
             await ResetUserStorageAsync(user);
 
             var allDemoUsers = await _userManager.Users
@@ -129,6 +131,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
+                AllocatedStorageBytes = 0,
+                UsedStorageBytes = 0,
                 ProfilePictureUrl =
                     $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Alice Cooper")}",
                 CreatedAt = DateTime.UtcNow,
@@ -143,6 +147,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
+                AllocatedStorageBytes = 0,
+                UsedStorageBytes = 0,
                 ProfilePictureUrl =
                     $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Bob Smith")}",
                 CreatedAt = DateTime.UtcNow,
@@ -157,6 +163,8 @@ public class DemoService
                 IsDemoAccount = true,
                 IsAdmin = false,
                 Plan = SubscriptionPlan.Free,
+                AllocatedStorageBytes = 0,
+                UsedStorageBytes = 0,
                 ProfilePictureUrl =
                     $"https://api.dicebear.com/7.x/fun-emoji/svg?seed={Uri.EscapeDataString("Charlie Davis")}",
                 CreatedAt = DateTime.UtcNow,
@@ -193,6 +201,9 @@ public class DemoService
             },
         };
 
+        long totalAllocatedBytes = 0;
+        long totalUsedBytes = 0;
+
         foreach (var config in crateConfigs)
         {
             var crate = Crate.Create(config.Name, mainUser.Id, config.StorageGB, config.Color);
@@ -211,17 +222,25 @@ public class DemoService
                 _context.Entry(memberEntity).State = EntityState.Detached;
             }
 
-            mainUser.AllocatedStorageBytes += StorageSize.FromGigabytes(config.StorageGB).Bytes;
+            totalAllocatedBytes += StorageSize.FromGigabytes(config.StorageGB).Bytes;
 
             var rootFolder = crate.Folders.First(f => f.IsRoot);
 
-            await SeedCrateContentAsync(crate.Id, rootFolder.Id, mainUser.Id);
+            var usedBytes = await SeedCrateContentAsync(crate.Id, rootFolder.Id, mainUser.Id);
+            totalUsedBytes += usedBytes;
         }
 
+        mainUser.AllocatedStorageBytes = totalAllocatedBytes;
+        mainUser.UsedStorageBytes = totalUsedBytes;
+        mainUser.UpdatedAt = DateTime.UtcNow;
         await _userManager.UpdateAsync(mainUser);
+
+        _logger.LogInformation(
+            "Updated demo user storage - Allocated: {Allocated} bytes, Used: {Used} bytes",
+            totalAllocatedBytes, totalUsedBytes);
     }
 
-    private async Task SeedCrateContentAsync(Guid crateId, Guid rootFolderId, string userId)
+    private async Task<long> SeedCrateContentAsync(Guid crateId, Guid rootFolderId, string userId)
     {
         var folder1 = CrateFolder.Create("Documents", crateId, rootFolderId, "#3B82F6", userId);
         var folder2 = CrateFolder.Create("Images", crateId, rootFolderId, "#10B981", userId);
@@ -241,15 +260,19 @@ public class DemoService
 
         await _context.SaveChangesAsync();
 
-        await UploadAllFilesFromFolderAsync(crateId, folder1.Id, "Documents", userId);
-        await UploadAllFilesFromFolderAsync(crateId, folder2.Id, "Images", userId);
-        await UploadAllFilesFromFolderAsync(crateId, folder3.Id, "Audio", userId);
-        await UploadAllFilesFromFolderAsync(crateId, folder4.Id, "Videos", userId);
-        await UploadAllFilesFromFolderAsync(crateId, folder5.Id, "Reports", userId);
-        await UploadAllFilesFromFolderAsync(crateId, folder6.Id, "SpreadSheets", userId);
+        long totalBytes = 0;
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder1.Id, "Documents", userId);
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder2.Id, "Images", userId);
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder3.Id, "Audio", userId);
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder4.Id, "Videos", userId);
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder5.Id, "Reports", userId);
+        totalBytes += await UploadAllFilesFromFolderAsync(crateId, folder6.Id, "SpreadSheets", userId);
+
+        return totalBytes;
     }
 
-    private async Task UploadAllFilesFromFolderAsync(Guid crateId, Guid folderId, string folderName, string userId)
+    private async Task<long> UploadAllFilesFromFolderAsync(Guid crateId, Guid folderId, string folderName,
+        string userId)
     {
         var assembly = typeof(DemoService).Assembly;
         var prefix = $"CloudCrate.Infrastructure.DemoData.Files.{folderName}.";
@@ -260,16 +283,19 @@ public class DemoService
 
         _logger.LogInformation("Found {Count} files in {FolderName} folder", filesInFolder.Count, folderName);
 
+        long totalBytes = 0;
         foreach (var resourceName in filesInFolder)
         {
             var fileName = resourceName.Substring(prefix.Length);
-
-            await CreateDemoFileFromEmbeddedAsync(crateId, folderId, folderName, fileName, userId);
+            var bytes = await CreateDemoFileFromEmbeddedAsync(crateId, folderId, folderName, fileName, userId);
+            totalBytes += bytes;
         }
+
+        return totalBytes;
     }
 
-    private async Task CreateDemoFileFromEmbeddedAsync(Guid crateId, Guid folderId, string folderName, string fileName,
-        string userId)
+    private async Task<long> CreateDemoFileFromEmbeddedAsync(Guid crateId, Guid folderId, string folderName,
+        string fileName, string userId)
     {
         try
         {
@@ -279,7 +305,7 @@ public class DemoService
                 System.Text.Encoding.UTF8.GetString(fileBytes).StartsWith("[Demo file placeholder"))
             {
                 _logger.LogWarning("Skipping placeholder file: {FileName}", fileName);
-                return;
+                return 0;
             }
 
             var mimeType = GetMimeType(fileName);
@@ -299,7 +325,7 @@ public class DemoService
             {
                 _logger.LogWarning("Failed to save demo file {FileName}: {Error}",
                     fileName, storageResult.GetError().Message);
-                return;
+                return 0;
             }
 
             var file = CrateFile.Create(
@@ -315,6 +341,7 @@ public class DemoService
             _context.CrateFiles.Add(file.ToEntity(crateId));
             await _context.SaveChangesAsync();
 
+            // Update crate storage
             var crateEntity = await _context.Crates.FindAsync(crateId);
             if (crateEntity != null)
             {
@@ -324,21 +351,16 @@ public class DemoService
                 await _context.SaveChangesAsync();
             }
 
-            var userEntity = await _userManager.FindByIdAsync(userId);
-            if (userEntity != null)
-            {
-                userEntity.UsedStorageBytes += fileBytes.Length;
-                userEntity.UpdatedAt = DateTime.UtcNow;
-                await _userManager.UpdateAsync(userEntity);
-            }
-
             _logger.LogInformation("Successfully uploaded {FileName} ({Size} bytes) to {FolderName}",
                 fileName, fileBytes.Length, folderName);
+
+            return fileBytes.Length;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to create demo file {FileName} in folder {FolderName}",
                 fileName, folderName);
+            return 0;
         }
     }
 
