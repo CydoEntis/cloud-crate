@@ -48,6 +48,14 @@ builder.Logging.ClearProviders();
 builder.Logging.AddConsole();
 Console.WriteLine("🚀 App starting...");
 
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+Console.WriteLine($"Connection string: {connectionString}");
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new InvalidOperationException("Database connection string is not configured!");
+}
+
 // DbContext
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
